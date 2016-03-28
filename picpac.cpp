@@ -13,7 +13,7 @@ namespace picpac {
         uintmax_t sz = fs::file_size(image);
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
         alloc(label, sz);
-        meta->fields[0].type = FIELD_FILE;
+        //meta->fields[0].type = FIELD_FILE;
         fs::ifstream is(image, std::ios::binary);
         is.read(fields[0], meta->fields[0].size);
         if (!is) throw BadFile(image);
@@ -24,10 +24,10 @@ namespace picpac {
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
         alloc(label, sz, extra.size());
         fs::ifstream is(image, std::ios::binary);
-        meta->fields[0].type = FIELD_FILE;
+        //meta->fields[0].type = FIELD_FILE;
         is.read(fields[0], meta->fields[0].size);
         if (!is) throw BadFile(image);
-        meta->fields[1].type = FIELD_TEXT;
+        //meta->fields[1].type = FIELD_TEXT;
         std::copy(extra.begin(), extra.end(), fields[1]);
     }
 
@@ -107,6 +107,7 @@ namespace picpac {
         }
         ssize_t sz = r.write(fd);
         CHECK(sz > 0);
+        ++seg.size;
         seg.labels[next] = r.meta->label;
         seg.sizes[next++] = sz;
     }

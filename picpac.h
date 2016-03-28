@@ -34,9 +34,11 @@ namespace picpac {
 
     enum {  // Record field type
         FIELD_NONE = 0,
+        /*
         FIELD_FILE = 1,
         FIELD_TEXT = 2,
         FIELD_OTHER = 3 
+        */
     };
 
     class BadLabel: public runtime_error {
@@ -161,12 +163,15 @@ namespace picpac {
         float label;
     };
 
-    class FileReader: vector<FileEntry> {
+    class FileReader:public vector<FileEntry> {
         int fd;
     public:
         FileReader (fs::path const &path);
         ~FileReader ();
-        void read (unsigned n, Record *r);
+        void read (unsigned n, Record *r) {
+            auto const &e = at(n);
+            r->read(fd, e.offset, e.size);
+        }
     };
 }
 
