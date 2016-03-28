@@ -7,7 +7,7 @@ LDLIBS = libpicpac.a -ljson11 $(shell pkg-config --libs opencv) -lboost_timer -l
 
 COMMON = picpac.o
 
-PROGS = load-caffe load-dir test
+PROGS = load-caffe load-dir test server
 
 .PHONY:	all release
 
@@ -21,5 +21,7 @@ release:
 libpicpac.a:	$(COMMON)
 	ar rvs $@ $^
 
+server:	server.o
+	$(CXX) $(LDFLAGS) -o $@ $^ -lserved -lmagic $(LDLIBS)
 clean:
 	rm *.o test
