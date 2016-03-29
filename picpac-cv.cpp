@@ -157,7 +157,11 @@ namespace picpac {
         bool do_code = code.size() || (mode != cv::IMREAD_UNCHANGED);
         cv::Mat image = cv::imread(path.native(), mode);
         if (!image.data) throw BadFile(path);
-        if (max > 0) {
+        if (resize > 0) {
+            cv::resize(image, image, cv::Size(resize, resize));
+            do_code = true;
+        }
+        else if (max > 0) {
             cv::Mat rs;
             LimitSize(image, max, &rs);
             if (rs.total() != image.total()) {

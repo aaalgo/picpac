@@ -100,10 +100,11 @@ namespace picpac {
 
     class ImageReader: public ImageEncoder {
         int max;
+        int resize;
         int mode;
     public:
-        ImageReader (int max_ = 800, int mode_ = cv::IMREAD_UNCHANGED, string const &code_ = string())
-            : ImageEncoder(code_), max(max_), mode(mode_) {
+        ImageReader (int max_ = 800, int resize_ = -1, int mode_ = cv::IMREAD_UNCHANGED, string const &code_ = string())
+            : ImageEncoder(code_), max(max_), resize(resize_), mode(mode_) {
         }
 
         void read (fs::path const &path, string *data);

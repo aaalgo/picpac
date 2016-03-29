@@ -15,6 +15,7 @@ int main(int argc, char **argv) {
     fs::path input_path;
     fs::path output_path;
     int max_size;
+    int resize;
 
     po::options_description desc("Allowed options");
     desc.add_options()
@@ -22,6 +23,7 @@ int main(int argc, char **argv) {
     ("input,i", po::value(&input_path), "")
     ("output,o", po::value(&output_path), "")
     ("max", po::value(&max_size)->default_value(800), "")
+    ("resize", po::value(&resize)->default_value(-1), "")
     /*
     ("gray", "")
     ("max", po::value(&max_size)->default_value(max_size), "")
@@ -47,7 +49,7 @@ int main(int argc, char **argv) {
     google::InitGoogleLogging(argv[0]);
     picpac::FileWriter db(output_path);
     CachedDownloader downloader;
-    ImageReader imreader(max_size);
+    ImageReader imreader(max_size, resize);
     fs::ifstream is(input_path.c_str());
     string line;
     int count = 0;
