@@ -105,6 +105,24 @@ int main(int argc, char const* argv[]) {
             res.set_header("Content-Type", mime);
             res.set_body(string(rec.fields[0], rec.fields[0] + rec.meta->fields[0].size));
         }));
+    mux.handle("/anno")
+        .get(no_throw([&db](served::response &res, const served::request &req) {
+            ImageLoader::Config conf;
+            conf.annotate = ImageLoader::ANNOTATE_JSON;
+            ImageLoader loader(conf);
+            ImageLoader::PerturbVector pv;
+            rfc3986::Form query(req.url().query());
+            int id = lexical_cast<int>(query["id"]);
+            Record rec;
+            db.read(id, &rec);
+            ImageLoader::Value v;
+            loader.load(std::move(rec), pv, &v);
+            ImageEncoder encoder;
+            string buf;
+            encoder.encode(v.annotation, &buf);
+            res.set_header("Content-Type", "image/jpeg");
+            res.set_body(buf);
+        }));
     mux.use_after(served::plugin::access_log);
     LOG(INFO) << "listening at " << address << ':' << port;
     served::net::server server(address, port, mux);

@@ -86,13 +86,22 @@ namespace picpac {
         std::uniform_real_distribution<float> linear_scale;
     };
 
-    class ImageReader {
-        int max;
-        int mode;
+    class ImageEncoder {
+    protected:
         string code;
     public:
-        ImageReader (int max_ = 800, int mode_ = cv::IMREAD_UNCHANGED, string code_ = string())
-            : max(max_), mode(mode_), code(code_) {
+        ImageEncoder (string const &code_ =  string()): code(code_) {
+        }
+
+        void encode (cv::Mat const &image, string *);
+    };
+
+    class ImageReader: public ImageEncoder {
+        int max;
+        int mode;
+    public:
+        ImageReader (int max_ = 800, int mode_ = cv::IMREAD_UNCHANGED, string const &code_ = string())
+            : ImageEncoder(code_), max(max_), mode(mode_) {
         }
 
         void read (fs::path const &path, string *data);

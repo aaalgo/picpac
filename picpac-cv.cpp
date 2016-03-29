@@ -145,6 +145,13 @@ namespace picpac {
         return scale;
     }
 
+    void ImageEncoder::encode (cv::Mat const &image, string *data) {
+        std::vector<uint8_t> buffer;
+        cv::imencode(code.empty() ? ".jpg": code, image, buffer);
+        char const *from = reinterpret_cast<char const *>(&buffer[0]);
+        *data = string(from, from + buffer.size());
+    }
+
     void ImageReader::read (fs::path const &path, string *data) {
         bool do_code = code.size() || (mode != cv::IMREAD_UNCHANGED);
         cv::Mat image = cv::imread(path.native(), mode);
@@ -158,13 +165,7 @@ namespace picpac {
             }
         }
         if (do_code) {
-            std::vector<uint8_t> buffer;
-            cv::imencode(code.empty() ? ".jpg": code, image, buffer);
-            if (buffer.empty()) {
-                throw BadFile(path);
-            }
-            char const *from = reinterpret_cast<char const *>(&buffer[0]);
-            *data = string(from, from + buffer.size());
+            encode(image, data);
         }
         else {
             // read original file
