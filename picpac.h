@@ -286,11 +286,8 @@ namespace picpac {
                 }
                 Record r;
                 FileReader::read(task.locator, &r);
+                CHECK(task.locator.label == r.meta->label) << "File corrupted";
                 Value v(TR::transform(r, task.perturb));
-                if (!(v >= 0 && v < 17)) {
-                    std::cerr << task.locator.offset << '\t' << task.locator.size << '\t' << task.locator.label << std::endl;
-                    *(char *)0 = 0;;
-                }
                 {
                     lock_guard lock(mutex);
                     done.push(std::move(v));
