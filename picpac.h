@@ -1,12 +1,16 @@
 #ifndef PICPAC_INCLUDE
 #define PICPAC_INCLUDE
 #include <array>
+#include <queue>
 #include <vector>
 #include <string>
 #include <mutex>
+#include <condition_variable>
+#include <thread>
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <random>
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <glog/logging.h>
@@ -14,6 +18,7 @@
 namespace picpac {
 
     using std::array;
+    using std::queue;
     using std::vector;
     using std::string;
     using std::numeric_limits;
@@ -30,7 +35,8 @@ namespace picpac {
     static constexpr unsigned RECORD_ALIGN = 4096;
     static constexpr size_t MAX_RECORD_SIZE = 512*1024*1024;  // 512MB
 
-    static constexpr int MAX_CATEGORIES = (1 << 23);
+    static constexpr int MAX_CATEGORIES = 2000;
+    static constexpr unsigned DEFAULT_BUFFER = 128;
 
     enum {  // Record field type
         FIELD_NONE = 0,
@@ -157,20 +163,196 @@ namespace picpac {
         void append (Record const &r);
     };
 
-    struct FileEntry {
+    struct Locator {
         off_t offset;
         uint32_t size;
         float label;
     };
 
-    class FileReader:public vector<FileEntry> {
+    class FileReader {
         int fd;
     public:
         FileReader (fs::path const &path);
         ~FileReader ();
-        void read (unsigned n, Record *r) {
-            auto const &e = at(n);
-            r->read(fd, e.offset, e.size);
+        void ping (vector<Locator> *l);
+        void read (Locator const &l, Record *r) {
+            ssize_t sz = r->read(fd, l.offset, l.size);
+            CHECK(sz == l.size);
+        }
+    };
+
+    class IndexedFileReader: public FileReader {
+        vector<Locator> index;
+    public:
+        IndexedFileReader (fs::path const &path)
+            : FileReader(path) {
+            ping(&index);
+        }
+        size_t size () const { return index.size(); }
+        void read (size_t i, Record *r) {
+            if (!(i < index.size())) throw std::out_of_range("");
+            FileReader::read(index[i], r);
+        }
+    };
+
+    struct EoS {
+    };
+
+    class BasicStreamer: public FileReader {
+    public:
+        struct Config {
+            int seed;           // random seed
+            bool loop;   
+            bool shuffle;
+            bool reshuffle;
+            bool stratify;
+            unsigned buffer;
+            unsigned threads;   // 0 to use all cores
+
+            unsigned splits;
+            vector<unsigned> keys;   // split keys to include
+
+            Config()
+                : seed(2016),
+                loop(true),
+                shuffle(true),
+                reshuffle(true),
+                stratify(true),
+                buffer(DEFAULT_BUFFER),
+                threads(0),
+                splits(1),
+                keys{0} {
+            }
+                    
+        };
+
+        struct KFoldConfig: public Config {
+            KFoldConfig (unsigned K, unsigned fold, bool train);
+        };
+    protected:
+        Config config;
+        std::default_random_engine rng;
+    private:
+        struct Group {
+            unsigned id;    // unique group ID
+            vector<Locator> index;
+            unsigned next;
+        };
+        vector<Group> groups;
+        unsigned next_group;
+    public:
+        BasicStreamer (fs::path const &, Config const &);
+        Locator next ();
+        void read_next (Record *r) {
+            read(next(), r);
+        }
+    };
+
+    template <typename TR> // transform class to serve as base class
+    class TransformStreamer: public BasicStreamer, public TR {
+        typedef BasicStreamer::Config StreamerConfig;
+        typedef typename TR::Config TransformConfig;
+        typedef typename TR::Value Value;
+        typedef typename TR::Perturb Perturb;
+        typedef std::lock_guard<std::mutex> lock_guard;
+        typedef std::unique_lock<std::mutex> unique_lock;
+        struct Task {
+            Locator locator;
+            Perturb perturb;
+        };
+        queue<Task> todo;
+        queue<Value> done;
+        int inqueue; // todo.size() + done.size()
+        bool eos;    // eos signal from upstream
+        std::condition_variable has_todo;
+        std::condition_variable has_done;
+        std::mutex mutex;
+        vector<std::thread> threads;
+        static unsigned detect_threads () {
+            return 4;
+        }
+
+        void worker () {
+            for (;;) {
+                Task task;
+                {
+                    unique_lock lock(mutex);
+                    while (todo.empty()) {
+                        if (eos) return;
+                        has_todo.wait(lock);
+                    }
+                    task = todo.front();
+                    todo.pop();
+                }
+                Record r;
+                FileReader::read(task.locator, &r);
+                Value v(TR::transform(r, task.perturb));
+                if (!(v >= 0 && v < 17)) {
+                    std::cerr << task.locator.offset << '\t' << task.locator.size << '\t' << task.locator.label << std::endl;
+                    *(char *)0 = 0;;
+                }
+                {
+                    lock_guard lock(mutex);
+                    done.push(std::move(v));
+                    has_done.notify_one();
+                }
+            }
+        }
+
+        bool prefetch_unsafe () {
+            try {
+                Task task;
+                task.locator = BasicStreamer::next();
+                task.perturb = TR::perturb(rng);
+                todo.push(task);
+                ++inqueue;
+                has_todo.notify_one();
+                return true;
+            }
+            catch (EoS) {
+                eos = true;
+                has_todo.notify_all();
+                return false;
+            }
+        }
+    public:
+        TransformStreamer (fs::path const &p, StreamerConfig const &c, TransformConfig const &c2)
+            : BasicStreamer(p, c), TR(c2), inqueue(0), eos(false) {
+            // enqueue tasks
+            for (unsigned i = 0; i < c.buffer; ++i) {
+                if (!prefetch_unsafe()) break;
+            }
+            unsigned nth = c.threads;
+            if (nth == 0) {
+                nth = detect_threads();
+            }
+            LOG(INFO) << "Starting " << nth << " threads.";
+            for (unsigned i = 0; i < nth; ++i) {
+                threads.emplace_back([this](){this->worker();});
+            }
+        }
+
+        ~TransformStreamer () {
+            eos = true;
+            has_todo.notify_all();
+            for (auto &th: threads) {
+                th.join();
+            }
+        }
+
+        Value next () {
+            unique_lock lock(mutex);
+            prefetch_unsafe();
+            while (done.empty()) {
+                if (inqueue == 0) {
+                    throw EoS();
+                }
+                has_done.wait(lock);
+            }
+            Value v(std::move(done.front()));
+            done.pop();
+            --inqueue;
+            return v;
         }
     };
 }

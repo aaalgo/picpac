@@ -77,7 +77,10 @@ namespace picpac {
     }
 
     FileWriter::~FileWriter () {
+        off_t off = lseek(fd, 0, SEEK_CUR);
+        //std::cerr << "CLOSE: " << off << std::endl;
         close_segment();
+        ftruncate(fd, off);
         close(fd);
     }
 
@@ -115,24 +118,34 @@ namespace picpac {
     FileReader::FileReader (fs::path const &path) {
         fd = open(path.native().c_str(), O_RDONLY);
         CHECK(fd >= 0);
+    }
+
+    FileReader::~FileReader () {
+        close(fd);
+    }
+
+    void FileReader::ping (vector<Locator> *l) {
+        l->clear();
         struct stat st;
         int r = fstat(fd, &st);
         CHECK(r == 0);
         uint64_t off = 0;
         SegmentHeader seg;
         while (off < st.st_size) {
+            /*
             uint64_t x = lseek(fd, off, SEEK_SET);
             CHECK(x == off);
-            ssize_t rd = ::read(fd, reinterpret_cast<char *>(&seg), sizeof(seg));
+            */
+            ssize_t rd = ::pread(fd, reinterpret_cast<char *>(&seg), sizeof(seg), off);
             CHECK(rd == sizeof(seg));
             off += sizeof(seg);
             // append seg entries to list
             for (unsigned i = 0; i < seg.size; ++i) {
-                FileEntry e;
+                Locator e;
                 e.label = seg.labels[i];
                 e.offset = off;
                 e.size = seg.sizes[i];
-                push_back(e);
+                l->push_back(e);
                 off += seg.sizes[i];
             }
             CHECK(off == seg.link);
@@ -140,8 +153,136 @@ namespace picpac {
         }
     }
 
-    FileReader::~FileReader () {
-        close(fd);
+    BasicStreamer::KFoldConfig::KFoldConfig (unsigned K, unsigned fold, bool train) {
+        CHECK(fold < K);
+        splits = K;
+        keys.clear();
+        if (K == 1) {
+            CHECK(train) << "We cannot do validation with 1 fold.";
+            keys.push_back(0);
+            return;
+        }
+        if (train) {
+            for (unsigned k = 0; k < K; ++k) {
+                if (k != fold) keys.push_back(k);
+            }
+        }
+        else {
+            loop = false;
+            reshuffle = false;
+            keys.push_back(fold);
+        }
+    }
+
+    void check_sort_dedupe_keys (unsigned splits, vector<unsigned> *keys) {
+        std::sort(keys->begin(), keys->end());
+        keys->resize(std::unique(keys->begin(), keys->end()) - keys->begin());
+        CHECK(keys->size());
+        for (unsigned k: *keys) {
+            CHECK(k < splits);
+        }
+    }
+
+    BasicStreamer::BasicStreamer (fs::path const &path, Config const &c)
+        : FileReader(path), config(c), rng(config.seed), next_group(0)
+    {
+        check_sort_dedupe_keys(config.splits, &config.keys);
+        vector<Locator> all;
+        ping(&all);
+        size_t total = all.size();
+        if (config.stratify) {
+            vector<vector<Locator>> C(MAX_CATEGORIES);
+            unsigned nc = 0;
+            for (auto e: all) {
+                int c = int(e.label);
+                CHECK(c == e.label) << "We cannot stratify float labels.";
+                CHECK(c >= 0) << "We cannot stratify label -1.";
+                CHECK(c < MAX_CATEGORIES) << "Too many categories (2000 max): " << c;
+                C[c].push_back(e);
+                if (c > nc) nc = c;
+            }
+            ++nc;
+            groups.resize(nc);
+            for (unsigned c = 0; c < nc; ++c) {
+                groups[c].id = c;
+                groups[c].next = 0;
+                groups[c].index.swap(C[c]);
+            }
+        }
+        else {
+            groups.resize(1);
+            groups[0].id = 0;
+            groups[0].next = 0;
+            groups[0].index.swap(all);
+        }
+        CHECK(groups.size());
+        if (config.shuffle) {
+            for (auto &g: groups) {
+                std::shuffle(g.index.begin(), g.index.end(), rng);
+            }
+        }
+        unsigned K = config.splits;
+        auto const &keys = config.keys;
+        if (K > 1) for (auto &g: groups) {
+            vector<Locator> picked;
+            for (unsigned k: keys) {
+                auto begin = g.index.begin() + (g.index.size() * k / K);
+                auto end = g.index.begin() + (g.index.size() * (k + 1) / K);
+                picked.insert(picked.end(), begin, end);
+            }
+            g.index.swap(picked);
+            if (picked.empty()) {
+                LOG(WARNING) << "empty group " << g.id;
+            }
+        }
+        size_t used = 0;
+        for (auto const &g: groups) {
+            used += g.index.size();
+        }
+        LOG(INFO) << "using " << used << " out of " << total << " items in " << groups.size() << " groups.";
+    }
+
+    Locator BasicStreamer::next ()  {
+        // check next group
+        // find the next non-empty group
+        Locator e;
+        for (;;) {
+            // we scan C times
+            // if there's a non-empty group, 
+            // we must be able to find it within C times
+            if (next_group >= groups.size()) {
+                if (groups.empty()) throw EoS();
+                next_group = 0;
+            }
+            auto &g = groups[next_group];
+            if (g.next >= g.index.size()) {
+                if (config.loop) {
+                    g.next = 0;
+                    if (config.reshuffle) {
+                        std::shuffle(g.index.begin(), g.index.end(), rng);
+                    }
+                }
+                if (g.next >= g.index.size()) {
+                    // must check again to cover two cases:
+                    // 1. not loop
+                    // 2. loop, but group is empty
+                    // remove this group
+                    for (unsigned x = next_group + 1; x < groups.size(); ++x) {
+                        std::swap(groups[x-1], groups[x]);
+                    }
+                    groups.pop_back();
+                    // we need to scan for next usable group
+                    continue;
+                }
+            }
+            CHECK(g.next < g.index.size());
+            //std::cerr << g.id << '\t' << g.next << '\t' << groups.size() << std::endl;
+            e = g.index[g.next];
+            ++g.next;
+            ++next_group;
+            break;
+        }
+        return e;
     }
 }
 
