@@ -189,6 +189,11 @@ namespace picpac {
             return const_buffer(field_ptrs[f], meta_ptr->fields[f].size);
         }
 
+        string field_string (unsigned f) const {
+            CHECK(f < meta_ptr->width);
+            return string(field_ptrs[f], field_ptrs[f] + meta_ptr->fields[f].size);
+        }
+
         /// Get field type.
         FieldType fieldType (unsigned f) const {
             CHECK(f < meta_ptr->width);

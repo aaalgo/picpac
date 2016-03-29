@@ -9,7 +9,7 @@ SERVER_LIBS = -lserved -lmagic
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o
 
-PROGS = test test_tr load-anno #load-caffe load-dir test test_tr server
+PROGS = test test_tr load-anno server #load-caffe load-dir test test_tr server
 
 .PHONY:	all release
 

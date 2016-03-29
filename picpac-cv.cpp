@@ -74,10 +74,7 @@ namespace picpac {
         vector<std::shared_ptr<Shape>> shapes;
     public:
         Annotation () {}
-        Annotation (const_buffer const &buf) {
-            char const *begin = boost::asio::buffer_cast<char const *>(buf);
-            auto sz = boost::asio::buffer_size(buf);
-            string txt(begin, begin + sz);
+        Annotation (string const &txt) {
             string err;
             Json json = Json::parse(txt, err);
             if (err.size()) {
@@ -112,9 +109,13 @@ namespace picpac {
                             cv::IMREAD_UNCHANGED);
         }
         else if (config.annotate == ANNOTATE_JSON) {
-            auto anbuf = in.field(1);
-            Annotation a(anbuf);
-            anno = cv::Mat(image.size(), config.anno_type, cv::Scalar(0));
+            Annotation a(in.field_string(1));
+            if (config.anno_copy) {
+                anno = image.clone();
+            }
+            else {
+                anno = cv::Mat(image.size(), config.anno_type, cv::Scalar(0));
+            }
             a.draw(&anno, config.anno_color, config.anno_thickness);
         }
         if (config.resize.width) {

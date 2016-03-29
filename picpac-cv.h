@@ -17,6 +17,7 @@ namespace picpac {
             int mode;
             int annotate;
             int anno_type;
+            bool anno_copy;
             cv::Scalar anno_color;
             int anno_thickness;
             bool perturb;
@@ -29,6 +30,7 @@ namespace picpac {
                 mode(cv::IMREAD_UNCHANGED),
                 annotate(ANNOTATE_NONE),
                 anno_type(CV_8UC1),
+                anno_copy(false),
                 anno_color(1),
                 anno_thickness(CV_FILLED),
                 perturb(false),

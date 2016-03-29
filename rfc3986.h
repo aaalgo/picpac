@@ -1,12 +1,14 @@
 #include <string>
 #include <exception>
 #include <unordered_map>
+#include <boost/lexical_cast.hpp>
 #include <served/served.hpp>
 
 namespace rfc3986 {
     using std::string;
     using std::unordered_map;
     using served::query_unescape;
+    using boost::lexical_cast;
 
     class Exception: public std::exception {
     };
@@ -30,6 +32,12 @@ namespace rfc3986 {
                 insert(std::make_pair(key, value));
                 b = sep + 1;
             }
+        }
+        template <typename T>
+        T get (string const &key, T def) {
+            auto it = find(key);
+            if (it == end()) return def;
+            return lexical_cast<T>(it->second);
         }
     };
 }

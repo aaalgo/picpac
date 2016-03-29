@@ -101,17 +101,22 @@ int main(int argc, char const* argv[]) {
             int id = lexical_cast<int>(query["id"]);
             Record rec;
             db.read(id, &rec);
-            char const *mime = magic_buffer(cookie, rec.fields[0], rec.meta->fields[0].size);
+            string buf = rec.field_string(0);
+            char const *mime = magic_buffer(cookie, &buf[0], buf.size());
             res.set_header("Content-Type", mime);
-            res.set_body(string(rec.fields[0], rec.fields[0] + rec.meta->fields[0].size));
+            res.set_body(buf);
         }));
     mux.handle("/anno")
         .get(no_throw([&db](served::response &res, const served::request &req) {
+            rfc3986::Form query(req.url().query());
             ImageLoader::Config conf;
             conf.annotate = ImageLoader::ANNOTATE_JSON;
+            conf.anno_type = CV_8UC3;
+            conf.anno_copy = true;
+            conf.anno_color = cv::Scalar(0, 0, 255);
+            conf.anno_thickness = query.get<int>("th", 2);
             ImageLoader loader(conf);
             ImageLoader::PerturbVector pv;
-            rfc3986::Form query(req.url().query());
             int id = lexical_cast<int>(query["id"]);
             Record rec;
             db.read(id, &rec);
