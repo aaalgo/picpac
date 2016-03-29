@@ -9,7 +9,7 @@ namespace picpac {
     public:
         enum {
             ANNOTATE_NONE = 0,
-            ANNOTATE_LOAD = 1,
+            ANNOTATE_IMAGE = 1,
             ANNOTATE_JSON = 2
         };
         struct Config {

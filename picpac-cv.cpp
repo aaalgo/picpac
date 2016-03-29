@@ -102,7 +102,7 @@ namespace picpac {
                             const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
                             config.mode);
         cv::Mat anno;
-        if (config.annotate == ANNOTATE_LOAD) {
+        if (config.annotate == ANNOTATE_IMAGE) {
             auto anbuf = in.field(1);
             anno = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
                             const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),

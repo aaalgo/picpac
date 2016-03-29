@@ -49,6 +49,7 @@ namespace picpac {
      */
     static constexpr unsigned MAX_CATEGORY_TEST = (MAX_CATEGORIES - 1) | 1;
     static_assert(float(MAX_CATEGORY_TEST) == MAX_CATEGORY_TEST, "too many categories");
+    static constexpr int DEFAULT_SEED = 2016;
     static constexpr unsigned DEFAULT_PRELOAD = 256;
     static constexpr unsigned DEFAULT_THREADS = 4;
 
@@ -294,7 +295,7 @@ namespace picpac {
             vector<unsigned> keys;   // split keys to include
 
             Config()
-                : seed(2016),
+                : seed(DEFAULT_SEED),
                 loop(true),
                 shuffle(true),
                 reshuffle(true),
@@ -371,8 +372,10 @@ namespace picpac {
      */
     template <typename Loader = DummyLoader> // transform class to serve as base class
     class PrefetchStream: public Stream, public Loader {
+    public:
         typedef typename Loader::Value Value;
         typedef typename Loader::PerturbVector PerturbVector;
+    private:
         typedef std::unique_lock<std::mutex> unique_lock;
         struct Task {       // prefetch task
             enum Status {
