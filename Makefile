@@ -4,10 +4,12 @@ CFLAGS = -g -O3
 CXXFLAGS = -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
 LDFLAGS = -fopenmp
 LDLIBS = libpicpac.a -ljson11 $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog
+SERVER_LIBS = -lserved -lmagic
 
-COMMON = picpac.o
+HEADERS = picpac.h picpac-cv.h
+COMMON = picpac-cv.o picpac.o
 
-PROGS = test_tr # load-caffe load-dir test test_tr server
+PROGS = test test_tr # load-caffe load-dir test test_tr server
 
 .PHONY:	all release
 
@@ -21,7 +23,14 @@ release:
 libpicpac.a:	$(COMMON)
 	ar rvs $@ $^
 
+%.o:	%.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) -c $*.cpp
+
+$(PROGS):	%:	%.o libpicpac.a
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
 server:	server.o
-	$(CXX) $(LDFLAGS) -o $@ $^ -lserved -lmagic $(LDLIBS)
+	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) $(LDLIBS)
 clean:
 	rm *.o $(PROGS)
+

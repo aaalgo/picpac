@@ -9,26 +9,26 @@
 namespace picpac {
 
 
-    void Record::pack (double label, fs::path const &image) {
+    Record::Record (float label, fs::path const &image) {
         uintmax_t sz = fs::file_size(image);
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
         alloc(label, sz);
         //meta->fields[0].type = FIELD_FILE;
         fs::ifstream is(image, std::ios::binary);
-        is.read(fields[0], meta->fields[0].size);
+        is.read(field_ptrs[0], meta_ptr->fields[0].size);
         if (!is) throw BadFile(image);
     }
 
-    void Record::pack (double label, fs::path const &image, string const &extra) {
+    Record::Record (float label, fs::path const &image, string const &extra) {
         uintmax_t sz = fs::file_size(image);
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
         alloc(label, sz, extra.size());
         fs::ifstream is(image, std::ios::binary);
         //meta->fields[0].type = FIELD_FILE;
-        is.read(fields[0], meta->fields[0].size);
+        is.read(field_ptrs[0], meta_ptr->fields[0].size);
         if (!is) throw BadFile(image);
         //meta->fields[1].type = FIELD_TEXT;
-        std::copy(extra.begin(), extra.end(), fields[1]);
+        std::copy(extra.begin(), extra.end(), field_ptrs[1]);
     }
 
 #define CHECK_OFFSET    1
@@ -61,12 +61,14 @@ namespace picpac {
         data.resize(size);
         ssize_t sz = pread(fd, &data[0], size, off);
         if (sz != size) return -1;
-        meta = reinterpret_cast<Meta *>(&data[0]);
+        meta_ptr = reinterpret_cast<Meta *>(&data[0]);
         unsigned o = sizeof(Meta);
-        for (unsigned i = 0; i < meta->width; ++i) {
-            fields[i] = &data[o];
-            o += meta->fields[i].size;
+        for (unsigned i = 0; i < meta_ptr->width; ++i) {
+            if (o >= size) throw DataCorruption();
+            field_ptrs[i] = &data[o];
+            o += meta_ptr->fields[i].size;
         }
+        if (o > size) throw DataCorruption();
         return sz;
     }
 
@@ -111,7 +113,7 @@ namespace picpac {
         ssize_t sz = r.write(fd);
         CHECK(sz > 0);
         ++seg.size;
-        seg.labels[next] = r.meta->label;
+        seg.labels[next] = r.meta().label;
         seg.sizes[next++] = sz;
     }
 
@@ -153,15 +155,12 @@ namespace picpac {
         }
     }
 
-    BasicStreamer::KFoldConfig::KFoldConfig (unsigned K, unsigned fold, bool train) {
+    void Stream::Config::kfold (unsigned K, unsigned fold, bool train)
+    {
+        CHECK(K > 1) << "kfold must have K > 1";
         CHECK(fold < K);
         splits = K;
         keys.clear();
-        if (K == 1) {
-            CHECK(train) << "We cannot do validation with 1 fold.";
-            keys.push_back(0);
-            return;
-        }
         if (train) {
             for (unsigned k = 0; k < K; ++k) {
                 if (k != fold) keys.push_back(k);
@@ -183,7 +182,7 @@ namespace picpac {
         }
     }
 
-    BasicStreamer::BasicStreamer (fs::path const &path, Config const &c)
+    Stream::Stream (fs::path const &path, Config const &c)
         : FileReader(path), config(c), rng(config.seed), next_group(0)
     {
         check_sort_dedupe_keys(config.splits, &config.keys);
@@ -242,7 +241,7 @@ namespace picpac {
         LOG(INFO) << "using " << used << " out of " << total << " items in " << groups.size() << " groups.";
     }
 
-    Locator BasicStreamer::next ()  {
+    Locator Stream::next ()  {
         // check next group
         // find the next non-empty group
         Locator e;
