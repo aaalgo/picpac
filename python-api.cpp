@@ -16,8 +16,7 @@ T *get_ndarray_data (object &o) {
     return reinterpret_cast<T*>(PyArray_DATA(nd));
 }
 
-typedef PrefetchStream<ImageLoader> BasicImageStream;
-class ImageStream: public BasicImageStream {
+class BatchImageStream: public ImageStream {
     unsigned batch;
     static const bool rgb = false;
 
@@ -52,13 +51,13 @@ class ImageStream: public BasicImageStream {
     }
 
 public:
-    struct Config: public BasicImageStream::Config {
+    struct Config: public ImageStream::Config {
         unsigned batch;
         Config (): batch(1) {
         }
     };
-    ImageStream (std::string const &path, Config const &c)
-        : BasicImageStream(fs::path(path), c), batch(c.batch) {
+    BatchImageStream (std::string const &path, Config const &c)
+        : ImageStream(fs::path(path), c), batch(c.batch) {
         import_array();
     }
     tuple next () {
@@ -72,7 +71,7 @@ public:
             npy_intp label_dims[] = {batch};
             npy_intp anno_dims[] = {batch, 0, 0, 0};
             for (unsigned i = 0; i < batch; ++i) {
-                Value value = BasicImageStream::next();
+                Value value = ImageStream::next();
                 if (i == 0) {
                     image_dims[1] = value.image.channels();
                     image_dims[2] = value.image.rows;
@@ -139,7 +138,7 @@ static object create_image_stream (tuple args, dict kwargs) {
     object self = args[0];
     CHECK(len(args) > 1);
     string path = extract<string>(args[1]);
-    ImageStream::Config config;
+    BatchImageStream::Config config;
     bool train = extract<bool>(kwargs.get("train", true));
     unsigned K = extract<unsigned>(kwargs.get("K", 1));
     unsigned fold = extract<unsigned>(kwargs.get("fold", 0));
@@ -209,11 +208,11 @@ static object create_image_stream (tuple args, dict kwargs) {
 BOOST_PYTHON_MODULE(picpac)
 {
     scope().attr("__doc__") = "PicPoc Python API";
-    class_<ImageStream::Config>("ImageStreamParams", init<>());
-    class_<ImageStream, boost::noncopyable>("ImageStream", no_init)
+    class_<BatchImageStream::Config>("ImageStreamParams", init<>());
+    class_<BatchImageStream, boost::noncopyable>("ImageStream", no_init)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
-        .def(init<string, ImageStream::Config const&>()) // C++ constructor not exposed
-        .def("next", &ImageStream::next)
+        .def(init<string, BatchImageStream::Config const&>()) // C++ constructor not exposed
+        .def("next", &BatchImageStream::next)
     ;
 }
 

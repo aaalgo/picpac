@@ -9,11 +9,14 @@ SERVER_LIBS = -lserved -lmagic
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o
 
-PROGS = test test_tr load-anno server #load-caffe load-dir test test_tr server
+PROGS = stress test test_tr load-anno server #load-caffe load-dir test test_tr server
 
-.PHONY:	all release
+.PHONY:	all release python
 
-all:	libpicpac.a $(PROGS)
+all:	libpicpac.a $(PROGS) python
+
+python:
+	python setup.py build
 
 release:
 	rm -rf release

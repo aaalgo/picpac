@@ -88,6 +88,8 @@ namespace picpac {
         std::uniform_real_distribution<float> linear_scale;
     };
 
+    typedef PrefetchStream<ImageLoader> ImageStream;
+
     class ImageEncoder {
     protected:
         string code;
