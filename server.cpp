@@ -52,7 +52,7 @@ public:
 int main(int argc, char const* argv[]) {
     string address;
     string port;
-    int threads;
+    int threads = 1;
     fs::path db_path;
 
     namespace po = boost::program_options;
@@ -61,7 +61,6 @@ int main(int argc, char const* argv[]) {
         ("help,h", "produce help message.")
         ("address", po::value(&address)->default_value("0.0.0.0"), "")
         ("port", po::value(&port)->default_value("18888"), "")
-        ("threads", po::value(&threads)->default_value(4), "")
         ("db", po::value(&db_path), "")
         ;
 
@@ -85,12 +84,12 @@ int main(int argc, char const* argv[]) {
     served::multiplexer mux;
 
     picpac::IndexedFileReader db(db_path);
+    default_random_engine rng;
 
     magic_t cookie = magic_open(MAGIC_MIME_TYPE);
     CHECK(cookie);
     magic_load(cookie, NULL);
 
-    default_random_engine rng;
     // GET /hello
     mux.handle("/hello")
         .get([](served::response &res, const served::request &req) {
@@ -124,7 +123,7 @@ int main(int argc, char const* argv[]) {
             conf.perturb = query.get<int>("pt", 0);
             ImageLoader loader(conf);
             ImageLoader::PerturbVector pv;
-            int id = lexical_cast<int>(query["id"]);
+            int id = query.get<int>("id", rng() % db.size());
             ImageLoader::Value v;
             loader.sample(rng, &pv);
             loader.load([&db, id](Record *r){db.read(id, r);}, pv, &v);
