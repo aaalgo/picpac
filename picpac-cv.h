@@ -23,7 +23,8 @@ namespace picpac {
             bool perturb;
             cv::Scalar pert_color;
             float pert_angle;
-            float pert_scale;
+            float pert_min_scale;
+            float pert_max_scale;
             bool pert_hflip, pert_vflip;
             Config ()
                 : resize(0, 0), // do not resize by default
@@ -36,7 +37,8 @@ namespace picpac {
                 perturb(false),
                 pert_color(0,0,0),
                 pert_angle(0),
-                pert_scale(0),
+                pert_min_scale(1),
+                pert_max_scale(1),
                 pert_hflip(false),
                 pert_vflip(false) {
             }
@@ -47,6 +49,8 @@ namespace picpac {
             cv::Mat image;
             cv::Mat annotation;
         };
+
+        typedef Value CacheValue;
 
         struct PerturbVector {
             cv::Scalar color;
@@ -60,7 +64,7 @@ namespace picpac {
             delta_color2(-c.pert_color[1], c.pert_color[1]),
             delta_color3(-c.pert_color[2], c.pert_color[2]),
             linear_angle(-c.pert_angle, c.pert_angle),
-            linear_scale(-c.pert_scale, c.pert_scale)
+            linear_scale(c.pert_min_scale, c.pert_max_scale)
         {
         }
 
@@ -73,11 +77,12 @@ namespace picpac {
                 p->color[1] = delta_color2(e);
                 p->color[2] = delta_color3(e);
                 p->angle = linear_angle(e);
-                p->scale = std::exp(linear_scale(e));
+                p->scale = linear_scale(e);
             }
         }
 
-        void load (Record &&in, PerturbVector const &p, Value *out) const; 
+        void load (RecordReader, PerturbVector const &, Value *,
+                CacheValue *c = nullptr, std::mutex *m = nullptr) const;
 
     private:
         Config config;

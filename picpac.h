@@ -9,6 +9,7 @@
 #include <limits>
 #include <stdexcept>
 #include <random>
+#include <functional>
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/asio/buffer.hpp>
@@ -23,6 +24,9 @@ namespace picpac {
     using std::runtime_error;
     using boost::lexical_cast;
     using boost::asio::const_buffer;
+    typedef std::lock_guard<std::mutex> lock_guard;
+    typedef std::unique_lock<std::mutex> unique_lock;
+
 
     namespace fs = boost::filesystem;
 
@@ -248,7 +252,11 @@ namespace picpac {
         off_t offset;
         uint32_t size;
         float label;
+        uint32_t serial;
     };
+
+    /// A callback function that reads the record.
+    typedef std::function<void(Record *)> RecordReader;
 
     class FileReader {
         int fd;
@@ -259,6 +267,9 @@ namespace picpac {
         void read (Locator const &l, Record *r) {
             ssize_t sz = r->read(fd, l.offset, l.size);
             CHECK(sz == l.size);
+        }
+        RecordReader reader (Locator l) {
+            return [this, l](Record *r){read(l, r);};
         }
     };
 
@@ -321,6 +332,10 @@ namespace picpac {
     protected:
         Config config;
         std::default_random_engine rng;
+        // return total records in the file
+        unsigned total () const {
+            return sz;
+        }
     private:
         struct Group {
             unsigned id;    // unique group ID
@@ -329,6 +344,7 @@ namespace picpac {
         };
         vector<Group> groups;
         unsigned next_group;
+        unsigned sz;
     public:
         Stream (fs::path const &, Config const &);
         Locator next ();
@@ -347,6 +363,8 @@ namespace picpac {
         struct Config {
         };
         typedef Record Value;
+        struct CacheValue {
+        };
         struct PerturbVector {
         };
         DummyLoader (Config const &) {}
@@ -358,10 +376,14 @@ namespace picpac {
         /// Convert a record into value.
         /** This might be invoked in parallel and should be deterministic.
          * All randomization should be done in sample. */
-        void load (Record &&in, PerturbVector const &p, Record *out) const {
-            *out = std::move(in);
+        void load (RecordReader rr, PerturbVector const &p, Value *out,
+                   CacheValue *cache, std::mutex *mutex) const {
+            Record r;
+            rr(&r);
+            *out = std::move(r);
         }
     };
+
 
     /// Stream with prefetch and transformation.
     /**
@@ -374,9 +396,9 @@ namespace picpac {
     class PrefetchStream: public Stream, public Loader {
     public:
         typedef typename Loader::Value Value;
+        typedef typename Loader::CacheValue CacheValue;
         typedef typename Loader::PerturbVector PerturbVector;
     private:
-        typedef std::unique_lock<std::mutex> unique_lock;
         struct Task {       // prefetch task
             enum Status {
                 EMPTY = 0,
@@ -395,12 +417,14 @@ namespace picpac {
         bool eos;               // eos signal from upstream
         int inqueue;            // pending + loaded
         vector<Task> queue;     // prefetch queue
+        vector<CacheValue> cache;
         unsigned next_loaded;
         unsigned next_pending;
         unsigned next_empty;
         std::condition_variable has_pending;
         std::condition_variable has_loaded;
         std::mutex mutex;
+        std::mutex cache_mutex;
         vector<std::thread> threads;
         Value value_holder;
 
@@ -438,10 +462,15 @@ namespace picpac {
                 }
                 Task &task = queue[todo];
                 task.status = Task::LOADING;
-                Record r;
-                FileReader::read(task.locator, &r);
-                CHECK(task.locator.label == r.meta().label) << "File corrupted";
-                Loader::load(std::move(r), task.perturb, &task.value);
+
+                CacheValue *pc = nullptr;
+                std::mutex *pm = nullptr;
+                if (cache.size() > 0) {
+                    CHECK(task.locator.serial < cache.size());
+                    pc = &cache[task.locator.serial];
+                    pm = &cache_mutex;
+                }
+                Loader::load(reader(task.locator), task.perturb, &task.value, pc, pm);
                 task.status = Task::LOADED;
                 // add memory barrier
                 has_loaded.notify_one();
@@ -450,11 +479,17 @@ namespace picpac {
 
     public:
         struct Config: public Stream::Config, public Loader::Config {
+            bool cache;
+            Config (): cache(true) {
+            }
         };
 
         PrefetchStream (fs::path const &p, Config const &c) 
             : Stream(p, c), Loader(c), eos(false), inqueue(0),
               queue(c.preload+1), next_loaded(0), next_pending(0), next_empty(0) {
+            if (c.cache) {
+                cache.resize(total());
+            }
             // enqueue tasks
             CHECK(queue.size());
             for (unsigned i = 0; i < c.preload; ++i) {

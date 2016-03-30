@@ -154,6 +154,7 @@ static object create_image_stream (tuple args, dict kwargs) {
 #define XFER(param) \
     config.param = extract<decltype(config.param)>(kwargs.get(#param, config.param))
     // stream parameters
+    XFER(cache);
     XFER(batch);
     XFER(seed);
     XFER(loop);

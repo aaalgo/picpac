@@ -27,7 +27,13 @@ int main(int argc, char **argv) {
     ("anno", po::value(&anno)->default_value("none"), "")
     ("resize", po::value(&resize)->default_value(-1), "")
     ("threads", po::value(&config.threads), "")
-
+    ("no-cache", "")
+    ("perturb", "")
+    ("angle", po::value(&config.pert_angle), "")
+    ("min-scale", po::value(&config.pert_min_scale), "")
+    ("max-scale", po::value(&config.pert_max_scale), "")
+    ("hflip", "")
+    ("vflip", "")
     ;
 
     po::positional_options_description p;
@@ -42,6 +48,14 @@ int main(int argc, char **argv) {
         cerr << desc;
         return 1;
     }
+    if (vm.count("no-cache")) {
+        config.cache = false;
+    }
+    if (vm.count("perturb")) {
+        config.perturb = true;
+    }
+    if (vm.count("hflip")) config.pert_hflip = true;
+    if (vm.count("vflip")) config.pert_vflip = true;
     //if (vm.count("gray")) gray = true;
     if (anno == "none") {
         config.annotate = ImageLoader::ANNOTATE_NONE;
@@ -59,6 +73,7 @@ int main(int argc, char **argv) {
     }
 
     google::InitGoogleLogging(argv[0]);
+    cv::setNumThreads(1);
 
     ImageStream stream(db_path, config);
 

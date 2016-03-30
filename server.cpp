@@ -118,10 +118,8 @@ int main(int argc, char const* argv[]) {
             ImageLoader loader(conf);
             ImageLoader::PerturbVector pv;
             int id = lexical_cast<int>(query["id"]);
-            Record rec;
-            db.read(id, &rec);
             ImageLoader::Value v;
-            loader.load(std::move(rec), pv, &v);
+            loader.load([&db, id](Record *r){db.read(id, r);}, pv, &v);
             ImageEncoder encoder;
             string buf;
             encoder.encode(v.annotation, &buf);

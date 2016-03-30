@@ -93,39 +93,88 @@ namespace picpac {
         }
     };
 
+    void ImageLoader::load (RecordReader rr, PerturbVector const &p, Value *out,
+           CacheValue *cache, std::mutex *mutex) const {
+        Value cached;
+        do {
+            if (cache) { // access cache
+                lock_guard lock(*mutex);
+                cached = *cache;
+            }
+            if (cached.image.data) break;
+            // cache miss, load the data
+            Record r;
+            rr(&r); // disk access
+            cached.label = r.meta().label;
+            CHECK(r.size() >= (config.annotate ? 2 : 1));
+            auto imbuf = r.field(0);
+            cached.image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
+                                const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
+                                config.mode);
+            if (config.resize.width > 0) {
+                cv::resize(cached.image, cached.image, config.resize, 0, 0);
+            }
+            if (config.annotate == ANNOTATE_IMAGE) {
+                auto anbuf = r.field(1);
+                cached.annotation = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
+                                const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
+                                cv::IMREAD_UNCHANGED);
+            }
+            else if (config.annotate == ANNOTATE_JSON) {
+                Annotation a(r.field_string(1));
+                cv::Mat anno;
+                if (config.anno_copy) {
+                    anno = cached.image.clone();
+                }
+                else {
+                    anno = cv::Mat(cached.image.size(), config.anno_type, cv::Scalar(0));
+                }
+                a.draw(&anno, config.anno_color, config.anno_thickness);
+                cached.annotation = anno;
+            }
+            if (cache) {
+                // write to cache
+                lock_guard lock(*mutex);
+                *cache = cached;
+            }
+        } while (false);
 
-    void ImageLoader::load (Record &&in, PerturbVector const &p, Value *out) const {
-        out->label = in.meta().label;
-        CHECK(in.size() >= (config.annotate ? 2 : 1));
-        auto imbuf = in.field(0);
-        cv::Mat image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
-                            const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
-                            config.mode);
-        cv::Mat anno;
-        if (config.annotate == ANNOTATE_IMAGE) {
-            auto anbuf = in.field(1);
-            anno = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
-                            const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
-                            cv::IMREAD_UNCHANGED);
+        if (!config.perturb) {
+            *out = cached;
+            return;
         }
-        else if (config.annotate == ANNOTATE_JSON) {
-            Annotation a(in.field_string(1));
-            if (config.anno_copy) {
-                anno = image.clone();
-            }
-            else {
-                anno = cv::Mat(image.size(), config.anno_type, cv::Scalar(0));
-            }
-            a.draw(&anno, config.anno_color, config.anno_thickness);
+
+        //float color, angle, scale, flip = false;
+        cv::Mat image, anno;
+        
+        cv::resize(cached.image, image, cv::Size(), p.scale, p.scale);
+        cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, 1.0);
+        cv::warpAffine(image, image, rot, image.size());
+
+        if (cached.annotation.data) {
+            cv::resize(cached.annotation, anno, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
+            cv::warpAffine(anno, anno, rot, anno.size(), cv::INTER_NEAREST); // cannot interpolate labels
         }
-        if (config.resize.width) {
-            cv::resize(image, image, config.resize, 0, 0);
-            if (anno.data) {
-                cv::resize(anno, anno, config.resize, 0, 0, cv::INTER_NEAREST);
-            }
+
+        image += p.color;
+
+        if (p.hflip && p.vflip) {
+            cv::flip(image, out->image, -1);
+            cv::flip(anno, out->annotation, -1);
         }
-        out->image = image;
-        out->annotation = anno;
+        else if (p.hflip && !p.vflip) {
+            cv::flip(image, out->image, 1);
+            cv::flip(anno, out->annotation, 1);
+        }
+        else if (!p.hflip && p.vflip) {
+            cv::flip(image, out->image, 0);
+            cv::flip(anno, out->annotation, 0);
+        }
+        else {
+            out->image = image;
+            out->annotation = anno;
+        }
+        out->label = cached.label;
     }
 
     static float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {

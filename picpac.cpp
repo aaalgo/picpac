@@ -139,6 +139,7 @@ namespace picpac {
         CHECK(r == 0);
         uint64_t off = 0;
         SegmentHeader seg;
+        uint32_t s = 0;
         while (off < st.st_size) {
             /*
             uint64_t x = lseek(fd, off, SEEK_SET);
@@ -153,6 +154,7 @@ namespace picpac {
                 e.label = seg.labels[i];
                 e.offset = off;
                 e.size = seg.sizes[i];
+                e.serial = s++;
                 l->push_back(e);
                 off += seg.sizes[i];
             }
@@ -194,6 +196,7 @@ namespace picpac {
         check_sort_dedupe_keys(config.splits, &config.keys);
         vector<Locator> all;
         ping(&all);
+        sz = all.size();
         size_t total = all.size();
         if (config.stratify) {
             vector<vector<Locator>> C(MAX_CATEGORIES);
