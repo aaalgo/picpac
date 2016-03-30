@@ -181,6 +181,8 @@ namespace picpac {
         /// Construct a record with file content and extra string.
         Record (float label, fs::path const &file, string const &extra);
         /// Construct a record with file content and extra string.
+        Record (float label, fs::path const &file, fs::path const &file2);
+        /// Construct a record with file content and extra string.
         Record (float label, string const &data, string const &extra);
 
         Meta &meta () { return *meta_ptr; }

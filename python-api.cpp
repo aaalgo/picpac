@@ -9,6 +9,7 @@
 using namespace boost::python;
 using namespace picpac;
 
+namespace {
 
 template <typename T>
 T *get_ndarray_data (object &o) {
@@ -133,8 +134,7 @@ public:
     }
 };
 
-
-static object create_image_stream (tuple args, dict kwargs) {
+object create_image_stream (tuple args, dict kwargs) {
     object self = args[0];
     CHECK(len(args) > 1);
     string path = extract<string>(args[1]);
@@ -206,6 +206,26 @@ static object create_image_stream (tuple args, dict kwargs) {
 };
 
 
+class Writer: public FileWriter {
+public:
+    Writer (string const &path): FileWriter(fs::path(path)) {
+    }
+    void append (float label, string const &path) {
+        Record record(label, fs::path(path));
+        FileWriter::append(record);
+    }
+
+    void append (string const &path1, string const &path2) {
+        Record record(0, fs::path(path1), fs::path(path2));
+        FileWriter::append(record);
+    }
+};
+
+void (Writer::*append1) (float, string const &) = &Writer::append;
+void (Writer::*append2) (string const &, string const &) = &Writer::append;
+
+}
+
 BOOST_PYTHON_MODULE(picpac)
 {
     scope().attr("__doc__") = "PicPoc Python API";
@@ -214,6 +234,10 @@ BOOST_PYTHON_MODULE(picpac)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
         .def(init<string, BatchImageStream::Config const&>()) // C++ constructor not exposed
         .def("next", &BatchImageStream::next)
+    ;
+    class_<Writer>("Writer", init<string>())
+        .def("append", append1)
+        .def("append", append2)
     ;
 }
 

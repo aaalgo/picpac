@@ -31,6 +31,23 @@ namespace picpac {
         std::copy(extra.begin(), extra.end(), field_ptrs[1]);
     }
 
+    Record::Record (float label, fs::path const &image, fs::path const &image2) {
+        uintmax_t sz = fs::file_size(image);
+        if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
+        uintmax_t sz2 = fs::file_size(image2);
+        if (sz2 == static_cast<uintmax_t>(-1)) throw BadFile(image2);
+        alloc(label, sz, sz2);
+        fs::ifstream is(image, std::ios::binary);
+        //meta->fields[0].type = FIELD_FILE;
+        is.read(field_ptrs[0], meta_ptr->fields[0].size);
+        if (!is) throw BadFile(image);
+        //meta->fields[1].type = FIELD_TEXT;
+        fs::ifstream is2(image2, std::ios::binary);
+        //meta->fields[0].type = FIELD_FILE;
+        is2.read(field_ptrs[1], meta_ptr->fields[1].size);
+        if (!is2) throw BadFile(image);
+    }
+
     Record::Record (float label, string const &image, string const &extra) {
         alloc(label, image.size(), extra.size());
         std::copy(image.begin(), image.end(), field_ptrs[0]);
