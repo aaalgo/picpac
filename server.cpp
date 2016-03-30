@@ -90,6 +90,7 @@ int main(int argc, char const* argv[]) {
     CHECK(cookie);
     magic_load(cookie, NULL);
 
+    default_random_engine rng;
     // GET /hello
     mux.handle("/hello")
         .get([](served::response &res, const served::request &req) {
@@ -107,7 +108,7 @@ int main(int argc, char const* argv[]) {
             res.set_body(buf);
         }));
     mux.handle("/anno")
-        .get(no_throw([&db](served::response &res, const served::request &req) {
+        .get(no_throw([&db, &rng](served::response &res, const served::request &req) {
             rfc3986::Form query(req.url().query());
             ImageLoader::Config conf;
             conf.annotate = ImageLoader::ANNOTATE_JSON;
@@ -115,10 +116,17 @@ int main(int argc, char const* argv[]) {
             conf.anno_copy = true;
             conf.anno_color = cv::Scalar(0, 0, 255);
             conf.anno_thickness = query.get<int>("th", 2);
+            conf.pert_color = cv::Scalar(20,20,20);
+            conf.pert_angle = 20;
+            conf.pert_min_scale = 0.8;
+            conf.pert_max_scale = 1.2;
+            conf.pert_hflip = conf.pert_vflip = true;
+            conf.perturb = query.get<int>("pt", 0);
             ImageLoader loader(conf);
             ImageLoader::PerturbVector pv;
             int id = lexical_cast<int>(query["id"]);
             ImageLoader::Value v;
+            loader.sample(rng, &pv);
             loader.load([&db, id](Record *r){db.read(id, r);}, pv, &v);
             ImageEncoder encoder;
             string buf;

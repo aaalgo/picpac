@@ -71,8 +71,8 @@ namespace picpac {
         template <typename RNG>
         void sample (RNG &e, PerturbVector *p) {
             if (config.perturb) {
-                p->hflip = (e() % 2) & config.pert_hflip;
-                p->vflip = (e() % 2) & config.pert_vflip;
+                p->hflip = bool(e() % 2) && config.pert_hflip;
+                p->vflip = bool(e() % 2) && config.pert_vflip;
                 p->color[0] = delta_color1(e);
                 p->color[1] = delta_color2(e);
                 p->color[2] = delta_color3(e);
