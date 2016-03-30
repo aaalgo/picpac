@@ -1,13 +1,13 @@
 CC=g++
 CXX=g++
 CFLAGS = -g -O3
-CXXFLAGS = -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
+CXXFLAGS = -Ijson11 -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
 LDFLAGS = -fopenmp
-LDLIBS = libpicpac.a -ljson11 $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog
+LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog
 SERVER_LIBS = -lserved -lmagic
 
 HEADERS = picpac.h picpac-cv.h picpac-util.h
-COMMON = picpac-util.o picpac-cv.o picpac.o
+COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
 PROGS = stress test test_tr load-anno server #load-caffe load-dir test test_tr server
 
@@ -28,6 +28,9 @@ libpicpac.a:	$(COMMON)
 
 %.o:	%.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -c $*.cpp
+
+json11.o:	json11/json11.cpp
+	$(CXX) $(CXXFLAGS) -o $@ -c $^
 
 $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
