@@ -17,8 +17,8 @@ int main (int argc, char *argv[]) {
         for (unsigned i = 0; i < MAX_SEG_RECORDS * 3; ++i) {
             Record r(rand() % C, fs::path("picpac.h"), lexical_cast<string>(i));
             r.meta().id = i;
-            cnt[r.meta().label] += 5;
-            cnt_id[i] += 5;
+            cnt[r.meta().label] += 10;
+            cnt_id[i] += 10;
             out.append(r);
         }
     }
@@ -48,16 +48,19 @@ int main (int argc, char *argv[]) {
             conf.kfold(5, F, bool(train));
             conf.loop = false;
             Stream stream(path, conf);
-            for (;;) {
-                try {
-                    Record r;
-                    stream.read_next(&r);
-                    cnt[r.meta().label] -= 1;
-                    cnt_id[r.meta().id] -= 1;
+            for (unsigned xx = 0; xx < 2; ++xx) {
+                for (;;) {
+                    try {
+                        Record r;
+                        stream.read_next(&r);
+                        cnt[r.meta().label] -= 1;
+                        cnt_id[r.meta().id] -= 1;
+                    }
+                    catch (EoS) {
+                        break;
+                    }
                 }
-                catch (EoS) {
-                    break;
-                }
+                stream.reset();
             }
         }
     }

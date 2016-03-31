@@ -125,8 +125,8 @@ public:
                 ++loaded;
             }
         } catch (EoS) {
-            CHECK(0) << "Not implemented";
         }
+        if (loaded == 0) throw EoS();
         CHECK(loaded <= batch);
         unsigned padding = batch - loaded;
         if (!anno.is_none()) return make_tuple(images, anno, padding);
@@ -207,16 +207,19 @@ object create_image_stream (tuple args, dict kwargs) {
 
 
 class Writer: public FileWriter {
+    void encode (PyArrayObject *image, string *) {
+        
+    }
 public:
     Writer (string const &path): FileWriter(fs::path(path)) {
     }
-    void append (float label, string const &path) {
-        Record record(label, fs::path(path));
+    void append (float label, string const &buf) {
+        Record record(label, buf);
         FileWriter::append(record);
     }
 
-    void append (string const &path1, string const &path2) {
-        Record record(0, fs::path(path1), fs::path(path2));
+    void append (string const &buf1, string const &buf2) {
+        Record record(0, buf1, buf2);
         FileWriter::append(record);
     }
 };
@@ -224,16 +227,25 @@ public:
 void (Writer::*append1) (float, string const &) = &Writer::append;
 void (Writer::*append2) (string const &, string const &) = &Writer::append;
 
+void translate_eos (EoS const &)
+{
+    // Use the Python 'C' API to set up an exception object
+    PyErr_SetNone(PyExc_StopIteration);
+}
+
 }
 
 BOOST_PYTHON_MODULE(picpac)
 {
     scope().attr("__doc__") = "PicPoc Python API";
+    register_exception_translator<EoS>(&translate_eos);
     class_<BatchImageStream::Config>("ImageStreamParams", init<>());
     class_<BatchImageStream, boost::noncopyable>("ImageStream", no_init)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
         .def(init<string, BatchImageStream::Config const&>()) // C++ constructor not exposed
         .def("next", &BatchImageStream::next)
+        .def("size", &BatchImageStream::size)
+        .def("reset", &BatchImageStream::reset)
     ;
     class_<Writer>("Writer", init<string>())
         .def("append", append1)

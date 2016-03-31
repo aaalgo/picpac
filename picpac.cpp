@@ -19,6 +19,11 @@ namespace picpac {
         if (!is) throw BadFile(image);
     }
 
+    Record::Record (float label, string const &image) {
+        alloc(label, image.size());
+        std::copy(image.begin(), image.end(), field_ptrs[0]);
+    }
+
     Record::Record (float label, fs::path const &image, string const &extra) {
         uintmax_t sz = fs::file_size(image);
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
@@ -62,11 +67,11 @@ namespace picpac {
         CHECK(off % RECORD_ALIGN == 0);
         off_t begin = off;
 #endif
-        size_t written = 0;
+        ssize_t written = 0;
         ssize_t r = ::write(fd, &data[0], data.size());
-        if (r != data.size()) return -1;
+        if (r != ssize_t(data.size())) return -1;
         written += r;
-        size_t roundup = (written + RECORD_ALIGN - 1) / RECORD_ALIGN * RECORD_ALIGN;
+        ssize_t roundup = (written + RECORD_ALIGN - 1) / RECORD_ALIGN * RECORD_ALIGN;
         if (roundup > written) {
             off_t x = lseek(fd, (roundup - written), SEEK_CUR);
             CHECK(x > 0);
@@ -83,7 +88,7 @@ namespace picpac {
     ssize_t Record::read (int fd, off_t off, size_t size) {
         data.resize(size);
         ssize_t sz = pread(fd, &data[0], size, off);
-        if (sz != size) return -1;
+        if (sz != ssize_t(size)) return -1;
         meta_ptr = reinterpret_cast<Meta *>(&data[0]);
         unsigned o = sizeof(Meta);
         for (unsigned i = 0; i < meta_ptr->width; ++i) {
@@ -105,7 +110,8 @@ namespace picpac {
         off_t off = lseek(fd, 0, SEEK_CUR);
         //std::cerr << "CLOSE: " << off << std::endl;
         close_segment();
-        ftruncate(fd, off);
+        int r = ftruncate(fd, off);
+        CHECK(r == 0);
         close(fd);
     }
 
@@ -154,7 +160,7 @@ namespace picpac {
         struct stat st;
         int r = fstat(fd, &st);
         CHECK(r == 0);
-        uint64_t off = 0;
+        int64_t off = 0;
         SegmentHeader seg;
         uint32_t s = 0;
         while (off < st.st_size) {
@@ -213,11 +219,10 @@ namespace picpac {
         check_sort_dedupe_keys(config.splits, &config.keys);
         vector<Locator> all;
         ping(&all);
-        sz = all.size();
-        size_t total = all.size();
+        sz_total = all.size();
         if (config.stratify) {
             vector<vector<Locator>> C(MAX_CATEGORIES);
-            unsigned nc = 0;
+            int nc = 0;
             for (auto e: all) {
                 int c = int(e.label);
                 CHECK(c == e.label) << "We cannot stratify float labels.";
@@ -228,7 +233,7 @@ namespace picpac {
             }
             ++nc;
             groups.resize(nc);
-            for (unsigned c = 0; c < nc; ++c) {
+            for (int c = 0; c < nc; ++c) {
                 groups[c].id = c;
                 groups[c].next = 0;
                 groups[c].index.swap(C[c]);
@@ -260,11 +265,12 @@ namespace picpac {
                 LOG(WARNING) << "empty group " << g.id;
             }
         }
-        size_t used = 0;
+        sz_used = 0;
         for (auto const &g: groups) {
-            used += g.index.size();
+            sz_used += g.index.size();
         }
-        LOG(INFO) << "using " << used << " out of " << total << " items in " << groups.size() << " groups.";
+        LOG(INFO) << "using " << sz_used << " out of " << sz_total << " items in " << groups.size() << " groups.";
+        reset();
     }
 
     Locator Stream::next ()  {
@@ -275,11 +281,11 @@ namespace picpac {
             // we scan C times
             // if there's a non-empty group, 
             // we must be able to find it within C times
-            if (next_group >= groups.size()) {
-                if (groups.empty()) throw EoS();
+            if (next_group >= group_index.size()) {
+                if (group_index.empty()) throw EoS();
                 next_group = 0;
             }
-            auto &g = groups[next_group];
+            auto &g = groups[group_index[next_group]];
             if (g.next >= g.index.size()) {
                 if (config.loop) {
                     g.next = 0;
@@ -293,9 +299,9 @@ namespace picpac {
                     // 2. loop, but group is empty
                     // remove this group
                     for (unsigned x = next_group + 1; x < groups.size(); ++x) {
-                        std::swap(groups[x-1], groups[x]);
+                        group_index[x-1] = group_index[x];
                     }
-                    groups.pop_back();
+                    group_index.pop_back();
                     // we need to scan for next usable group
                     continue;
                 }

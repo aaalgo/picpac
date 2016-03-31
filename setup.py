@@ -12,4 +12,5 @@ picpac = Extension('picpac',
 setup (name = 'PicPac',
        version = '1.0',
        description = 'This is a demo package',
-       ext_modules = [picpac])
+       ext_modules = [picpac],
+       py_modules = ['picpac_mxnet'])

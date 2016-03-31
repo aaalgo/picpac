@@ -183,6 +183,8 @@ namespace picpac {
         /// Construct a record with file content and extra string.
         Record (float label, fs::path const &file, fs::path const &file2);
         /// Construct a record with file content and extra string.
+        Record (float label, string const &data);
+        /// Construct a record with file content and extra string.
         Record (float label, string const &data, string const &extra);
 
         Meta &meta () { return *meta_ptr; }
@@ -334,10 +336,6 @@ namespace picpac {
     protected:
         Config config;
         std::default_random_engine rng;
-        // return total records in the file
-        unsigned total () const {
-            return sz;
-        }
     private:
         struct Group {
             unsigned id;    // unique group ID
@@ -345,13 +343,30 @@ namespace picpac {
             unsigned next;
         };
         vector<Group> groups;
+        vector<unsigned> group_index;
         unsigned next_group;
-        unsigned sz;
+        unsigned sz_total;
+        unsigned sz_used;
     public:
         Stream (fs::path const &, Config const &);
+        void reset () {
+            group_index.clear();
+            for (unsigned i = 0; i < groups.size(); ++i) {
+                groups[i].next = 0;
+                group_index.push_back(i);
+            }
+            next_group = 0;
+        }
         Locator next ();
         void read_next (Record *r) {
             read(next(), r);
+        }
+        // return total records in the file
+        unsigned total () const {
+            return sz_total;
+        }
+        unsigned size () const {
+            return sz_used;
         }
     };
 
@@ -416,6 +431,8 @@ namespace picpac {
             Task (): status(EMPTY) {
             }
         };
+        bool started;
+        unsigned nth;           // # threads
         bool eos;               // eos signal from upstream
         int inqueue;            // pending + loaded
         vector<Task> queue;     // prefetch queue
@@ -479,6 +496,39 @@ namespace picpac {
             }
         }
 
+        void start () {
+            CHECK(!started);
+            started = true;
+            eos = false;
+            inqueue = 0;
+            next_loaded = next_pending = next_empty = 0;
+            CHECK(queue.size());
+            for (auto &v: queue) {
+                v.status = Task::EMPTY;
+            }
+            for (unsigned i = 0; i < queue.size() - 1; ++i) {
+                // next always enqueues 1 prefetch task before it takes away an item
+                // need to leave one space for that
+                if (!prefetch_unsafe()) break;
+            }
+            LOG(INFO) << "Starting " << nth << " threads.";
+            CHECK(threads.empty());
+            for (unsigned i = 0; i < nth; ++i) {
+                threads.emplace_back([this](){this->worker();});
+            }
+        }
+
+        void stop () {
+            CHECK(started);
+            started = false;
+            eos = true;
+            has_pending.notify_all();
+            for (auto &th: threads) {
+                th.join();
+            }
+            threads.clear();
+        }
+
     public:
         struct Config: public Stream::Config, public Loader::Config {
             bool cache;
@@ -487,30 +537,23 @@ namespace picpac {
         };
 
         PrefetchStream (fs::path const &p, Config const &c) 
-            : Stream(p, c), Loader(c), eos(false), inqueue(0),
-              queue(c.preload+1), next_loaded(0), next_pending(0), next_empty(0) {
+            : Stream(p, c), Loader(c), started(false),
+            nth(c.threads > 0? c.threads: DEFAULT_THREADS), queue(c.preload+1) {
             if (c.cache) {
                 cache.resize(total());
             }
             // enqueue tasks
-            CHECK(queue.size());
-            for (unsigned i = 0; i < c.preload; ++i) {
-                if (!prefetch_unsafe()) break;
-            }
-            unsigned nth = c.threads;
-            if (nth == 0) nth = DEFAULT_THREADS;
-            LOG(INFO) << "Starting " << nth << " threads.";
-            for (unsigned i = 0; i < nth; ++i) {
-                threads.emplace_back([this](){this->worker();});
-            }
+            start();
         }
 
         ~PrefetchStream () {
-            eos = true;
-            has_pending.notify_all();
-            for (auto &th: threads) {
-                th.join();
-            }
+            stop();
+        }
+
+        void reset () {
+            stop();
+            Stream::reset();
+            start();
         }
 
         Value &&next () {
