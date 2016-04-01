@@ -511,7 +511,7 @@ namespace picpac {
                 // need to leave one space for that
                 if (!prefetch_unsafe()) break;
             }
-            LOG(INFO) << "Starting " << nth << " threads.";
+            //LOG(INFO) << "Starting " << nth << " threads.";
             CHECK(threads.empty());
             for (unsigned i = 0; i < nth; ++i) {
                 threads.emplace_back([this](){this->worker();});

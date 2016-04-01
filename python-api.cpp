@@ -18,7 +18,9 @@ T *get_ndarray_data (object &o) {
 }
 
 class BatchImageStream: public ImageStream {
+    unsigned onehot;
     unsigned batch;
+    bool pad;
     static const bool rgb = false;
 
     template <typename Tfrom = uint8_t, typename Tto = float>
@@ -53,12 +55,14 @@ class BatchImageStream: public ImageStream {
 
 public:
     struct Config: public ImageStream::Config {
+        unsigned onehot;
         unsigned batch;
-        Config (): batch(1) {
+        bool pad;
+        Config (): onehot(0), batch(1), pad(false) {
         }
     };
     BatchImageStream (std::string const &path, Config const &c)
-        : ImageStream(fs::path(path), c), batch(c.batch) {
+        : ImageStream(fs::path(path), c), onehot(c.onehot), batch(c.batch), pad(c.pad) {
         import_array();
     }
     tuple next () {
@@ -70,6 +74,7 @@ public:
         try {
             npy_intp image_dims[] = {batch, 0, 0, 0};
             npy_intp label_dims[] = {batch};
+            npy_intp onehot_dims[] = {batch, onehot};
             npy_intp anno_dims[] = {batch, 0, 0, 0};
             for (unsigned i = 0; i < batch; ++i) {
                 Value value = ImageStream::next();
@@ -88,6 +93,11 @@ public:
                         anno = object(boost::python::handle<>(PyArray_SimpleNew(4, anno_dims, NPY_FLOAT)));
                         CHECK(anno.ptr());
                         anno_buf = get_ndarray_data<float>(anno);
+                    }
+                    else if (onehot > 0) {
+                        label = object(boost::python::handle<>(PyArray_SimpleNew(2, onehot_dims, NPY_FLOAT)));
+                        CHECK(label.ptr());
+                        label_buf = get_ndarray_data<float>(label);
                     }
                     else {
                         label = object(boost::python::handle<>(PyArray_SimpleNew(1, label_dims, NPY_FLOAT)));
@@ -118,6 +128,13 @@ public:
                             || value.annotation.type() == CV_8UC3);
                     anno_buf = split<uint8_t, float>(value.annotation, anno_buf);
                 }
+                else if (onehot > 0) {
+                    unsigned l(value.label);
+                    CHECK(l == value.label);
+                    std::fill(label_buf, label_buf + onehot, 0);
+                    label_buf[l] = 1;
+                    label_buf += onehot;
+                }
                 else {
                     *label_buf = value.label;
                     ++label_buf;
@@ -125,6 +142,7 @@ public:
                 ++loaded;
             }
         } catch (EoS) {
+            if (!pad) throw EoS();
         }
         if (loaded == 0) throw EoS();
         CHECK(loaded <= batch);
@@ -156,7 +174,9 @@ object create_image_stream (tuple args, dict kwargs) {
     // stream parameters
     XFER(cache);
     XFER(channels);
+    XFER(onehot);
     XFER(batch);
+    XFER(pad);
     XFER(seed);
     XFER(loop);
     XFER(shuffle);

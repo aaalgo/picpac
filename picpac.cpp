@@ -269,7 +269,7 @@ namespace picpac {
         for (auto const &g: groups) {
             sz_used += g.index.size();
         }
-        LOG(INFO) << "using " << sz_used << " out of " << sz_total << " items in " << groups.size() << " groups.";
+        //LOG(INFO) << "using " << sz_used << " out of " << sz_total << " items in " << groups.size() << " groups.";
         reset();
     }
 

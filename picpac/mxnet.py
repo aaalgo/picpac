@@ -1,10 +1,11 @@
+from __future__ import absolute_import 
 import picpac
 import mxnet
 from mxnet.io import DataIter
 
-class ImageIter(DataIter):
+class ImageStream(DataIter):
     def __init__ (self, path, **kwargs):
-        super(ImageIter, self).__init__()
+        super(ImageStream, self).__init__()
         self.stream = picpac.ImageStream(path, loop=False, **kwargs)
         self.batch_size = kwargs.get('batch', 1)
         self.data = None

@@ -10,20 +10,6 @@
 #include "picpac-cv.h"
 #include "rfc3986.h"
 
-/*
-static inline void EncodeImage (const cv::Mat &image, std::string *binary) {
-    std::vector<uint8_t> buffer;
-    cv::imencode(".jpg", image, buffer);
-    if (buffer.empty()) {
-        binary->clear();
-        return;
-    }
-    binary->resize(buffer.size());
-    char *from = reinterpret_cast<char *>(&buffer[0]);
-    std::copy(from, from + buffer.size(), &(*binary)[0]);
-}
-*/
-
 using namespace std;
 using namespace picpac;
 
