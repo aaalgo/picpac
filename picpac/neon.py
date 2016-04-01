@@ -5,6 +5,9 @@ import numpy
 import picpac
 from neon.data.dataiterator import NervanaDataIterator
 
+# Neon use col-major/fortran array format
+# so we need to transpose the data.
+
 class ImageStream(NervanaDataIterator):
     def __init__ (self, path, **kwargs):
         super(ImageStream, self).__init__()
@@ -31,6 +34,8 @@ class ImageStream(NervanaDataIterator):
 
     @property
     def nbatches (self):
+        # this behaves differently from neon data loader, which
+        # pads the last incomplete batch with data from beginning
         return self.stream.size() // self.batch_size
 
     def next (self):
@@ -46,6 +51,5 @@ class ImageStream(NervanaDataIterator):
         return (self.Xbuf, self.Ybuf)
 
     def __iter__ (self):
-        for x in range(self.nbatches):
-            yield self.next()
+        return self
 
