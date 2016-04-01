@@ -1,6 +1,6 @@
 from distutils.core import setup, Extension
 
-picpac = Extension('picpac',
+picpac = Extension('_picpac',
         extra_compile_args = ['-O3', '-std=c++1y'], 
         define_macros = [('MAJOR_VERSION', '1'),
                          ('MINOR_VERSION', '0')],
@@ -13,4 +13,4 @@ setup (name = 'PicPac',
        version = '1.0',
        description = 'This is a demo package',
        ext_modules = [picpac],
-       py_modules = ['picpac_mxnet'])
+       py_modules = ['picpac.mx'])

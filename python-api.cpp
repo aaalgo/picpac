@@ -235,7 +235,7 @@ void translate_eos (EoS const &)
 
 }
 
-BOOST_PYTHON_MODULE(picpac)
+BOOST_PYTHON_MODULE(_picpac)
 {
     scope().attr("__doc__") = "PicPoc Python API";
     register_exception_translator<EoS>(&translate_eos);
