@@ -11,7 +11,7 @@ COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
 PROGS = stress test test_tr load-anno server #load-caffe load-dir test test_tr server
 
-.PHONY:	all release python
+.PHONY:	all release python upload_test upload sdist
 
 all:	libpicpac.a $(PROGS) python
 
@@ -40,3 +40,8 @@ server:	server.o
 clean:
 	rm *.o $(PROGS)
 
+upload_test:
+	python setup.py sdist upload -r pypitest
+
+sdist:
+	python setup.py sdist 
