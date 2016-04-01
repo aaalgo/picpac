@@ -160,10 +160,10 @@ namespace picpac {
         struct stat st;
         int r = fstat(fd, &st);
         CHECK(r == 0);
-        int64_t off = 0;
+        uint64_t off = 0;
         SegmentHeader seg;
         uint32_t s = 0;
-        while (off < st.st_size) {
+        while (int64_t(off) < st.st_size) {
             /*
             uint64_t x = lseek(fd, off, SEEK_SET);
             CHECK(x == off);
@@ -227,7 +227,7 @@ namespace picpac {
                 int c = int(e.label);
                 CHECK(c == e.label) << "We cannot stratify float labels.";
                 CHECK(c >= 0) << "We cannot stratify label -1.";
-                CHECK(c < MAX_CATEGORIES) << "Too many categories (2000 max): " << c;
+                CHECK(c < int(MAX_CATEGORIES)) << "Too many categories (2000 max): " << c;
                 C[c].push_back(e);
                 if (c > nc) nc = c;
             }

@@ -13,6 +13,7 @@ namespace picpac {
             ANNOTATE_JSON = 2
         };
         struct Config {
+            int channels;
             cv::Size resize;
             int mode;
             int annotate;
@@ -27,7 +28,8 @@ namespace picpac {
             float pert_max_scale;
             bool pert_hflip, pert_vflip;
             Config ()
-                : resize(0, 0), // do not resize by default
+                : channels(0),
+                resize(0, 0), // do not resize by default
                 mode(cv::IMREAD_UNCHANGED),
                 annotate(ANNOTATE_NONE),
                 anno_type(CV_8UC1),

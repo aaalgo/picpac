@@ -111,6 +111,25 @@ namespace picpac {
             cached.image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
                                 const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
                                 config.mode);
+            if ((config.channels > 0) && config.channels != cached.image.channels()) {
+                cv::Mat tmp;
+                if (cached.image.channels() == 3 && config.channels == 1) {
+                    cv::cvtColor(cached.image, tmp, CV_BGR2GRAY);
+                }
+                else if (cached.image.channels() == 4 && config.channels == 1) {
+                    cv::cvtColor(cached.image, tmp, CV_BGRA2GRAY);
+                }
+                else if (cached.image.channels() == 4 && config.channels == 3) {
+                    cv::cvtColor(cached.image, tmp, CV_BGRA2BGR);
+                }
+                else if (cached.image.channels() == 1 && config.channels == 3) {
+                    cv::cvtColor(cached.image, tmp, CV_GRAY2BGR);
+                }
+                else CHECK(0) << "channel format not supported: from "
+                              << cached.image.channels()
+                              << " to " << config.channels;
+                cached.image = tmp;
+            }
             if (config.resize.width > 0) {
                 cv::resize(cached.image, cached.image, config.resize, 0, 0);
             }

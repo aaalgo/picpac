@@ -9,8 +9,8 @@ picpac = Extension('_picpac',
         library_dirs = ['/usr/local/lib', 'json11'],
         sources = ['python-api.cpp', 'picpac.cpp', 'picpac-cv.cpp', 'json11/json11.cpp'])
 
-setup (name = 'PicPac',
-       version = '1.0',
+setup (name = 'picpac',
+       version = '0.1',
        description = 'This is a demo package',
        ext_modules = [picpac],
        py_modules = ['picpac.mx'])
