@@ -196,6 +196,16 @@ namespace picpac {
         out->label = cached.label;
     }
 
+    /*
+    int prod (vector<int> const &v) {
+        int r = 1;
+        for (auto const &x: v) {
+            r *= x;
+        }
+        return r;
+    }
+    */
+
     static float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
         if (input.rows == 0) {
             *output = cv::Mat();

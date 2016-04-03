@@ -17,138 +17,25 @@ T *get_ndarray_data (object &o) {
     return reinterpret_cast<T*>(PyArray_DATA(nd));
 }
 
-class BatchImageStream: public ImageStream {
-    unsigned onehot;
-    unsigned batch;
-    bool pad;
-    static const bool rgb = false;
-
-    template <typename Tfrom = uint8_t, typename Tto = float>
-    Tto *split (cv::Mat image, Tto *buffer) {
-        Tto *ptr_b = buffer;
-        Tto *ptr_g = buffer;
-        Tto *ptr_r = buffer;
-        if (rgb) {
-            ptr_g += image.total();
-            ptr_b += 2 * image.total();
-        }
-        else if (image.channels() > 1) {
-            ptr_g += image.total();
-            ptr_r += 2 * image.total();
-        }
-        unsigned off = 0;
-        for (int i = 0; i < image.rows; ++i) {
-            Tfrom const *line = image.ptr<Tfrom const>(i);
-            for (int j = 0; j < image.cols; ++j) {
-                if (image.channels() > 1) {
-                    ptr_b[off] = *line++;
-                    ptr_g[off] = *line++;
-                }
-                ptr_r[off] = *line++;
-                ++off;
-            }
-        }
-        CHECK(off == image.total());
-        if (image.channels() == 1) return buffer + image.total();
-        return buffer + 3 * image.total();
-    }
-
+class NumpyBatchImageStream: public BatchImageStream {
 public:
-    struct Config: public ImageStream::Config {
-        unsigned onehot;
-        unsigned batch;
-        bool pad;
-        Config (): onehot(0), batch(1), pad(false) {
-        }
-    };
-    BatchImageStream (std::string const &path, Config const &c)
-        : ImageStream(fs::path(path), c), onehot(c.onehot), batch(c.batch), pad(c.pad) {
+    NumpyBatchImageStream (std::string const &path, Config const &c)
+        : BatchImageStream(fs::path(path), c) {
         import_array();
     }
     tuple next () {
-        object images, label, anno;
-        float *image_buf = NULL;
-        float *label_buf = NULL;
-        float *anno_buf = NULL;
-        unsigned loaded = 0;
-        try {
-            npy_intp image_dims[] = {batch, 0, 0, 0};
-            npy_intp label_dims[] = {batch};
-            npy_intp onehot_dims[] = {batch, onehot};
-            npy_intp anno_dims[] = {batch, 0, 0, 0};
-            for (unsigned i = 0; i < batch; ++i) {
-                Value value = ImageStream::next();
-                if (i == 0) {
-                    image_dims[1] = value.image.channels();
-                    image_dims[2] = value.image.rows;
-                    image_dims[3] = value.image.cols;
-                    images = object(boost::python::handle<>(PyArray_SimpleNew(4, image_dims, NPY_FLOAT)));
-                    CHECK(images.ptr());
-                    image_buf = get_ndarray_data<float>(images);
-                    if (value.annotation.data) {
-                        // we are doing annotation
-                        anno_dims[1] = value.annotation.channels();
-                        anno_dims[2] = value.annotation.rows;
-                        anno_dims[3] = value.annotation.cols;
-                        anno = object(boost::python::handle<>(PyArray_SimpleNew(4, anno_dims, NPY_FLOAT)));
-                        CHECK(anno.ptr());
-                        anno_buf = get_ndarray_data<float>(anno);
-                    }
-                    else if (onehot > 0) {
-                        label = object(boost::python::handle<>(PyArray_SimpleNew(2, onehot_dims, NPY_FLOAT)));
-                        CHECK(label.ptr());
-                        label_buf = get_ndarray_data<float>(label);
-                    }
-                    else {
-                        label = object(boost::python::handle<>(PyArray_SimpleNew(1, label_dims, NPY_FLOAT)));
-                        CHECK(label.ptr());
-                        label_buf = get_ndarray_data<float>(label);
-                    }
-                }
-                else {
-                    CHECK(image_buf);
-                    CHECK(value.image.channels() == image_dims[1]);
-                    CHECK(value.image.rows == image_dims[2]);
-                    CHECK(value.image.cols == image_dims[3]);
-                    if (value.annotation.data) {
-                        CHECK(anno_buf);
-                        CHECK(value.annotation.channels() == anno_dims[1]);
-                        CHECK(value.annotation.rows == anno_dims[2]);
-                        CHECK(value.annotation.cols == anno_dims[3]);
-                    }
-                    else {
-                        CHECK(label_buf);
-                    }
-                }
-                CHECK(value.image.type() == CV_8U
-                        || value.image.type() == CV_8UC3);
-                image_buf = split<uint8_t, float>(value.image, image_buf);
-                if (value.annotation.data) {
-                    CHECK(value.annotation.type() == CV_8U
-                            || value.annotation.type() == CV_8UC3);
-                    anno_buf = split<uint8_t, float>(value.annotation, anno_buf);
-                }
-                else if (onehot > 0) {
-                    unsigned l(value.label);
-                    CHECK(l == value.label);
-                    std::fill(label_buf, label_buf + onehot, 0);
-                    label_buf[l] = 1;
-                    label_buf += onehot;
-                }
-                else {
-                    *label_buf = value.label;
-                    ++label_buf;
-                }
-                ++loaded;
-            }
-        } catch (EoS) {
-            if (!pad) throw EoS();
-        }
-        if (loaded == 0) throw EoS();
-        CHECK(loaded <= batch);
-        unsigned padding = batch - loaded;
-        if (!anno.is_none()) return make_tuple(images, anno, padding);
-        return make_tuple(images, label, padding);
+        vector<npy_intp> images_dims;
+        vector<npy_intp> labels_dims;
+        next_shape(&images_dims, &labels_dims);
+        object images = object(boost::python::handle<>(PyArray_SimpleNew(images_dims.size(), &images_dims[0], NPY_FLOAT)));
+        CHECK(images.ptr());
+        float *images_buf = get_ndarray_data<float>(images);
+        object labels = object(boost::python::handle<>(PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT)));
+        CHECK(labels.ptr());
+        float *labels_buf = get_ndarray_data<float>(labels);
+        unsigned padding;
+        next_fill(images_buf, labels_buf, &padding);
+        return make_tuple(images, labels, padding);
     }
 };
 
@@ -156,7 +43,7 @@ object create_image_stream (tuple args, dict kwargs) {
     object self = args[0];
     CHECK(len(args) > 1);
     string path = extract<string>(args[1]);
-    BatchImageStream::Config config;
+    NumpyBatchImageStream::Config config;
     bool train = extract<bool>(kwargs.get("train", true));
     unsigned K = extract<unsigned>(kwargs.get("K", 1));
     unsigned fold = extract<unsigned>(kwargs.get("fold", 0));
@@ -177,6 +64,7 @@ object create_image_stream (tuple args, dict kwargs) {
     XFER(onehot);
     XFER(batch);
     XFER(pad);
+    XFER(bgr2rgb);
     XFER(seed);
     XFER(loop);
     XFER(shuffle);
@@ -260,13 +148,13 @@ BOOST_PYTHON_MODULE(_picpac)
 {
     scope().attr("__doc__") = "PicPoc Python API";
     register_exception_translator<EoS>(&translate_eos);
-    class_<BatchImageStream::Config>("ImageStreamParams", init<>());
-    class_<BatchImageStream, boost::noncopyable>("ImageStream", no_init)
+    class_<NumpyBatchImageStream::Config>("ImageStreamParams", init<>());
+    class_<NumpyBatchImageStream, boost::noncopyable>("ImageStream", no_init)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
-        .def(init<string, BatchImageStream::Config const&>()) // C++ constructor not exposed
-        .def("next", &BatchImageStream::next)
-        .def("size", &BatchImageStream::size)
-        .def("reset", &BatchImageStream::reset)
+        .def(init<string, NumpyBatchImageStream::Config const&>()) // C++ constructor not exposed
+        .def("next", &NumpyBatchImageStream::next)
+        .def("size", &NumpyBatchImageStream::size)
+        .def("reset", &NumpyBatchImageStream::reset)
     ;
     class_<Writer>("Writer", init<string>())
         .def("append", append1)

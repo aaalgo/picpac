@@ -435,6 +435,24 @@ namespace picpac {
         unsigned nth;           // # threads
         bool eos;               // eos signal from upstream
         int inqueue;            // pending + loaded
+        // About peek & prefetch:
+        // The basic work flow is
+        //      - add a prefetch task
+        //      - consume a record
+        // So that # tasks in queue is always the same.
+        // When peeking is involved, a prefetch task might be
+        // added without consuming a record.  So the follow becomes:
+        // 
+        // * Peak
+        //      - if not previous peeked, add a prefetch task
+        //      - return a record without consume it
+        // * next:
+        //      - if not previous peeked, add a prefetch task
+        //      - remove the peek status
+        //      - consume a record.
+        // When multiple peeks are done consecutively, they see
+        // the same record. 
+        bool peeked;            // peek has been invoked
         vector<Task> queue;     // prefetch queue
         vector<CacheValue> cache;
         unsigned next_loaded;
@@ -501,6 +519,7 @@ namespace picpac {
             started = true;
             eos = false;
             inqueue = 0;
+            peeked = false;
             next_loaded = next_pending = next_empty = 0;
             CHECK(queue.size());
             for (auto &v: queue) {
@@ -556,9 +575,30 @@ namespace picpac {
             start();
         }
 
+        Value &peek () {
+            unique_lock lock(mutex);
+            if (!peeked) {
+                prefetch_unsafe();
+                peeked = true;
+            }
+            Task &next = queue[next_loaded];
+            while (next.status != Task::LOADED) {
+                if (inqueue == 0) {
+                    throw EoS();
+                }
+                has_loaded.wait(lock);
+            }
+            return next.value;
+        }
+
         Value &&next () {
             unique_lock lock(mutex);
-            prefetch_unsafe();
+            if (peeked) {
+                peeked = false;
+            }
+            else {
+                prefetch_unsafe();
+            }
             Task &next = queue[next_loaded];
             while (next.status != Task::LOADED) {
                 if (inqueue == 0) {
