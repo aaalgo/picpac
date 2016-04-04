@@ -106,6 +106,7 @@ int main(int argc, char **argv) {
     picpac::FileWriter db(output_path);
     CachedDownloader downloader;
     ImageReader imreader(max_size, resize);
+    int count = 0;
 
     if (format == FORMAT_DIR) {
         Samples all(input_path);
@@ -118,14 +119,14 @@ int main(int argc, char **argv) {
                     continue;
                 }
                 picpac::Record rec(i, data);
-                dataset.append(rec);
+                db.append(rec);
+                ++count;
             }
         }
     }
     else {
         fs::ifstream is(input_path.c_str());
         string line;
-        int count = 0;
         while (getline(is, line)) {
             vector<string> ss;
             split(ss, line, is_any_of("\t"), token_compress_off);
