@@ -9,7 +9,7 @@ SERVER_LIBS = -lserved -lmagic
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
-PROGS = stress test test_tr load-anno server #load-caffe load-dir test test_tr server
+PROGS = stress test test_tr picpac-import picpac-server #load-caffe load-dir test test_tr server
 
 .PHONY:	all release python upload_test upload sdist
 
@@ -35,7 +35,7 @@ json11.o:	json11/json11.cpp
 $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-server:	server.o
+picpac-server:	picpac-server.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) $(LDLIBS)
 clean:
 	rm *.o $(PROGS)

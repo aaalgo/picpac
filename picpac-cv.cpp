@@ -234,7 +234,7 @@ namespace picpac {
         float scale = 1.0;
         int maxs = std::max(input.cols, input.rows);
         // large side > max
-        if (maxs > max_size) {
+        if ((max_size > 0) && (maxs > max_size)) {
             cv::Mat tmp;
             scale = 1.0 * maxs / max_size;
             cv::resize(input, tmp, cv::Size(input.cols * max_size / maxs, input.rows * max_size / maxs));
