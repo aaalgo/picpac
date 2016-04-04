@@ -98,6 +98,13 @@ int main(int argc, char **argv) {
 
     if (vm.count("help") || input_path.empty() || output_path.empty()) {
         cerr << desc;
+        cerr << endl;
+        cerr << "Formats:" << endl
+             << "  1: list of <image\tlabel>" << endl
+             << "  2: scan a directory" << endl
+             << "  3: list of <image\tjson-annotation>" << endl
+             << "  4: list of <image\tannotation-image>" << endl;
+
         return 1;
     }
     //if (vm.count("gray")) gray = true;
