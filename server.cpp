@@ -77,6 +77,25 @@ int main(int argc, char const* argv[]) {
     magic_load(cookie, NULL);
 
     // GET /hello
+    mux.handle("/l")
+        .get(no_throw([&db, &cookie](served::response &res, const served::request &req) {
+            rfc3986::Form query(req.url().query());
+            int count = query.get<int>("count", 20);
+            string anno = query.get<string>("anno", "");
+            res << "<html><body><table><tr><th>Image</th></tr>";
+            for (unsigned i = 0; i < count; ++i) {
+                int id = rand() % db.size();
+                res << "<tr><td><img src=\"";
+                if (anno == "") {
+                    res << "/file?id=" << lexical_cast<string>(id);
+                }
+                else {
+                    res << "/anno?id=" << lexical_cast<string>(id) << "&type=" << anno;
+                }
+                res << "\"></img></td></tr>";
+            }
+            res << "</table></body></html>";
+        }));
     mux.handle("/hello")
         .get([](served::response &res, const served::request &req) {
             res << "Hello world!";
@@ -95,8 +114,13 @@ int main(int argc, char const* argv[]) {
     mux.handle("/anno")
         .get(no_throw([&db, &rng](served::response &res, const served::request &req) {
             rfc3986::Form query(req.url().query());
+            string type = query.get<string>("type", "json");
             ImageLoader::Config conf;
-            conf.annotate = ImageLoader::ANNOTATE_JSON;
+            if (type == "json") {
+                conf.annotate = ImageLoader::ANNOTATE_JSON;
+            } else if (type == "image") {
+                conf.annotate = ImageLoader::ANNOTATE_IMAGE;
+            }
             conf.anno_type = CV_8UC3;
             conf.anno_copy = true;
             conf.anno_color = cv::Scalar(0, 0, 255);

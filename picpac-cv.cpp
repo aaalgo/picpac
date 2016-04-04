@@ -31,6 +31,23 @@ namespace picpac {
         }
     };
 
+    class Ellipse: public Shape {
+        cv::Rect_<float> rect;
+    public:
+        Ellipse (Json const &geo) {
+            rect.x = geo["x"].number_value();
+            rect.y = geo["y"].number_value();
+            rect.width = geo["width"].number_value();
+            rect.height = geo["height"].number_value();
+        }
+        virtual void draw (cv::Mat *m, cv::Scalar v, int thickness) const {
+            cv::Point2f center(m->cols * (rect.x + rect.width/2),
+                               m->rows * (rect.y + rect.height/2));
+            cv::Size2f size(m->cols * rect.width, m->rows * rect.height);
+            cv::ellipse(*m, cv::RotatedRect(center, size, 0), v, thickness);
+        }
+    };
+
     class Poly: public Shape {
         vector<cv::Point2f> points;
     public:
@@ -62,6 +79,9 @@ namespace picpac {
         string type = geo["type"].string_value();
         if (type == "rect") {
             return std::shared_ptr<Shape>(new Box(geo["geometry"]));
+        }
+        if (type == "ellipse") {
+            return std::shared_ptr<Shape>(new Ellipse(geo["geometry"]));
         }
         else if (type == "polygon") {
             return std::shared_ptr<Shape>(new Poly(geo["geometry"]));
