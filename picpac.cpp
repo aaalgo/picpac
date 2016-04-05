@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <set>
 #include <boost/filesystem/fstream.hpp>
 #include "picpac.h"
 
@@ -186,24 +187,6 @@ namespace picpac {
         }
     }
 
-    void Stream::Config::kfold (unsigned K, unsigned fold, bool train)
-    {
-        CHECK(K > 1) << "kfold must have K > 1";
-        CHECK(fold < K);
-        splits = K;
-        keys.clear();
-        if (train) {
-            for (unsigned k = 0; k < K; ++k) {
-                if (k != fold) keys.push_back(k);
-            }
-        }
-        else {
-            loop = false;
-            reshuffle = false;
-            keys.push_back(fold);
-        }
-    }
-
     void check_sort_dedupe_keys (unsigned splits, vector<unsigned> *keys) {
         std::sort(keys->begin(), keys->end());
         keys->resize(std::unique(keys->begin(), keys->end()) - keys->begin());
@@ -216,7 +199,6 @@ namespace picpac {
     Stream::Stream (fs::path const &path, Config const &c)
         : FileReader(path), config(c), rng(config.seed), next_group(0)
     {
-        check_sort_dedupe_keys(config.splits, &config.keys);
         vector<Locator> all;
         ping(&all);
         sz_total = all.size();
@@ -251,8 +233,29 @@ namespace picpac {
                 std::shuffle(g.index.begin(), g.index.end(), rng);
             }
         }
-        unsigned K = config.splits;
-        auto const &keys = config.keys;
+        unsigned K = config.split;
+        vector<unsigned> keys;
+        if (config.split_keys.size()) {
+            CHECK(config.split_fold < 0) << "Cannot use keys and fold simultaneously.";
+            keys = config.split_keys;
+            check_sort_dedupe_keys(config.split, &keys);
+        }
+        else {
+            // setup k-fold cross validation
+            for (unsigned k = 0; k < K; ++k) {
+                if (k != config.split_fold) keys.push_back(k);
+            }
+        }
+        if (config.split_negate) {
+            std::set<unsigned> excl(keys.begin(), keys.end());
+            keys.clear();
+            for (unsigned k = 0; k < K; ++k) {
+                if (excl.count(k) == 0) {
+                    keys.push_back(k);
+                }
+            }
+        }
+
         if (K > 1) for (auto &g: groups) {
             vector<Locator> picked;
             for (unsigned k: keys) {

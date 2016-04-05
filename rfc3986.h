@@ -1,3 +1,4 @@
+#include <sstream>
 #include <string>
 #include <exception>
 #include <unordered_map>
@@ -7,6 +8,7 @@
 namespace rfc3986 {
     using std::string;
     using std::unordered_map;
+    using served::query_escape;
     using served::query_unescape;
     using boost::lexical_cast;
 
@@ -15,6 +17,7 @@ namespace rfc3986 {
 
     class Form: public unordered_map<string, string> {
     public:
+        Form () {}
         Form (string const &query) {
             char const *b = query.empty() ? nullptr : &query[0];
             char const *e = b + query.size();
@@ -38,6 +41,17 @@ namespace rfc3986 {
             auto it = find(key);
             if (it == end()) return def;
             return lexical_cast<T>(it->second);
+        }
+
+        string encode (bool amps = false) const {
+            std::ostringstream ss;
+            bool first = !amps;
+            for (auto p: *this) {
+                if (first) first = false;
+                else ss << '&';
+                ss << query_escape(p.first) << '=' << query_escape(p.second);
+            }
+            return ss.str();
         }
     };
 }

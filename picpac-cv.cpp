@@ -6,6 +6,25 @@ namespace picpac {
 
     using namespace json11;
 
+    static float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
+        if (input.rows == 0) {
+            *output = cv::Mat();
+            return 0;
+        }
+        float scale = 1.0;
+        int maxs = std::max(input.cols, input.rows);
+        // large side > max
+        if ((max_size > 0) && (maxs > max_size)) {
+            cv::Mat tmp;
+            scale = 1.0 * maxs / max_size;
+            cv::resize(input, tmp, cv::Size(input.cols * max_size / maxs, input.rows * max_size / maxs));
+            input = tmp;
+        }
+        *output = input;
+        return scale;
+    }
+
+
     class Shape {
     public:
         virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
@@ -126,11 +145,11 @@ namespace picpac {
             Record r;
             rr(&r); // disk access
             cached.label = r.meta().label;
-            CHECK(r.size() >= (config.annotate ? 2 : 1));
+            CHECK(r.size() >= (annotate ? 2 : 1));
             auto imbuf = r.field(0);
             cached.image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
                                 const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
-                                config.mode);
+                                config.decode_mode);
             if ((config.channels > 0) && config.channels != cached.image.channels()) {
                 cv::Mat tmp;
                 if (cached.image.channels() == 3 && config.channels == 1) {
@@ -150,16 +169,24 @@ namespace picpac {
                               << " to " << config.channels;
                 cached.image = tmp;
             }
-            if (config.resize.width > 0) {
-                cv::resize(cached.image, cached.image, config.resize, 0, 0);
+            if (config.resize_width > 0 && config.resize_height > 0) {
+                cv::resize(cached.image, cached.image, cv::Size(config.resize_width, config.resize_height), 0, 0);
             }
-            if (config.annotate == ANNOTATE_IMAGE) {
+            else if (config.max_size > 0) {
+                cv::Mat tmp;
+                LimitSize(cached.image, config.max_size, &tmp);
+                cached.image = tmp;
+            }
+            if (annotate == ANNOTATE_IMAGE) {
                 auto anbuf = r.field(1);
                 cached.annotation = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
                                 const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
                                 cv::IMREAD_UNCHANGED);
+                if (cached.annotation.size() != cached.image.size()) {
+                    cv::resize(cached.annotation, cached.annotation, cached.image.size(), 0, 0, cv::INTER_NEAREST);
+                }
             }
-            else if (config.annotate == ANNOTATE_JSON) {
+            else if (annotate == ANNOTATE_JSON) {
                 Annotation a(r.field_string(1));
                 cv::Mat anno;
                 if (config.anno_copy) {
@@ -168,7 +195,10 @@ namespace picpac {
                 else {
                     anno = cv::Mat(cached.image.size(), config.anno_type, cv::Scalar(0));
                 }
-                a.draw(&anno, config.anno_color, config.anno_thickness);
+                cv::Scalar color(config.anno_color1,
+                             config.anno_color2,
+                             config.anno_color3);
+                a.draw(&anno, color, config.anno_thickness);
                 cached.annotation = anno;
             }
             if (cache) {
@@ -184,15 +214,22 @@ namespace picpac {
         }
 
         //float color, angle, scale, flip = false;
-        cv::Mat image, anno;
+        //cv::Size sz = cached.image.size();
+        cv::Mat image = cached.image, anno = cached.annotation;
         
-        cv::resize(cached.image, image, cv::Size(), p.scale, p.scale);
-        cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, 1.0);
-        cv::warpAffine(image, image, rot, image.size());
+        cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, p.scale);
+        {
+            cv::Mat tmp;
+            cv::warpAffine(image, tmp, rot, image.size(), cv::INTER_LINEAR, config.pert_border);
+            //cv::resize(tmp, tmp, cv::Size(), p.scale, p.scale);
+            image = tmp;
+        }
 
         if (cached.annotation.data) {
-            cv::resize(cached.annotation, anno, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
-            cv::warpAffine(anno, anno, rot, anno.size(), cv::INTER_NEAREST); // cannot interpolate labels
+            //cv::resize(anno, anno, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
+            cv::Mat tmp;
+            cv::warpAffine(anno, tmp, rot, anno.size(), cv::INTER_NEAREST, config.pert_border); // cannot interpolate labels
+            anno = tmp;
         }
 
         image += p.color;
@@ -225,24 +262,6 @@ namespace picpac {
         return r;
     }
     */
-
-    static float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
-        if (input.rows == 0) {
-            *output = cv::Mat();
-            return 0;
-        }
-        float scale = 1.0;
-        int maxs = std::max(input.cols, input.rows);
-        // large side > max
-        if ((max_size > 0) && (maxs > max_size)) {
-            cv::Mat tmp;
-            scale = 1.0 * maxs / max_size;
-            cv::resize(input, tmp, cv::Size(input.cols * max_size / maxs, input.rows * max_size / maxs));
-            input = tmp;
-        }
-        *output = input;
-        return scale;
-    }
 
     void ImageEncoder::encode (cv::Mat const &image, string *data) {
         std::vector<uint8_t> buffer;

@@ -80,26 +80,25 @@ int main(int argc, char const* argv[]) {
     mux.handle("/l")
         .get(no_throw([&db, &cookie](served::response &res, const served::request &req) {
             rfc3986::Form query(req.url().query());
+            rfc3986::Form trans;
+            // transfer all applicable image parameters to trans
+            // so we can later use that for image display
+#define PICPAC_CONFIG_UPDATE(C,P) \
+            { auto it = query.find(#P); if (it != query.end()) trans.insert(*it);}
+            PICPAC_CONFIG_UPDATE_ALL(0);
+#undef PICPAC_CONFIG_UPDATE
+            string ext = trans.encode(true);
             int count = query.get<int>("count", 20);
             string anno = query.get<string>("anno", "");
             res << "<html><body><table><tr><th>Image</th></tr>";
             for (unsigned i = 0; i < count; ++i) {
                 int id = rand() % db.size();
-                res << "<tr><td><img src=\"";
-                if (anno == "") {
-                    res << "/file?id=" << lexical_cast<string>(id);
-                }
-                else {
-                    res << "/anno?id=" << lexical_cast<string>(id) << "&type=" << anno;
-                }
-                res << "\"></img></td></tr>";
+                res << "<tr><td><img src=\"/image?id="
+                    << lexical_cast<string>(id) << ext
+                    << "\"></img></td></tr>";
             }
             res << "</table></body></html>";
         }));
-    mux.handle("/hello")
-        .get([](served::response &res, const served::request &req) {
-            res << "Hello world!";
-        });
     mux.handle("/file")
         .get(no_throw([&db, &cookie](served::response &res, const served::request &req) {
             rfc3986::Form query(req.url().query());
@@ -111,26 +110,23 @@ int main(int argc, char const* argv[]) {
             res.set_header("Content-Type", mime);
             res.set_body(buf);
         }));
-    mux.handle("/anno")
+    mux.handle("/image")
         .get(no_throw([&db, &rng](served::response &res, const served::request &req) {
             rfc3986::Form query(req.url().query());
-            string type = query.get<string>("type", "json");
-            ImageLoader::Config conf;
-            if (type == "json") {
-                conf.annotate = ImageLoader::ANNOTATE_JSON;
-            } else if (type == "image") {
-                conf.annotate = ImageLoader::ANNOTATE_IMAGE;
-            }
-            conf.anno_type = CV_8UC3;
+            PICPAC_CONFIG conf;
+            conf.anno_color3 = 255;
             conf.anno_copy = true;
-            conf.anno_color = cv::Scalar(0, 0, 255);
-            conf.anno_thickness = query.get<int>("th", 2);
-            conf.pert_color = cv::Scalar(20,20,20);
+            conf.anno_thickness = 2;
+            conf.pert_color1 = 20;
+            conf.pert_color2 = 20;
+            conf.pert_color3 = 20;
             conf.pert_angle = 20;
             conf.pert_min_scale = 0.8;
             conf.pert_max_scale = 1.2;
             conf.pert_hflip = conf.pert_vflip = true;
-            conf.perturb = query.get<int>("pt", 0);
+#define PICPAC_CONFIG_UPDATE(C,P) C.P = query.get<decltype(C.P)>(#P, C.P)
+            PICPAC_CONFIG_UPDATE_ALL(conf);
+#undef PICPAC_CONFIG_UPDATE
             ImageLoader loader(conf);
             ImageLoader::PerturbVector pv;
             int id = query.get<int>("id", rng() % db.size());
@@ -139,7 +135,11 @@ int main(int argc, char const* argv[]) {
             loader.load([&db, id](Record *r){db.read(id, r);}, pv, &v);
             ImageEncoder encoder;
             string buf;
-            encoder.encode(v.annotation, &buf);
+            cv::Mat image = v.image;
+            if (conf.annotate.size()) {
+                image = v.annotation;
+            }
+            encoder.encode(image, &buf);
             res.set_header("Content-Type", "image/jpeg");
             res.set_body(buf);
         }));

@@ -3,6 +3,47 @@
 #include <opencv2/opencv.hpp>
 #include "picpac.h"
 
+#define PICPAC_CONFIG picpac::BatchImageStream::Config
+
+#define PICPAC_CONFIG_UPDATE_ALL(C) \
+    PICPAC_CONFIG_UPDATE(C,seed);\
+    PICPAC_CONFIG_UPDATE(C,loop);\
+    PICPAC_CONFIG_UPDATE(C,shuffle);\
+    PICPAC_CONFIG_UPDATE(C,reshuffle);\
+    PICPAC_CONFIG_UPDATE(C,stratify);\
+    PICPAC_CONFIG_UPDATE(C,split);\
+    PICPAC_CONFIG_UPDATE(C,split_fold);\
+    PICPAC_CONFIG_UPDATE(C,split_negate);\
+    PICPAC_CONFIG_UPDATE(C,cache);\
+    PICPAC_CONFIG_UPDATE(C,preload);\
+    PICPAC_CONFIG_UPDATE(C,threads);\
+    PICPAC_CONFIG_UPDATE(C,channels);\
+    PICPAC_CONFIG_UPDATE(C,max_size);\
+    PICPAC_CONFIG_UPDATE(C,resize_width);\
+    PICPAC_CONFIG_UPDATE(C,resize_height);\
+    PICPAC_CONFIG_UPDATE(C,decode_mode);\
+    PICPAC_CONFIG_UPDATE(C,annotate);\
+    PICPAC_CONFIG_UPDATE(C,anno_type);\
+    PICPAC_CONFIG_UPDATE(C,anno_copy);\
+    PICPAC_CONFIG_UPDATE(C,anno_color1); \
+    PICPAC_CONFIG_UPDATE(C,anno_color2); \
+    PICPAC_CONFIG_UPDATE(C,anno_color3); \
+    PICPAC_CONFIG_UPDATE(C,anno_thickness);\
+    PICPAC_CONFIG_UPDATE(C,perturb);\
+    PICPAC_CONFIG_UPDATE(C,pert_color1); \
+    PICPAC_CONFIG_UPDATE(C,pert_color2); \
+    PICPAC_CONFIG_UPDATE(C,pert_color3); \
+    PICPAC_CONFIG_UPDATE(C,pert_angle); \
+    PICPAC_CONFIG_UPDATE(C,pert_min_scale); \
+    PICPAC_CONFIG_UPDATE(C,pert_max_scale); \
+    PICPAC_CONFIG_UPDATE(C,pert_hflip); \
+    PICPAC_CONFIG_UPDATE(C,pert_vflip); \
+    PICPAC_CONFIG_UPDATE(C,onehot);\
+    PICPAC_CONFIG_UPDATE(C,batch);\
+    PICPAC_CONFIG_UPDATE(C,pad);\
+    PICPAC_CONFIG_UPDATE(C,bgr2rgb);
+
+
 namespace picpac {
 
     class ImageLoader {
@@ -13,36 +54,54 @@ namespace picpac {
             ANNOTATE_JSON = 2
         };
         struct Config {
-            int channels;
-            cv::Size resize;
-            int mode;
-            int annotate;
-            int anno_type;
-            bool anno_copy;
-            cv::Scalar anno_color;
+            int channels;   // -1: unchanged
+            int max_size;
+            int resize_width;
+            int resize_height;
+            int decode_mode;       // image load mode
+            string annotate;
+            int anno_type;  // annotate image opencv type
+            bool anno_copy; // copy input image first for visualization
+            float anno_color1;
+            float anno_color2;
+            float anno_color3;
             int anno_thickness;
+                            // -1 to fill (opencv rule)
+            // perturbation
             bool perturb;
-            cv::Scalar pert_color;
+            // perturbation output retains input image size
+            float pert_color1;
+            float pert_color2;
+            float pert_color3;
+                            // perturb color range 
             float pert_angle;
+                            // perturb angle range
             float pert_min_scale;
             float pert_max_scale;
             bool pert_hflip, pert_vflip;
+            float pert_border;
             Config ()
                 : channels(0),
-                resize(0, 0), // do not resize by default
-                mode(cv::IMREAD_UNCHANGED),
-                annotate(ANNOTATE_NONE),
+                max_size(-1),
+                resize_width(-1),
+                resize_height(-1),
+                decode_mode(cv::IMREAD_UNCHANGED),
                 anno_type(CV_8UC1),
                 anno_copy(false),
-                anno_color(1),
+                anno_color1(0),
+                anno_color2(0),
+                anno_color3(0),
                 anno_thickness(CV_FILLED),
                 perturb(false),
-                pert_color(0,0,0),
+                pert_color1(0),
+                pert_color2(0),
+                pert_color3(0),
                 pert_angle(0),
                 pert_min_scale(1),
                 pert_max_scale(1),
                 pert_hflip(false),
-                pert_vflip(false) {
+                pert_vflip(false),
+                pert_border(cv::BORDER_CONSTANT) {
             }
         };
 
@@ -61,13 +120,19 @@ namespace picpac {
         };
 
         ImageLoader (Config const &c)
-            : config(c),
-            delta_color1(-c.pert_color[0], c.pert_color[0]),
-            delta_color2(-c.pert_color[1], c.pert_color[1]),
-            delta_color3(-c.pert_color[2], c.pert_color[2]),
+            : config(c), annotate(ANNOTATE_NONE),
+            delta_color1(-c.pert_color1, c.pert_color1),
+            delta_color2(-c.pert_color2, c.pert_color2),
+            delta_color3(-c.pert_color3, c.pert_color3),
             linear_angle(-c.pert_angle, c.pert_angle),
             linear_scale(c.pert_min_scale, c.pert_max_scale)
         {
+            if (config.annotate == "json") {
+                annotate = ANNOTATE_JSON;
+            }
+            else if (config.annotate == "image") {
+                annotate = ANNOTATE_IMAGE;
+            }
         }
 
         template <typename RNG>
@@ -88,6 +153,7 @@ namespace picpac {
 
     private:
         Config config;
+        int annotate;
         std::uniform_int_distribution<int> delta_color1; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color2; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color3; //(min_R, max_R);

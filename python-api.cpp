@@ -44,6 +44,7 @@ object create_image_stream (tuple args, dict kwargs) {
     CHECK(len(args) > 1);
     string path = extract<string>(args[1]);
     NumpyBatchImageStream::Config config;
+    /*
     bool train = extract<bool>(kwargs.get("train", true));
     unsigned K = extract<unsigned>(kwargs.get("K", 1));
     unsigned fold = extract<unsigned>(kwargs.get("fold", 0));
@@ -56,61 +57,11 @@ object create_image_stream (tuple args, dict kwargs) {
     else {
         config.kfold(K, fold, train);
     }
-#define XFER(param) \
-    config.param = extract<decltype(config.param)>(kwargs.get(#param, config.param))
-    // stream parameters
-    XFER(cache);
-    XFER(channels);
-    XFER(onehot);
-    XFER(batch);
-    XFER(pad);
-    XFER(bgr2rgb);
-    XFER(seed);
-    XFER(loop);
-    XFER(shuffle);
-    XFER(reshuffle);
-    XFER(stratify);
-    XFER(preload);
-    XFER(threads);
-    // image loader parameters
-    XFER(mode);
-    object annotate = kwargs.get("annotate");
-    if (!annotate.is_none()) {
-        extract<int> get_int(annotate);
-        extract<string> get_str(annotate);
-        if (get_int.check()) {
-            config.annotate = get_int;
-        }
-        else if (get_str.check()) {
-            string anno = get_str;
-            if (anno == "none") {
-                config.annotate = ImageLoader::ANNOTATE_NONE;
-            }
-            else if (anno == "json") {
-                config.annotate = ImageLoader::ANNOTATE_JSON;
-            }
-            else if (anno == "image") {
-                config.annotate = ImageLoader::ANNOTATE_IMAGE;
-            }
-            else CHECK(0) << "annotate method not recognized: " << anno;
-        }
-    }
-    XFER(anno_type);
-    XFER(anno_copy);
-    XFER(anno_thickness);
-
-    // TODO: add perturbation
-#undef XFER
-    if (!kwargs.get("resize").is_none()) {
-        tuple resize = extract<tuple>(kwargs.get("resize"));
-        if (!resize.is_none()) {
-            if (len(resize) != 2) {
-                CHECK(0) << "Bad resize";
-            }
-            config.resize.width = extract<int>(resize[0]);
-            config.resize.height = extract<int>(resize[1]);
-        }
-    }
+    */
+#define PICPAC_CONFIG_UPDATE(C, P) \
+    C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P))
+    PICPAC_CONFIG_UPDATE_ALL(config);
+#undef PICPAC_CONFIG_UPDATE
     return self.attr("__init__")(path, config);
 };
 

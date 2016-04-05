@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
     else CHECK(0) << "unknown annotate: " << anno;
     
     if (resize > 0) {
-        config.resize = cv::Size(resize, resize);
+        config.resize_width = config.resize_height = resize;
     }
 
     google::InitGoogleLogging(argv[0]);

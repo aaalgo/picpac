@@ -285,6 +285,10 @@ namespace picpac {
             ping(&index);
         }
         size_t size () const { return index.size(); }
+        float label (size_t i) const {
+            if (!(i < index.size())) throw std::out_of_range("");
+            return index[i].label;
+        }
         void read (size_t i, Record *r) {
             if (!(i < index.size())) throw std::out_of_range("");
             FileReader::read(index[i], r);
@@ -303,11 +307,11 @@ namespace picpac {
             bool shuffle;
             bool reshuffle;
             bool stratify;
-            unsigned preload;
-            unsigned threads;   // 0 to use all cores
 
-            unsigned splits;
-            vector<unsigned> keys;   // split keys to include
+            unsigned split;
+            vector<unsigned> split_keys; 
+            int split_fold;
+            bool split_negate;
 
             Config()
                 : seed(DEFAULT_SEED),
@@ -315,22 +319,20 @@ namespace picpac {
                 shuffle(true),
                 reshuffle(true),
                 stratify(true),
-                preload(DEFAULT_PRELOAD),
-                threads(0),
-                splits(1),
-                keys{0} {
+                split(1),
+                split_fold(0),
+                split_negate(false)
+            {
             }
             /// Initialize split scheme for K-fold cross validation.
             /**
              * if train:
              *      use K-1 splits other than fold
-             *      loop = true
              *  
              * if not train:
              *      use 1 split specified by fold
-             *      loop = false
              */
-            void kfold (unsigned K, unsigned fold, bool train);
+            void kfold ();
         };
 
     protected:
@@ -551,7 +553,12 @@ namespace picpac {
     public:
         struct Config: public Stream::Config, public Loader::Config {
             bool cache;
-            Config (): cache(true) {
+            unsigned preload;
+            unsigned threads;   // 0 to use all cores
+            Config (): cache(true),
+                preload(DEFAULT_PRELOAD),
+                threads(0)
+            {
             }
         };
 
