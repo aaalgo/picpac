@@ -9,7 +9,7 @@ SERVER_LIBS = -lserved -lmagic
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
-PROGS = stress picpac-import picpac-server #load-caffe load-dir test test_tr server
+PROGS = stress picpac-import picpac-server picpac-proto #load-caffe load-dir test test_tr server
 
 .PHONY:	all release python upload_test upload sdist
 
