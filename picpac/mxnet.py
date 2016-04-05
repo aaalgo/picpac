@@ -6,8 +6,10 @@ from mxnet.io import DataIter
 class ImageStream(DataIter):
     def __init__ (self, path, **kwargs):
         super(ImageStream, self).__init__()
-        self.stream = picpac.ImageStream(path, loop=False, **kwargs)
-        self.batch_size = kwargs.get('batch', 1)
+        kwargs['loop'] = False;
+        kwargs.setdefault('batch', 1)
+        self.stream = picpac.ImageStream(path, **kwargs)
+        self.batch_size = kwargs['batch']
         self.data = None
         self.label = None
         self.pad = None

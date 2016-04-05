@@ -11,10 +11,12 @@ from neon.data.dataiterator import NervanaDataIterator
 class ImageStream(NervanaDataIterator):
     def __init__ (self, path, **kwargs):
         super(ImageStream, self).__init__()
+        kwargs.setdefault('batch', 1)
+        kwargs.setdefault('loop', True)
         self.stream = picpac.ImageStream(path, **kwargs)
-        self.batch_size = kwargs.get('batch', 1)
-        self.nclass = kwargs.get('nclass')
-        self.train = kwargs.get('train', True)
+        self.batch_size = kwargs['batch']
+        self.nclass = kwargs['onehot']
+        self.loop = kwargs['loop']
         self.ndata = self.stream.size()
         self.peek = self.stream.next()
         self.shape = tuple(self.peek[0].shape[1:])
@@ -28,7 +30,7 @@ class ImageStream(NervanaDataIterator):
         pass
 
     def reset (self):
-        if not self.train:
+        if not self.loop:
             self.stream.reset()
         pass
 
