@@ -67,6 +67,7 @@ public:
 
 int main(int argc, char **argv) {
     namespace po = boost::program_options; 
+    fs::path cache;
     fs::path input_path;
     fs::path output_path;
     int max_size;
@@ -81,6 +82,7 @@ int main(int argc, char **argv) {
     ("max", po::value(&max_size)->default_value(-1), "")
     ("resize", po::value(&resize)->default_value(-1), "")
     ("format,f", po::value(&format)->default_value(1), "")
+    ("cache", po::value(&cache)->default_value(".picpac_cache"), "")
     /*
     ("gray", "")
     ("log-level,v", po::value(&FLAGS_minloglevel)->default_value(1), "")
@@ -111,7 +113,7 @@ int main(int argc, char **argv) {
 
     google::InitGoogleLogging(argv[0]);
     picpac::FileWriter db(output_path);
-    CachedDownloader downloader;
+    CachedDownloader downloader(cache);
     ImageReader imreader(max_size, resize);
     int count = 0;
 
