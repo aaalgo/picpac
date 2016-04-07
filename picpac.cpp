@@ -242,7 +242,7 @@ namespace picpac {
         }
         else {
             // setup k-fold cross validation
-            for (unsigned k = 0; k < K; ++k) {
+            for (int k = 0; k < K; ++k) {
                 if (k != config.split_fold) keys.push_back(k);
             }
         }

@@ -88,7 +88,7 @@ namespace picpac {
                 decode_mode(cv::IMREAD_UNCHANGED),
                 anno_type(CV_8UC1),
                 anno_copy(false),
-                anno_color1(0),
+                anno_color1(1),
                 anno_color2(0),
                 anno_color3(0),
                 anno_thickness(CV_FILLED),

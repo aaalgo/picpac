@@ -123,7 +123,6 @@ int main(int argc, char const* argv[]) {
             conf.pert_angle = 20;
             conf.pert_min_scale = 0.8;
             conf.pert_max_scale = 1.2;
-            conf.pert_hflip = conf.pert_vflip = true;
 #define PICPAC_CONFIG_UPDATE(C,P) C.P = query.get<decltype(C.P)>(#P, C.P)
             PICPAC_CONFIG_UPDATE_ALL(conf);
 #undef PICPAC_CONFIG_UPDATE
