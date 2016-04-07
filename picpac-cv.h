@@ -411,5 +411,7 @@ namespace picpac {
 
         void read (fs::path const &path, string *data);
     };
+
+    float LimitSize (cv::Mat input, int max_size, cv::Mat *output);
 }
 

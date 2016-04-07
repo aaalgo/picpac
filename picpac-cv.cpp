@@ -6,7 +6,7 @@ namespace picpac {
 
     using namespace json11;
 
-    static float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
+    float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
         if (input.rows == 0) {
             *output = cv::Mat();
             return 0;
