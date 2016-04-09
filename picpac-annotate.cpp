@@ -14,7 +14,6 @@ int main(int argc, char const* argv[]) {
     config.anno_copy = true;
     config.anno_thickness = 1;
 
-    int max_size;
     fs::path db_path;
     fs::path dir_path;
 
@@ -22,7 +21,7 @@ int main(int argc, char const* argv[]) {
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help,h", "produce help message.")
-        ("max", po::value(&max_size)->default_value(-1), "")
+        ("max", po::value(&config.max_size)->default_value(-1), "")
         ("annotate,a", po::value(&config.annotate)->default_value("json"), "")
         ("db", po::value(&db_path), "")
         ("dir", po::value(&dir_path), "")
@@ -51,11 +50,6 @@ int main(int argc, char const* argv[]) {
         try {
             ImageStream::Value v(db.next());
             cv::Mat image = v.annotation;
-            if (max_size > 0) {
-                cv::Mat tmp;
-                LimitSize(image, max_size, &tmp);
-                image = tmp;
-            }
             fs::path o = dir_path / (lexical_cast<string>(c++) + ".jpg");
             cv::imwrite(o.native(), image);
         }
