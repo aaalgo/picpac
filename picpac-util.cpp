@@ -28,7 +28,7 @@ namespace picpac {
             ss << " --timeout=" << timeout;
         }
         if (agent.size()) {
-            ss << " --user-agent=" << agent;
+            ss << " --user-agent=\"" << agent << "\"";
         }
         ss << ' ' << '"' << url << '"';
         string cmd = ss.str();
