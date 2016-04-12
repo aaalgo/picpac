@@ -11,8 +11,9 @@ using namespace boost;
 using namespace picpac;
 
 enum {
+    FORMAT_DIR = 0,
     FORMAT_LIST = 1,
-    FORMAT_DIR = 2,
+    FORMAT_SUB_DIR = 2,
     FORMAT_ANNO_JSON = 3,
     FORMAT_ANNO_IMAGE = 4
 };
@@ -117,8 +118,15 @@ int main(int argc, char **argv) {
     ImageReader imreader(max_size, resize);
     int count = 0;
 
-    if (format == FORMAT_DIR) {
-        Samples all(input_path);
+    if (format == FORMAT_DIR || format == FORMAT_SUB_DIR) {
+        Samples all;
+        if (format == FORMAT_SUB_DIR) {
+            Samples tmp(input_path);
+            all.swap(tmp);
+        }
+        else if (format == FORMAT_DIR) {
+            all.emplace_back(input_path);
+        }
         for (unsigned i = 0; i < all.size(); ++i) {
             for (auto const &path: all[i]) {
                 string data;
