@@ -257,6 +257,9 @@ namespace picpac {
         uint32_t size;
         float label;
         uint32_t serial;
+        // A stream might have multiple underlying files
+        // and these are distinguished with file
+        uint32_t file;
     };
 
     /// A callback function that reads the record.
@@ -267,14 +270,16 @@ namespace picpac {
     public:
         FileReader (fs::path const &path);
         ~FileReader ();
-        void ping (vector<Locator> *l);
+        void ping (vector<Locator> *l, uint32_t file = 0);
         void read (Locator const &l, Record *r) {
             ssize_t sz = r->read(fd, l.offset, l.size);
             CHECK(sz == l.size);
         }
+        /*
         RecordReader reader (Locator l) {
             return [this, l](Record *r){read(l, r);};
         }
+        */
     };
 
     class IndexedFileReader: public FileReader {
@@ -312,6 +317,7 @@ namespace picpac {
             vector<unsigned> split_keys; 
             int split_fold;
             bool split_negate;
+            string mixin;
 
             Config()
                 : seed(DEFAULT_SEED),
@@ -339,6 +345,7 @@ namespace picpac {
         Config config;
         std::default_random_engine rng;
     private:
+        vector<FileReader *> readers;
         struct Group {
             unsigned id;    // unique group ID
             vector<Locator> index;
@@ -351,6 +358,7 @@ namespace picpac {
         unsigned sz_used;
     public:
         Stream (fs::path const &, Config const &);
+        ~Stream ();
         void reset () {
             group_index.clear();
             for (unsigned i = 0; i < groups.size(); ++i) {
@@ -359,9 +367,17 @@ namespace picpac {
             }
             next_group = 0;
         }
+
         Locator next ();
+
+        RecordReader reader (Locator l) {
+            return [this, l](Record *r){this->readers[l.file]->read(l, r);};
+        }
+
         void read_next (Record *r) {
-            read(next(), r);
+            Locator l = next();
+            CHECK(l.file >= 0 && l.file < readers.size());
+            readers[l.file]->read(l, r);
         }
         // return total records in the file
         unsigned total () const {

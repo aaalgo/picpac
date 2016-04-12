@@ -156,8 +156,8 @@ namespace picpac {
         close(fd);
     }
 
-    void FileReader::ping (vector<Locator> *l) {
-        l->clear();
+    void FileReader::ping (vector<Locator> *l, uint32_t file) {
+        //l->clear();
         struct stat st;
         int r = fstat(fd, &st);
         CHECK(r == 0);
@@ -179,6 +179,7 @@ namespace picpac {
                 e.offset = off;
                 e.size = seg.sizes[i];
                 e.serial = s++;
+                e.file = file;
                 l->push_back(e);
                 off += seg.sizes[i];
             }
@@ -199,8 +200,15 @@ namespace picpac {
     Stream::Stream (fs::path const &path, Config const &c)
         : FileReader(path), config(c), rng(config.seed), next_group(0)
     {
+        readers.push_back(this);
+        if (config.mixin.size()) {
+            readers.push_back(new FileReader(fs::path(config.mixin)));
+            CHECK(readers.back());
+        }
         vector<Locator> all;
-        ping(&all);
+        for (unsigned i = 0; i < readers.size(); ++i) {
+            readers[i]->ping(&all, i);
+        }
         sz_total = all.size();
         if (config.stratify) {
             vector<vector<Locator>> C(MAX_CATEGORIES);
@@ -274,6 +282,12 @@ namespace picpac {
         }
         //LOG(INFO) << "using " << sz_used << " out of " << sz_total << " items in " << groups.size() << " groups.";
         reset();
+    }
+
+    Stream::~Stream () {
+        for (auto p: readers) {
+            if (p != this) delete p;
+        }
     }
 
     Locator Stream::next ()  {
