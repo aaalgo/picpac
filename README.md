@@ -62,7 +62,7 @@ does not have to be recreated when training has to be done at different scales.
 Json Annotation
 ===============
 
-We support (Annotorious)[http://annotorious.github.io/] styple JSON annotation.
+We support [Annotorious](http://annotorious.github.io/) styple JSON annotation.
 Examples are
 ```
 {"shapes":[{"type":"rect","geometry":{"height":0.1329243353783231,"width":0.34801136363636365,"y":0.5766871165644172,"x":0.375}}]}
