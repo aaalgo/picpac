@@ -7,8 +7,8 @@ This is based on the observation that CPU cores are mostly free when trained on 
 - Use random access and memory cache, assuming big memory and/or SSD storage.
 For sequential I/O with extremely large dataset, like the whole ImageNet, see [RecordIO](http://myungjun-youn-demo.readthedocs.org/en/latest/python/io.html#create-dataset-using-recordio) or [PicPoc](https://github.com/aaalgo/picpoc).
 
-Build
-=====
+Building
+========
 
 The basic library depends on OpenCV 2.x and Boost.  The dependency on [Json11](https://github.com/dropbox/json11)
 is provided as git submodule, which can be pulled in by 
