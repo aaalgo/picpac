@@ -32,17 +32,23 @@ valid_stream = picpac.ImageStream(db_path, negate=True, perturb=False, **config)
 while True:
     try:
         images, labels, pad = train_stream.next()
-	# when config.pad is True, partial batches might be returned.
-	# the returned images and labels are still the batch size,
-	# and the number of padding items are returned as "pad".
+        # when config.pad is True, partial batches might be returned.
+        # the returned images and labels are still the batch size,
+        # and the number of padding items are returned as "pad".
 	# "pad" is always 0 if config.pad is False.
 
-	# do training
+        # do training
     except StopIteration:
-	break
+        break
 
 ```
 
+For each batch, images is a 4-dimensional tensor of the shape (batch_size, channels, rows, cols).
+Depending on configuration, labels can be of one of the following four sizes:
+- (batch_size): neither "annotate" or "onehot" is set.  The raw float label returned.
+- (batch_size, classes): "annotate" is not set, "onehot" is set to number of classes. The raw float label is interpreted as class ID, and therefore must be integral.
+- (batch_size, 1, rows, cols): "annotate" is set and "onehot" is not set; for pixel-level regression.
+- (batch_size, classes, rows, cols): both "annotate" and "onehot" are set; for pixel-level classification.
 
 
 MXNet Usage
