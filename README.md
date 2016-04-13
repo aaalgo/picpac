@@ -45,12 +45,12 @@ Formats:
 
 We currently support 4 input formats:
 
--0: Recursively load all images under directory "input", assigning label 0 to everything.
--1: From a text file, each line specifying an image path/url and a float label, separated by tab.
--2: Scan directory "input" for sub-directories named by category IDs 0, 1, ....  Recursively load
+- 0: Recursively load all images under directory "input", assigning label 0 to everything.
+- 1: From a text file, each line specifying an image path/url and a float label, separated by tab.
+- 2: Scan directory "input" for sub-directories named by category IDs 0, 1, ....  Recursively load
 each sub-directory and use the category ID as image label.
--3: From a text file, each line with an image path/url and a json annotation separated by tab.  Assigning label 0 to everything.
--4: From a text file, each line with an image path/url and a label image path/url, seprated by tab.
+- 3: From a text file, each line with an image path/url and a json annotation separated by tab.  Assigning label 0 to everything.
+- 4: From a text file, each line with an image path/url and a label image path/url, seprated by tab.
 
 When images are given by URL, wget is used to download the image.  The downloaded content is cached
 in the specified directory, so when the same URL is imported again the content can be directly loaded from cache.
@@ -94,6 +94,12 @@ An training example and it's annotation image must be of the same size.  The ann
 can only have a single channel.  When annotation pixels are to be interpreted as class IDs,
 image must be stored in a lossless format like PNG.
 
+Regression vs Classification
+============================
+Each image can have a float-valued label, which can be interpreted as regression target or
+class ID.  In the latter case, the values must be integral.  On-the-fly onehot encoding
+can be enabled by setting config.onehot = classes.  When annotations are provided, the
+pixels in the annotation image can also be interpreted as regression target of class ID.
 
 
 Basic Streaming Usage
