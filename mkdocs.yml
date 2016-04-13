@@ -10,4 +10,6 @@ pages:
   - Home: index.md
   - Importing Data: import.md
   - Streaming: stream.md
+  - Other Topics: topics.md
   - Configuration: config.md
+
