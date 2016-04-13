@@ -6,6 +6,7 @@ Design Decisions
 This is based on the observation that CPU cores are mostly free when trained on GPU.
 - Use random access and memory cache, assuming big memory and/or SSD storage.
 For sequential I/O with extremely large dataset, like the whole ImageNet, see [RecordIO](http://myungjun-youn-demo.readthedocs.org/en/latest/python/io.html#create-dataset-using-recordio) or [PicPoc](https://github.com/aaalgo/picpoc).
+- All options in a single dictionary, so as to support various ways of parameter passing like Caffe, python and HTTP.
 
 Building
 ========
@@ -44,12 +45,12 @@ Formats:
 
 We currently support 4 input formats:
 
-0. Recursively load all images under directory "input", assigning label 0 to everything.
-1. From a text file, each line specifying an image path/url and a float label, separated by tab.
-2. Scan directory "input" for sub-directories named by category IDs 0, 1, ....  Recursively load
+-0: Recursively load all images under directory "input", assigning label 0 to everything.
+-1: From a text file, each line specifying an image path/url and a float label, separated by tab.
+-2: Scan directory "input" for sub-directories named by category IDs 0, 1, ....  Recursively load
 each sub-directory and use the category ID as image label.
-3. From a text file, each line with an image path/url and a json annotation separated by tab.  Assigning label 0 to everything.
-4. From a text file, each line with an image path/url and a label image path/url, seprated by tab.
+-3: From a text file, each line with an image path/url and a json annotation separated by tab.  Assigning label 0 to everything.
+-4: From a text file, each line with an image path/url and a label image path/url, seprated by tab.
 
 When images are given by URL, wget is used to download the image.  The downloaded content is cached
 in the specified directory, so when the same URL is imported again the content can be directly loaded from cache.
