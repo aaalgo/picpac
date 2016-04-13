@@ -3,9 +3,23 @@
 Design Decisions
 ================
 - Store raw data, do transformation and augmentation on-the-fly.
-This is based on the observation that CPU are mostly free when trained on GPU.
+This is based on the observation that CPU cores are mostly free when trained on GPU.
 - Use random access and memory cache, assuming big memory and/or SSD storage.
-For sequential I/O with extremely large dataset, like the whole ImageNet, see (RecordIO)[http://myungjun-youn-demo.readthedocs.org/en/latest/python/io.html#create-dataset-using-recordio] or (PicPoc)[https://github.com/aaalgo/picpoc].
+For sequential I/O with extremely large dataset, like the whole ImageNet, see [RecordIO](http://myungjun-youn-demo.readthedocs.org/en/latest/python/io.html#create-dataset-using-recordio) or [PicPoc](https://github.com/aaalgo/picpoc).
+
+Build
+=====
+
+The basic library depends on OpenCV 2.x and Boost.  The dependency on [Json11](https://github.com/dropbox/json11)
+is provided as git submodule, which can be pulled in by 
+```
+git submodule init
+git submodule update
+```
+
+There's a web server for exploring the database and visualize augmented image/annotations.
+The web server depends on [libmagic](https://github.com/threatstack/libmagic) and [served](https://github.com/datasift/served) to build.  The server is not needed for training purpose, but could be useful to make sure the imported
+data is correct.
 
 Data Importing
 ==============
