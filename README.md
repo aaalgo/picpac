@@ -59,6 +59,9 @@ on-the-fly resizing when streaming.  For images that are really too large, the m
 limit the image size, so on-the-fly resizing can be more efficient.  The rationale is that the database
 does not have to be recreated when training has to be done at different scales.
 
+There is also a Python API for data importing, so the output of cv2.imencode can be directly
+added to the database without going through the filesystem.
+
 Json Annotation
 ===============
 
@@ -78,6 +81,19 @@ Examples are
 - When location/size values are relative to width/height, we cannot easily specify a radius for a circle, so we
 choose to support ellipses instead (for now).
 - All other fields returned by Annotorious are ignored.
+
+To enable json-style annotation, set config.annotate = "json".  The annotation will then be rendered on-the-fly.
+
+
+Image Annotation
+================
+
+We also support image-based annotation, which can be enabled by setting config.annotate = "image".
+An training example and it's annotation image must be of the same size.  The annotation image
+can only have a single channel.  When annotation pixels are to be interpreted as class IDs,
+image must be stored in a lossless format like PNG.
+
+
 
 Basic Streaming Usage
 =====================
