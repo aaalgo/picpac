@@ -54,6 +54,11 @@ each sub-directory and use the category ID as image label.
 When images are given by URL, wget is used to download the image.  The downloaded content is cached
 in the specified directory, so when the same URL is imported again the content can be directly loaded from cache.
 
+Although a resize options is provided, it is not recommended.  Use config.resize_width/height for
+on-the-fly resizing when streaming.  For images that are really too large, the max option can be used to
+limit the image size, so on-the-fly resizing can be more efficient.  The rationale is that the database
+does not have to be recreated when training has to be done at different scales.
+
 Json Annotation
 ===============
 
