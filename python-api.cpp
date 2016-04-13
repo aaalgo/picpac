@@ -65,6 +65,12 @@ object create_image_stream (tuple args, dict kwargs) {
     return self.attr("__init__")(path, config);
 };
 
+object return_iterator (tuple args, dict kwargs) {
+    object self = args[0];
+    self.attr("reset")();
+    return self;
+};
+
 
 class Writer: public FileWriter {
     void encode (PyArrayObject *image, string *) {
@@ -102,6 +108,7 @@ BOOST_PYTHON_MODULE(_picpac)
     class_<NumpyBatchImageStream::Config>("ImageStreamParams", init<>());
     class_<NumpyBatchImageStream, boost::noncopyable>("ImageStream", no_init)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
+        .def("__iter__", raw_function(return_iterator))
         .def(init<string, NumpyBatchImageStream::Config const&>()) // C++ constructor not exposed
         .def("next", &NumpyBatchImageStream::next)
         .def("size", &NumpyBatchImageStream::size)

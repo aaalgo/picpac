@@ -17,4 +17,6 @@ setup (name = 'picpac',
        license = 'BSD',
        description = 'This is a demo package',
        ext_modules = [picpac],
-       py_modules = ['picpac.mxnet', 'picpac.neon'])
+       py_modules = ['picpac.mxnet', 'picpac.neon'],
+       requires = ["cv2"],
+       )
