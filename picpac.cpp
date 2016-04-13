@@ -209,15 +209,33 @@ namespace picpac {
         for (unsigned i = 0; i < readers.size(); ++i) {
             readers[i]->ping(&all, i);
         }
+        vector<float> label_delta{0, config.mixin_label_delta};
+        for (auto &l: all) {
+            l.label += label_delta[l.file];
+        }
         sz_total = all.size();
+        for (auto e: all) {
+            int c = int(e.label);
+            if ((c != e.label) || (c < 0)) {
+                ncat = 0;
+                break;
+            }
+            if (c > ncat) ncat = c;
+        }
+        ++ncat;
+        if (ncat >= MAX_CATEGORIES) {
+            LOG(ERROR) << "Too many categories (2000 max): " << ncat;
+            ncat = 0;
+        }
+
         if (config.stratify) {
-            vector<vector<Locator>> C(MAX_CATEGORIES);
+            CHECK(ncat > 0);
+            vector<vector<Locator>> C(ncat);
             int nc = 0;
             for (auto e: all) {
                 int c = int(e.label);
                 CHECK(c == e.label) << "We cannot stratify float labels.";
                 CHECK(c >= 0) << "We cannot stratify label -1.";
-                CHECK(c < int(MAX_CATEGORIES)) << "Too many categories (2000 max): " << c;
                 C[c].push_back(e);
                 if (c > nc) nc = c;
             }

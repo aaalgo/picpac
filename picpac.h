@@ -318,6 +318,7 @@ namespace picpac {
             int split_fold;
             bool split_negate;
             string mixin;
+            float mixin_label_delta;
 
             Config()
                 : seed(DEFAULT_SEED),
@@ -327,7 +328,8 @@ namespace picpac {
                 stratify(true),
                 split(1),
                 split_fold(0),
-                split_negate(false)
+                split_negate(false),
+                mixin_label_delta(0)
             {
             }
             /// Initialize split scheme for K-fold cross validation.
@@ -356,9 +358,13 @@ namespace picpac {
         unsigned next_group;
         unsigned sz_total;
         unsigned sz_used;
+        unsigned ncat;
     public:
         Stream (fs::path const &, Config const &);
         ~Stream ();
+        unsigned categories () const {
+            return ncat;
+        }
         void reset () {
             group_index.clear();
             for (unsigned i = 0; i < groups.size(); ++i) {

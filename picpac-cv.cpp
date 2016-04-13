@@ -6,18 +6,26 @@ namespace picpac {
 
     using namespace json11;
 
-    float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
+    float LimitSize (cv::Mat input, int min_size, int max_size, cv::Mat *output) {
         if (input.rows == 0) {
             *output = cv::Mat();
             return 0;
         }
         float scale = 1.0;
         int maxs = std::max(input.cols, input.rows);
-        // large side > max
+        int mins = std::min(input.cols, input.rows);
+
         if ((max_size > 0) && (maxs > max_size)) {
             cv::Mat tmp;
             scale = 1.0 * maxs / max_size;
             cv::resize(input, tmp, cv::Size(input.cols * max_size / maxs, input.rows * max_size / maxs));
+            input = tmp;
+        }
+        // large side > max
+        if ((min_size > 0) && (mins < min_size)) {
+            cv::Mat tmp;
+            scale = 1.0 * min_size / mins;
+            cv::resize(input, tmp, cv::Size(input.cols * min_size / mins, input.rows * min_size / mins));
             input = tmp;
         }
         *output = input;
@@ -172,9 +180,9 @@ namespace picpac {
             if (config.resize_width > 0 && config.resize_height > 0) {
                 cv::resize(cached.image, cached.image, cv::Size(config.resize_width, config.resize_height), 0, 0);
             }
-            else if (config.max_size > 0) {
+            else if (config.max_size > 0 || config.min_size > 0) {
                 cv::Mat tmp;
-                LimitSize(cached.image, config.max_size, &tmp);
+                LimitSize(cached.image, config.min_size, config.max_size, &tmp);
                 cached.image = tmp;
             }
             if (annotate == ANNOTATE_IMAGE) {

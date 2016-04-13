@@ -106,6 +106,7 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("next", &NumpyBatchImageStream::next)
         .def("size", &NumpyBatchImageStream::size)
         .def("reset", &NumpyBatchImageStream::reset)
+        .def("categories", &NumpyBatchImageStream::categories)
     ;
     class_<Writer>("Writer", init<string>())
         .def("append", append1)

@@ -14,10 +14,13 @@
     PICPAC_CONFIG_UPDATE(C,split);\
     PICPAC_CONFIG_UPDATE(C,split_fold);\
     PICPAC_CONFIG_UPDATE(C,split_negate);\
+    PICPAC_CONFIG_UPDATE(C,mixin);\
+    PICPAC_CONFIG_UPDATE(C,mixin_label_delta);\
     PICPAC_CONFIG_UPDATE(C,cache);\
     PICPAC_CONFIG_UPDATE(C,preload);\
     PICPAC_CONFIG_UPDATE(C,threads);\
     PICPAC_CONFIG_UPDATE(C,channels);\
+    PICPAC_CONFIG_UPDATE(C,min_size);\
     PICPAC_CONFIG_UPDATE(C,max_size);\
     PICPAC_CONFIG_UPDATE(C,resize_width);\
     PICPAC_CONFIG_UPDATE(C,resize_height);\
@@ -55,6 +58,7 @@ namespace picpac {
         };
         struct Config {
             int channels;   // -1: unchanged
+            int min_size;
             int max_size;
             int resize_width;
             int resize_height;
@@ -82,6 +86,7 @@ namespace picpac {
             float pert_border;
             Config ()
                 : channels(0),
+                min_size(-1),
                 max_size(-1),
                 resize_width(-1),
                 resize_height(-1),
@@ -412,6 +417,10 @@ namespace picpac {
         void read (fs::path const &path, string *data);
     };
 
-    float LimitSize (cv::Mat input, int max_size, cv::Mat *output);
+    float LimitSize (cv::Mat input, int min_size, int max_size, cv::Mat *output);
+
+    static inline float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
+        return LimitSize(input, -1, max_size, output);
+    }
 }
 
