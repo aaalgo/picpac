@@ -7,7 +7,7 @@ site_description: 'Documentation for PicPac, an image streamer for deep learning
 dev_addr: '0.0.0.0:8600'
 
 pages:
-        - Home: index.md
-        - Importing Data: import.md
-        - Streaming: stream.md
-        - Configuration: config.md
+  - Home: index.md
+  - Importing Data: import.md
+  - Streaming: stream.md
+  - Configuration: config.md
