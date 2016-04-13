@@ -231,6 +231,7 @@ Note that the above specification always go through the following touchup:
 
 ```
 
+The default behavior of Caffe is one-hot encoding, so do not specify onehot in configuration.
 
 
 Parameter Documentation
