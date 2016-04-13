@@ -9,10 +9,13 @@ config = dict(seed=seed,
 	loop=False,
 	shuffle=True,
 	reshuffle=True,
+	batch=batch,
+	# unless batch is 1, always set resize_width and resize_height
+	# as samples in the same batch must have the same size
 	resize_width=256,
 	resize_height=256,
-	batch=batch,
 	split=K,
+	# for K-fold cross validation, run K times with split_fold = 0, 1, ..., K-1
 	split_fold=0,
 	channels=1,
 	stratify=False,
@@ -29,11 +32,18 @@ valid_stream = picpac.ImageStream(db_path, negate=True, perturb=False, **config)
 while True:
     try:
         images, labels, pad = train_stream.next()
+	# when config.pad is True, partial batches might be returned.
+	# the returned images and labels are still the batch size,
+	# and the number of padding items are returned as "pad".
+	# "pad" is always 0 if config.pad is False.
+
 	# do training
     except StopIteration:
 	break
 
 ```
+
+
 
 MXNet Usage
 ===========
