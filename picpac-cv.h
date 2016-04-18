@@ -24,6 +24,8 @@
     PICPAC_CONFIG_UPDATE(C,max_size);\
     PICPAC_CONFIG_UPDATE(C,resize_width);\
     PICPAC_CONFIG_UPDATE(C,resize_height);\
+    PICPAC_CONFIG_UPDATE(C,crop_width);\
+    PICPAC_CONFIG_UPDATE(C,crop_height);\
     PICPAC_CONFIG_UPDATE(C,decode_mode);\
     PICPAC_CONFIG_UPDATE(C,annotate);\
     PICPAC_CONFIG_UPDATE(C,anno_type);\
@@ -62,6 +64,8 @@ namespace picpac {
             int max_size;
             int resize_width;
             int resize_height;
+            int crop_width;
+            int crop_height;
             int decode_mode;       // image load mode
             string annotate;
             int anno_type;  // annotate image opencv type
