@@ -214,6 +214,7 @@ namespace picpac {
             l.label += label_delta[l.file];
         }
         sz_total = all.size();
+        ncat = 0;
         for (auto e: all) {
             int c = int(e.label);
             if ((c != e.label) || (c < 0)) {

@@ -153,7 +153,7 @@ namespace picpac {
             Record r;
             rr(&r); // disk access
             cached.label = r.meta().label;
-            CHECK(r.size() >= (annotate ? 2 : 1));
+            //CHECK(r.size() >= (annotate ? 2 : 1));
             auto imbuf = r.field(0);
             cached.image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
                                 const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
@@ -186,16 +186,20 @@ namespace picpac {
                 cached.image = tmp;
             }
             if (annotate == ANNOTATE_IMAGE) {
-                auto anbuf = r.field(1);
-                cached.annotation = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
-                                const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
-                                cv::IMREAD_UNCHANGED);
-                if (cached.annotation.size() != cached.image.size()) {
-                    cv::resize(cached.annotation, cached.annotation, cached.image.size(), 0, 0, cv::INTER_NEAREST);
+                if (r.size() < 2) {
+                    cached.annotation = cv::Mat(cached.image.size(), CV_8U, cv::Scalar(0));
+                }
+                else {
+                    auto anbuf = r.field(1);
+                    cached.annotation = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
+                                    const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
+                                    cv::IMREAD_UNCHANGED);
+                    if (cached.annotation.size() != cached.image.size()) {
+                        cv::resize(cached.annotation, cached.annotation, cached.image.size(), 0, 0, cv::INTER_NEAREST);
+                    }
                 }
             }
             else if (annotate == ANNOTATE_JSON) {
-                Annotation a(r.field_string(1));
                 cv::Mat anno;
                 if (config.anno_copy) {
                     anno = cached.image.clone();
@@ -203,10 +207,13 @@ namespace picpac {
                 else {
                     anno = cv::Mat(cached.image.size(), config.anno_type, cv::Scalar(0));
                 }
-                cv::Scalar color(config.anno_color1,
-                             config.anno_color2,
-                             config.anno_color3);
-                a.draw(&anno, color, config.anno_thickness);
+                if (r.size() > 1) {
+                    Annotation a(r.field_string(1));
+                    cv::Scalar color(config.anno_color1,
+                                 config.anno_color2,
+                                 config.anno_color3);
+                    a.draw(&anno, color, config.anno_thickness);
+                }
                 cached.annotation = anno;
             }
             if (cache) {
