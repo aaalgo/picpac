@@ -232,6 +232,7 @@ namespace picpac {
         //cv::Size sz = cached.image.size();
         cv::Mat image = cached.image, anno = cached.annotation;
         
+        //TODO: scale might break min and/or max restriction
         cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, p.scale);
         {
             cv::Mat tmp;
@@ -251,19 +252,42 @@ namespace picpac {
 
         if (p.hflip && p.vflip) {
             cv::flip(image, out->image, -1);
-            cv::flip(anno, out->annotation, -1);
+            if (anno.data) {
+                cv::flip(anno, out->annotation, -1);
+            }
         }
         else if (p.hflip && !p.vflip) {
             cv::flip(image, out->image, 1);
-            cv::flip(anno, out->annotation, 1);
+            if (anno.data) {
+                cv::flip(anno, out->annotation, 1);
+            }
         }
         else if (!p.hflip && p.vflip) {
             cv::flip(image, out->image, 0);
-            cv::flip(anno, out->annotation, 0);
+            if (anno.data) {
+                cv::flip(anno, out->annotation, 0);
+            }
         }
         else {
             out->image = image;
-            out->annotation = anno;
+            if (anno.data) {
+                out->annotation = anno;
+            }
+        }
+        if ((config.crop_width > 0) && (config.crop_height > 0)
+            && ((out->image.cols > config.crop_width)
+            || (out->image.rows > config.crop_height))) {
+            // cropping
+            int marginx = out->image.cols - config.crop_width;
+            int marginy = out->image.rows - config.crop_height;
+            cv::Rect roi(p.shiftx % marginx,
+                         p.shifty % marginy,
+                         config.crop_width,
+                         config.crop_height);
+            out->image = out->image(roi);
+            if (out->annotation.data) {
+                out->annotation = out->annotation(roi);
+            }
         }
         out->label = cached.label;
     }

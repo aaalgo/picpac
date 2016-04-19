@@ -209,8 +209,8 @@ namespace picpac {
         for (unsigned i = 0; i < readers.size(); ++i) {
             size_t before = all.size();
             readers[i]->ping(&all, i);
-            if (i && mixin_size) {
-                size_t bound = before + minxin_size;
+            if (i && config.mixin_max) {
+                size_t bound = before + config.mixin_max;
                 if (all.size() > bound) {
                     all.resize(bound);
                 }

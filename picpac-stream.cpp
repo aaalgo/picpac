@@ -1,4 +1,4 @@
-#include <unordered_map>
+#include <boost/filesystem/fstream.hpp>
 #include <boost/program_options.hpp>
 #include "picpac-cv.h"
 
@@ -43,11 +43,14 @@ int main(int argc, char const* argv[]) {
     }
     ImageStream db(db_path, config);
     fs::create_directories(dir_path);
+    fs::ofstream index(dir_path/"index.html");
     int c = 0;
+    index << "<html><body><table><tr><th>label</th><th>image</th></tr>" << endl;
     for (unsigned i = 0; i < max; ++i) {
         try {
             ImageStream::Value v(db.next());
-            fs::path ip = dir_path / (lexical_cast<string>(c++) + ".jpg");
+            index << "<tr><td>" << v.label << "</td><td><img src='" << c << ".jpg'></img></td>";
+            fs::path ip = dir_path / (lexical_cast<string>(c) + ".jpg");
             if (scale != 1) {
                 cv::resize(v.image, v.image, cv::Size(), scale, scale);
                 if (v.annotation.data) {
@@ -56,14 +59,18 @@ int main(int argc, char const* argv[]) {
             }
             cv::imwrite(ip.native(), v.image);
             if (v.annotation.data) {
-                fs::path ap = dir_path / (lexical_cast<string>(c++) + "a.jpg");
+                index << "<td><img src='" << c << "a.jpg'></img></td>";
+                fs::path ap = dir_path / (lexical_cast<string>(c) + "a.jpg");
                 cv::imwrite(ap.native(), v.annotation);
             }
+            index << "</tr>" << endl;
+            ++c;
         }
         catch (EoS const &) {
             break;
         }
     }
+    index << "</table></body></html>" << endl;
 
     return 0;
 }

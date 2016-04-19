@@ -127,6 +127,7 @@ namespace picpac {
             cv::Scalar color;
             float angle, scale;
             bool hflip, vflip;
+            int shiftx, shifty;
         };
 
         ImageLoader (Config const &c)
@@ -155,6 +156,8 @@ namespace picpac {
                 p->color[2] = delta_color3(e);
                 p->angle = linear_angle(e);
                 p->scale = linear_scale(e);
+                p->shiftx = e();
+                p->shifty = e();
             }
         }
 
