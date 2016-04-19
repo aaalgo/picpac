@@ -319,6 +319,7 @@ namespace picpac {
             bool split_negate;
             string mixin;
             float mixin_label_delta;
+            unsigned mixin_max;
 
             Config()
                 : seed(DEFAULT_SEED),
@@ -329,7 +330,8 @@ namespace picpac {
                 split(1),
                 split_fold(0),
                 split_negate(false),
-                mixin_label_delta(0)
+                mixin_label_delta(0),
+                mixin_max(0)
             {
             }
             /// Initialize split scheme for K-fold cross validation.

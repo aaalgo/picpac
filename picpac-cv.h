@@ -16,6 +16,7 @@
     PICPAC_CONFIG_UPDATE(C,split_negate);\
     PICPAC_CONFIG_UPDATE(C,mixin);\
     PICPAC_CONFIG_UPDATE(C,mixin_label_delta);\
+    PICPAC_CONFIG_UPDATE(C,mixin_max);\
     PICPAC_CONFIG_UPDATE(C,cache);\
     PICPAC_CONFIG_UPDATE(C,preload);\
     PICPAC_CONFIG_UPDATE(C,threads);\

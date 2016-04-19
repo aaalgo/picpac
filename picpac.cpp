@@ -207,7 +207,14 @@ namespace picpac {
         }
         vector<Locator> all;
         for (unsigned i = 0; i < readers.size(); ++i) {
+            size_t before = all.size();
             readers[i]->ping(&all, i);
+            if (i && mixin_size) {
+                size_t bound = before + minxin_size;
+                if (all.size() > bound) {
+                    all.resize(bound);
+                }
+            }
         }
         vector<float> label_delta{0, config.mixin_label_delta};
         for (auto &l: all) {
