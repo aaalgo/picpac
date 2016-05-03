@@ -385,15 +385,15 @@ namespace picpac {
         cv::Mat image = cv::imread(path.native(), mode);
         if (!image.data) { // try raw
             string buf;
-            fs::fstream is(path, std::ios::binary);
+            fs::ifstream is(path, std::ios::binary);
+            if (!is) throw BadFile(path);
             is.seekg(0, std::ios::end);
-            if (is) {
-                buf.resize(is.tellg());
-                is.seekg(0);
-                is.read(&buf[0], buf.size());
-                CHECK(is);
-                image = decode_raw(&buf[0], buf.size());
-            }
+            if (!is) throw BadFile(path);
+            buf.resize(is.tellg());
+            is.seekg(0);
+            is.read(&buf[0], buf.size());
+            if (!is) throw BadFile(path);
+            image = decode_raw(&buf[0], buf.size());
         }
         if (!image.data) throw BadFile(path);
         if (resize > 0) {
