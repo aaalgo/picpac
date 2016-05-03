@@ -110,8 +110,8 @@ namespace picpac {
         /// Number of fields in the record.
         uint8_t width; 
         uint8_t reserved1;
-        int16_t group;  // stratify group
-        uint32_t reserved3;
+        int16_t label2;  // optional secondary label, for stratification
+        uint32_t reserved2; 
         /// Meta data of fields.
         std::array<Field, MAX_FIELDS> fields;
 
@@ -223,7 +223,7 @@ namespace picpac {
         uint64_t reserved3;
         // -- 8160 bytes below
         array<uint32_t, MAX_SEG_RECORDS> sizes;
-        array<float, MAX_SEG_RECORDS> labels;
+        array<float, MAX_SEG_RECORDS> groups;
 
         void init () {
             char *begin = reinterpret_cast<char *>(this);
@@ -238,16 +238,21 @@ namespace picpac {
 
     class FileWriter {
         int fd;
-        off_t seg_off;      // last segment offset
-        SegmentHeader seg;  // segment header
-        unsigned next;      // next record offset within segment
+        int flags;
+        off_t seg_off;          // last segment offset
+        SegmentHeader seg;      // segment header
+        unsigned next;          // next record offset within segment
         // initialize a new segment at the end of file
         // and set status to the new segment
         void open_segment ();
         // write the meta data of last segment to file
         void close_segment ();
     public:
-        FileWriter (fs::path const &path);
+        enum {
+            INDEX_LABEL2 = 1,   // use "label" by default
+                                // this makes segment header store label2
+        };
+        FileWriter (fs::path const &path, int flags_ = 0);
         ~FileWriter ();
         void append (Record const &r);
     };
@@ -255,7 +260,7 @@ namespace picpac {
     struct Locator {
         off_t offset;
         uint32_t size;
-        float label;
+        float group;
         uint32_t serial;
         // A stream might have multiple underlying files
         // and these are distinguished with file
@@ -290,9 +295,9 @@ namespace picpac {
             ping(&index);
         }
         size_t size () const { return index.size(); }
-        float label (size_t i) const {
+        float group (size_t i) const {
             if (!(i < index.size())) throw std::out_of_range("");
-            return index[i].label;
+            return index[i].group;
         }
         void read (size_t i, Record *r) {
             if (!(i < index.size())) throw std::out_of_range("");
@@ -306,11 +311,6 @@ namespace picpac {
 
     class Stream: public FileReader {
     public:
-        enum {
-            STRATIFY_NONE = 0,
-            STRATIFY_BY_LABEL = 1,
-            STRATIFY_BY_GROUP = 2
-        }
         struct Config {
             int seed;           // random seed
             bool loop;   
@@ -323,8 +323,7 @@ namespace picpac {
             int split_fold;
             bool split_negate;
             string mixin;
-            float mixin_label_delta;
-            int mixin_group_delta;
+            float mixin_group_delta;
             unsigned mixin_max;
 
             Config()
@@ -332,11 +331,10 @@ namespace picpac {
                 loop(true),
                 shuffle(true),
                 reshuffle(true),
-                stratify(STRATIFY_BY_LABEL),
+                stratify(true),
                 split(1),
                 split_fold(0),
                 split_negate(false),
-                mixin_label_delta(0),
                 mixin_group_delta(0),
                 mixin_max(0)
             {

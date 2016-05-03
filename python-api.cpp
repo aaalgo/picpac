@@ -73,9 +73,6 @@ object return_iterator (tuple args, dict kwargs) {
 
 
 class Writer: public FileWriter {
-    void encode (PyArrayObject *image, string *) {
-        
-    }
 public:
     Writer (string const &path): FileWriter(fs::path(path)) {
     }
@@ -88,7 +85,50 @@ public:
         Record record(0, buf1, buf2);
         FileWriter::append(record);
     }
+
 };
+
+string encode_raw_ndarray (object &obj) {
+    PyArrayObject *image = reinterpret_cast<PyArrayObject *>(obj.ptr());
+    int nd = PyArray_NDIM(image);
+    CHECK(nd == 2 || nd == 3);
+    auto desc = PyArray_DESCR(image);
+    CHECK(desc);
+    CHECK(PyArray_EquivByteorders(desc->byteorder, NPY_NATIVE)
+            || desc->byteorder == '|') << "Only support native/little endian";
+    int elemSize = desc->elsize;
+    CHECK(elemSize > 0) << "Flex type not supported.";
+    int ch = (nd == 2) ? 1 : PyArray_DIM(image, 2); 
+    elemSize *= ch; // opencv elements includes all channels
+    //CHECK(image->strides[1] == elemSize) << "Image cols must be consecutive";
+    int rows = PyArray_DIM(image, 0);
+    int cols = PyArray_DIM(image, 1);
+    int t = PyArray_TYPE(image);
+    int type = 0;
+    switch (t) {
+        case NPY_UINT8: type = CV_MAKETYPE(CV_8U, ch); break;
+        case NPY_INT8: type = CV_MAKETYPE(CV_8S, ch); break;
+        case NPY_UINT16: type = CV_MAKETYPE(CV_16U, ch); break;
+        case NPY_INT16: type = CV_MAKETYPE(CV_16S, ch); break;
+        case NPY_INT32: type = CV_MAKETYPE(CV_32S, ch); break;
+        case NPY_FLOAT32: type = CV_MAKETYPE(CV_32F, ch); break;
+        case NPY_FLOAT64: type = CV_MAKETYPE(CV_64F, ch); break;
+        default: CHECK(0) << "type not supported: " << t;
+    }
+    int stride = PyArray_STRIDE(image, 0);
+    CHECK(stride == cols * elemSize) << "bad stride";
+    std::ostringstream ss;
+    ss.write(reinterpret_cast<char const *>(&type), sizeof(type));
+    ss.write(reinterpret_cast<char const *>(&rows), sizeof(rows));
+    ss.write(reinterpret_cast<char const *>(&cols), sizeof(cols));
+    ss.write(reinterpret_cast<char const *>(&elemSize), sizeof(elemSize));
+    char const *off = PyArray_BYTES(image);
+    for (int i = 0; i < rows; ++i) {
+        ss.write(off, cols * elemSize);
+        off += stride;
+    }
+    return ss.str();
+}
 
 void (Writer::*append1) (float, string const &) = &Writer::append;
 void (Writer::*append2) (string const &, string const &) = &Writer::append;
@@ -119,5 +159,6 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("append", append1)
         .def("append", append2)
     ;
+    def("encode_raw", ::encode_raw_ndarray);
 }
 

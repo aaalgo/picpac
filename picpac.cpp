@@ -101,7 +101,7 @@ namespace picpac {
         return sz;
     }
 
-    FileWriter::FileWriter (fs::path const &path) {
+    FileWriter::FileWriter (fs::path const &path, int flags_): flags(flags_) {
         fd = open(path.native().c_str(), O_CREAT | O_EXCL | O_WRONLY, 0666);
         CHECK(fd >= 0) << "fail to open " << path;
         open_segment();
@@ -143,7 +143,7 @@ namespace picpac {
         ssize_t sz = r.write(fd);
         CHECK(sz > 0);
         ++seg.size;
-        seg.labels[next] = r.meta().label;
+        seg.groups[next] = (flags & INDEX_LABEL2) ? r.meta().label2 : r.meta().label;
         seg.sizes[next++] = sz;
     }
 
@@ -175,7 +175,7 @@ namespace picpac {
             // append seg entries to list
             for (unsigned i = 0; i < seg.size; ++i) {
                 Locator e;
-                e.label = seg.labels[i];
+                e.group = seg.groups[i];
                 e.offset = off;
                 e.size = seg.sizes[i];
                 e.serial = s++;
@@ -216,51 +216,34 @@ namespace picpac {
                 }
             }
         }
-        vector<float> label_delta{0, config.mixin_label_delta};
-        vector<int> group_delta{0, config.mixin_group_delta};
+        vector<float> group_delta{0, config.mixin_group_delta};
         for (auto &l: all) {
-            l.label += label_delta[l.file];
             l.group += group_delta[l.file];
         }
         sz_total = all.size();
         ncat = 0;
         for (auto const &e: all) {
-            int c = int(e.label);
-            if ((c != e.label) || (c < 0)) {
+            int c = int(e.group);
+            if ((c != e.group) || (c < 0)) {
                 ncat = 0;
                 break;
             }
             if (c > ncat) ncat = c;
         }
         ++ncat;
-        ngroup = 0;
-        for (auto const &e: all) {
-            if (e.group > ngroup) ngroup = e.group;
-        }
-        ++ngroup;
-        if ((config.stratify == STRATIFY_BY_LABEL) && (ncat > MAX_CATEGORIES)) {
+        if (config.stratify && (ncat > MAX_CATEGORIES)) {
             LOG(ERROR) << "Too many categories (2000 max): " << ncat;
             ncat = 0;
         }
-        if ((config.stratify == STRATIFY_BY_GROUP) && (ngroup > MAX_CATEGORIES)) {
-            LOG(ERROR) << "Too many groups (2000 max): " << ncat;
-            ncat = 0;
-        }
 
-        if (config.stratify > 0) {
-            vector<vector<Locator>> C(MAX_CATEGORIES);
+        if (config.stratify) {
+            vector<vector<Locator>> C(ncat);
             int nc = 0;
             for (auto const &e: all) {
                 int c;
-                if (config.stratify == STRATIFY_BY_LABEL) {
-                    c = int(e.label);
-                    CHECK(c == e.label) << "We cannot stratify float labels.";
-                    CHECK(c >= 0) << "We cannot stratify label -1.";
-                }
-                else if (config.stratify == STRATIFY_BY_GROUP) {
-                    c = e.group;
-                }
-                else CHECK(0) << "bad stratify value";
+                c = int(e.group);
+                CHECK(c == e.group) << "We cannot stratify float labels.";
+                CHECK(c >= 0) << "We cannot stratify label -1.";
                 C[c].push_back(e);
                 if (c > nc) nc = c;
             }

@@ -36,7 +36,7 @@ int main(int argc, char const* argv[]) {
     cout << "TOTAL: " << db.size() << endl;
     bool cat = true;
     for (unsigned i = 0; i < db.size(); ++i) {
-        float l = db.label(i);
+        float l = db.group(i);
         if (int(l) != l) {
             cat = false;
             break;
