@@ -1,3 +1,4 @@
+#include <sstream>
 #include <json11.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include "picpac-cv.h"
@@ -140,6 +141,56 @@ namespace picpac {
         }
     };
 
+    // for visualization only!!!
+    void spectrogram_to_gray (cv::Mat m, cv::Mat *gray) {
+        cv::Mat o(m.rows, m.cols, CV_32F);
+        for (int i = 0; i < o.rows; ++i) {
+            float const *in = m.ptr<float const>(i);
+            float *out = o.ptr<float>(i);
+            for (int j = 0; j < o.cols; ++j) {
+                out[0] = std::sqrt(in[0] * in[0]
+                                 + in[1] * in[1]);
+                in += 2;
+                out += 1;
+            }
+        }
+        cv::normalize(o, o, 0, 255, cv::NORM_MINMAX, CV_8U);
+        *gray = o;
+    }
+
+    // for visualization only!!!
+    void spectrogram_to_bgr (cv::Mat m, cv::Mat *bgr) {
+        float mm = 0;
+        for (int i = 0; i < m.rows; ++i) {
+            float const *in = m.ptr<float const>(i);
+            for (int j = 0; j < m.cols; ++j) {
+                float a = in[0];
+                float b = in[1];
+                float v = std::sqrt(a*a + b*b);
+                if (v > mm) mm = v;
+                in += 2;
+            }
+        }
+        cv::Mat o(m.rows, m.cols, CV_8UC3);
+        static const float BASE = 0.005;
+        for (int i = 0; i < o.rows; ++i) {
+            float const *in = m.ptr<float const>(i);
+            uint8_t *out = o.ptr<uint8_t>(i);
+            for (int j = 0; j < o.cols; ++j) {
+                float a = in[0];
+                float b = in[1];
+                float v = std::sqrt(a*a + b*b)/mm;
+                v = (log(std::max(BASE, v)) - log(BASE))/(-log(BASE)) ;
+                out[0] = (std::atan2(b, a) + M_PI)/M_PI * 90;
+                out[1] = 255;
+                out[2] = BASE + (255-BASE) * v;
+                in += 2;
+                out += 3;
+            }
+        }
+        cv::cvtColor(o, *bgr, CV_HSV2BGR);
+    }
+
     void ImageLoader::load (RecordReader rr, PerturbVector const &p, Value *out,
            CacheValue *cache, std::mutex *mutex) const {
         Value cached;
@@ -158,6 +209,10 @@ namespace picpac {
             cached.image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
                                 const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
                                 config.decode_mode);
+            if (!cached.image.data) {
+                cached.image = decode_raw(boost::asio::buffer_cast<char const *>(imbuf),
+                                          boost::asio::buffer_size(imbuf));
+            }
             if ((config.channels > 0) && config.channels != cached.image.channels()) {
                 cv::Mat tmp;
                 if (cached.image.channels() == 3 && config.channels == 1) {
@@ -172,6 +227,14 @@ namespace picpac {
                 else if (cached.image.channels() == 1 && config.channels == 3) {
                     cv::cvtColor(cached.image, tmp, CV_GRAY2BGR);
                 }
+#ifdef SUPPORT_AUDIO_SPECTROGRAM
+                else if (cached.image.type() == CV_32FC2 && config.channels == 1) {
+                    spectrogram_to_gray(cached.image, &tmp);
+                }
+                else if (cached.image.type() == CV_32FC2 && config.channels == 3) {
+                    spectrogram_to_bgr(cached.image, &tmp);
+                }
+#endif
                 else CHECK(0) << "channel format not supported: from "
                               << cached.image.channels()
                               << " to " << config.channels;
@@ -192,8 +255,12 @@ namespace picpac {
                 else {
                     auto anbuf = r.field(1);
                     cached.annotation = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
-                                    const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
-                                    cv::IMREAD_UNCHANGED);
+                                const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
+                                cv::IMREAD_UNCHANGED);
+                    if (!cached.annotation.data) {
+                        cached.annotation = decode_raw(boost::asio::buffer_cast<char const *>(anbuf),
+                                            boost::asio::buffer_size(anbuf));
+                    }
                     if (cached.annotation.size() != cached.image.size()) {
                         cv::resize(cached.annotation, cached.annotation, cached.image.size(), 0, 0, cv::INTER_NEAREST);
                     }
@@ -303,6 +370,10 @@ namespace picpac {
     */
 
     void ImageEncoder::encode (cv::Mat const &image, string *data) {
+        if (code == "raw") {
+            encode_raw(image, data);
+            return;
+        }
         std::vector<uint8_t> buffer;
         cv::imencode(code.empty() ? ".jpg": code, image, buffer);
         char const *from = reinterpret_cast<char const *>(&buffer[0]);
@@ -336,6 +407,39 @@ namespace picpac {
             is.read(&data->at(0), data->size());
             if (!is) throw BadFile(path);
         }
+    }
+
+    void encode_raw (cv::Mat m, string *s) {
+        std::ostringstream ss;
+        int type = m.type();
+        int rows = m.rows;
+        int cols = m.cols;
+        int elemSize = m.elemSize();
+        ss.write(reinterpret_cast<char const *>(&type), sizeof(type));
+        ss.write(reinterpret_cast<char const *>(&rows), sizeof(rows));
+        ss.write(reinterpret_cast<char const *>(&cols), sizeof(cols));
+        ss.write(reinterpret_cast<char const *>(&elemSize), sizeof(elemSize));
+        for (int i = 0; i < rows; ++i) {
+            ss.write(m.ptr<char const>(i), cols * elemSize);
+        }
+        *s = ss.str();
+    }
+
+    cv::Mat decode_raw (char const *buf, size_t sz) {
+        if (sz < sizeof(int) * 4) return cv::Mat();
+        int type = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        int rows = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        int cols = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        int elemSize = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        if (sz != rows * cols * elemSize) return cv::Mat();
+        cv::Mat m(rows, cols, type);
+        if (m.elemSize() != elemSize) return cv::Mat();
+        size_t line = cols * elemSize;
+        for (int i = 0; i < rows; ++i) {
+            std::copy(buf, buf + line, m.ptr<char>(i));
+            buf += line;
+        }
+        return m;
     }
 }
 

@@ -2,6 +2,7 @@ CC=g++
 CXX=g++
 CFLAGS = -g -O3
 CXXFLAGS = -fPIC -Ijson11 -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
+CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
 LDFLAGS = -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog
 SERVER_LIBS = -lserved -lmagic

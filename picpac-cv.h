@@ -89,6 +89,8 @@ namespace picpac {
             float pert_max_scale;
             bool pert_hflip, pert_vflip;
             float pert_border;
+
+
             Config ()
                 : channels(0),
                 min_size(-1),
@@ -111,7 +113,8 @@ namespace picpac {
                 pert_max_scale(1),
                 pert_hflip(false),
                 pert_vflip(false),
-                pert_border(cv::BORDER_CONSTANT) {
+                pert_border(cv::BORDER_CONSTANT)
+            {
             }
         };
 
@@ -402,6 +405,9 @@ namespace picpac {
             if (npad) *npad = batch - loaded;
         }
     };
+
+    void encode_raw (cv::Mat, string *);
+    cv::Mat decode_raw (char const *, size_t);
 
     class ImageEncoder {
     protected:

@@ -110,7 +110,7 @@ namespace picpac {
         /// Number of fields in the record.
         uint8_t width; 
         uint8_t reserved1;
-        uint16_t reserved2;
+        int16_t group;  // stratify group
         uint32_t reserved3;
         /// Meta data of fields.
         std::array<Field, MAX_FIELDS> fields;
