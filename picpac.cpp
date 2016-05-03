@@ -217,12 +217,14 @@ namespace picpac {
             }
         }
         vector<float> label_delta{0, config.mixin_label_delta};
+        vector<int> group_delta{0, config.mixin_group_delta};
         for (auto &l: all) {
             l.label += label_delta[l.file];
+            l.group += group_delta[l.file];
         }
         sz_total = all.size();
         ncat = 0;
-        for (auto e: all) {
+        for (auto const &e: all) {
             int c = int(e.label);
             if ((c != e.label) || (c < 0)) {
                 ncat = 0;
@@ -231,19 +233,34 @@ namespace picpac {
             if (c > ncat) ncat = c;
         }
         ++ncat;
-        if (ncat >= MAX_CATEGORIES) {
+        ngroup = 0;
+        for (auto const &e: all) {
+            if (e.group > ngroup) ngroup = e.group;
+        }
+        ++ngroup;
+        if ((config.stratify == STRATIFY_BY_LABEL) && (ncat > MAX_CATEGORIES)) {
             LOG(ERROR) << "Too many categories (2000 max): " << ncat;
             ncat = 0;
         }
+        if ((config.stratify == STRATIFY_BY_GROUP) && (ngroup > MAX_CATEGORIES)) {
+            LOG(ERROR) << "Too many groups (2000 max): " << ncat;
+            ncat = 0;
+        }
 
-        if (config.stratify) {
-            CHECK(ncat > 0);
-            vector<vector<Locator>> C(ncat);
+        if (config.stratify > 0) {
+            vector<vector<Locator>> C(MAX_CATEGORIES);
             int nc = 0;
-            for (auto e: all) {
-                int c = int(e.label);
-                CHECK(c == e.label) << "We cannot stratify float labels.";
-                CHECK(c >= 0) << "We cannot stratify label -1.";
+            for (auto const &e: all) {
+                int c;
+                if (config.stratify == STRATIFY_BY_LABEL) {
+                    c = int(e.label);
+                    CHECK(c == e.label) << "We cannot stratify float labels.";
+                    CHECK(c >= 0) << "We cannot stratify label -1.";
+                }
+                else if (config.stratify == STRATIFY_BY_GROUP) {
+                    c = e.group;
+                }
+                else CHECK(0) << "bad stratify value";
                 C[c].push_back(e);
                 if (c > nc) nc = c;
             }

@@ -306,12 +306,17 @@ namespace picpac {
 
     class Stream: public FileReader {
     public:
+        enum {
+            STRATIFY_NONE = 0,
+            STRATIFY_BY_LABEL = 1,
+            STRATIFY_BY_GROUP = 2
+        }
         struct Config {
             int seed;           // random seed
             bool loop;   
             bool shuffle;
             bool reshuffle;
-            bool stratify;
+            int stratify;
 
             unsigned split;
             vector<unsigned> split_keys; 
@@ -319,6 +324,7 @@ namespace picpac {
             bool split_negate;
             string mixin;
             float mixin_label_delta;
+            int mixin_group_delta;
             unsigned mixin_max;
 
             Config()
@@ -326,11 +332,12 @@ namespace picpac {
                 loop(true),
                 shuffle(true),
                 reshuffle(true),
-                stratify(true),
+                stratify(STRATIFY_BY_LABEL),
                 split(1),
                 split_fold(0),
                 split_negate(false),
                 mixin_label_delta(0),
+                mixin_group_delta(0),
                 mixin_max(0)
             {
             }
@@ -361,6 +368,7 @@ namespace picpac {
         unsigned sz_total;
         unsigned sz_used;
         unsigned ncat;
+        unsigned ngroup;
     public:
         Stream (fs::path const &, Config const &);
         ~Stream ();
