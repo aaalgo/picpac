@@ -1,3 +1,4 @@
+#include <fstream>
 #include <boost/ref.hpp>
 #include <boost/python.hpp>
 #include <boost/python/make_constructor.hpp>
@@ -88,7 +89,7 @@ public:
 
 };
 
-string encode_raw_ndarray (object &obj) {
+void serialize_raw_ndarray (object &obj, std::ostream &os) {
     PyArrayObject *image = reinterpret_cast<PyArrayObject *>(obj.ptr());
     int nd = PyArray_NDIM(image);
     CHECK(nd == 2 || nd == 3);
@@ -117,17 +118,26 @@ string encode_raw_ndarray (object &obj) {
     }
     int stride = PyArray_STRIDE(image, 0);
     CHECK(stride == cols * elemSize) << "bad stride";
-    std::ostringstream ss;
-    ss.write(reinterpret_cast<char const *>(&type), sizeof(type));
-    ss.write(reinterpret_cast<char const *>(&rows), sizeof(rows));
-    ss.write(reinterpret_cast<char const *>(&cols), sizeof(cols));
-    ss.write(reinterpret_cast<char const *>(&elemSize), sizeof(elemSize));
+    os.write(reinterpret_cast<char const *>(&type), sizeof(type));
+    os.write(reinterpret_cast<char const *>(&rows), sizeof(rows));
+    os.write(reinterpret_cast<char const *>(&cols), sizeof(cols));
+    os.write(reinterpret_cast<char const *>(&elemSize), sizeof(elemSize));
     char const *off = PyArray_BYTES(image);
     for (int i = 0; i < rows; ++i) {
-        ss.write(off, cols * elemSize);
+        os.write(off, cols * elemSize);
         off += stride;
     }
+}
+
+string encode_raw_ndarray (object &obj) {
+    std::ostringstream ss;
+    serialize_raw_ndarray(obj, ss);
     return ss.str();
+}
+
+void write_raw_ndarray (string const &path, object &obj) {
+    std::ofstream os(path.c_str(), std::ios::binary);
+    serialize_raw_ndarray(obj, os);
 }
 
 void (Writer::*append1) (float, string const &) = &Writer::append;
@@ -160,5 +170,6 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("append", append2)
     ;
     def("encode_raw", ::encode_raw_ndarray);
+    def("write_raw", ::write_raw_ndarray);
 }
 
