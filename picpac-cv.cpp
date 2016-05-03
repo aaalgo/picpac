@@ -383,6 +383,18 @@ namespace picpac {
     void ImageReader::read (fs::path const &path, string *data) {
         bool do_code = code.size() || (mode != cv::IMREAD_UNCHANGED);
         cv::Mat image = cv::imread(path.native(), mode);
+        if (!image.data) { // try raw
+            string buf;
+            fs::fstream is(path, std::ios::binary);
+            is.seekg(0, std::ios::end);
+            if (is) {
+                buf.resize(is.tellg());
+                is.seekg(0);
+                is.read(&buf[0], buf.size());
+                CHECK(is);
+                image = decode_raw(&buf[0], buf.size());
+            }
+        }
         if (!image.data) throw BadFile(path);
         if (resize > 0) {
             cv::resize(image, image, cv::Size(resize, resize));
