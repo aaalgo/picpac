@@ -292,6 +292,9 @@ namespace picpac {
 
         if (!config.perturb) {
             *out = cached;
+            if (annotate == ANNOTATE_AUTO) {
+                out->annotation = out->image;
+            }
             return;
         }
 
@@ -355,6 +358,9 @@ namespace picpac {
             if (out->annotation.data) {
                 out->annotation = out->annotation(roi);
             }
+        }
+        if (annotate == ANNOTATE_AUTO) {
+            out->annotation = out->image;
         }
         out->label = cached.label;
     }

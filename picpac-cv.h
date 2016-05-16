@@ -57,7 +57,8 @@ namespace picpac {
         enum {
             ANNOTATE_NONE = 0,
             ANNOTATE_IMAGE = 1,
-            ANNOTATE_JSON = 2
+            ANNOTATE_JSON = 2,
+            ANNOTATE_AUTO = 3   // for autoencoder, use input as annotation
         };
         struct Config {
             int channels;   // -1: unchanged
@@ -147,6 +148,9 @@ namespace picpac {
             else if (config.annotate == "image") {
                 annotate = ANNOTATE_IMAGE;
             }
+            else if (config.annotate == "auto") {
+                annotate = ANNOTATE_AUTO;
+            }
         }
 
         template <typename RNG>
@@ -186,19 +190,25 @@ namespace picpac {
             Tto *ptr_g = buffer;
             Tto *ptr_r = buffer;
             if (bgr2rgb) {
+                CHECK(image.channels() == 3);
                 ptr_g += image.total();
                 ptr_b += 2 * image.total();
             }
-            else if (image.channels() > 1) {
-                ptr_g += image.total();
+            else if (image.channels() == 2) {
+                ptr_r += image.total();     // g, r
+            }
+            else if (image.channels() == 3) {
+                ptr_g += image.total();     // b, g, r
                 ptr_r += 2 * image.total();
             }
             unsigned off = 0;
             for (int i = 0; i < image.rows; ++i) {
                 Tfrom const *line = image.ptr<Tfrom const>(i);
                 for (int j = 0; j < image.cols; ++j) {
-                    if (image.channels() > 1) {
+                    if (image.channels() > 2) {
                         ptr_b[off] = *line++;
+                    }
+                    if (image.channels() > 1) {
                         ptr_g[off] = *line++;
                     }
                     ptr_r[off] = *line++;
@@ -206,15 +216,14 @@ namespace picpac {
                 }
             }
             CHECK(off == image.total());
-            if (image.channels() == 1) return buffer + image.total();
-            return buffer + 3 * image.total();
+            return buffer + image.channels() * image.total();
         }
 
         template <typename Tto = float>
         Tto *split_copy (cv::Mat image, Tto *buffer, bool bgr2rgb) {
             int depth = image.depth();
             int ch = image.channels();
-            CHECK(ch == 1 || ch == 3);
+            CHECK((ch >= 1) && (ch <= 3));
             switch (depth) {
                 case CV_8U: return split_helper<uint8_t, Tto>(image, buffer, bgr2rgb);
                 case CV_8S: return split_helper<int8_t, Tto>(image, buffer, bgr2rgb);
