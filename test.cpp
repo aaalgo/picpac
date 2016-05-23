@@ -1,91 +1,144 @@
+#define CATCH_CONFIG_MAIN
 #include <map>
-#include <iostream>
+#include <set>
+#include <functional>
+#include <algorithm>
+#include <iterator>
+#include <catch.hpp>
 #include "picpac.h"
+#include "picpac-cv.h"
 
 using namespace std;
 using namespace picpac;
 
-int main (int argc, char *argv[]) {
-    google::InitGoogleLogging(argv[0]);
-    unsigned C = 17;
-    fs::path path("test.pac");
-    map<unsigned, int> cnt;
-    map<unsigned, int> cnt_id;
-    {
-        fs::remove(path);
+struct TestConfig: PICPAC_CONFIG {
+    unsigned class_count;
+    unsigned write_count;
+    unsigned read_count;
+    TestConfig ()
+        : class_count(5),
+        write_count(853),
+        read_count(3461*11-1) {
+    }
+};
+
+class TestDB {
+    fs::path path;
+public:
+    TestDB (): path(fs::unique_path()) {
+        TestConfig config;
+        WARN("Creating test db: " << path);
         FileWriter out(path);
-        for (unsigned i = 0; i < MAX_SEG_RECORDS * 3; ++i) {
-            Record r(rand() % C, fs::path("picpac.h"), lexical_cast<string>(i));
+        for (unsigned i = 0; i < config.write_count; ++i) {
+            Record r(0, lexical_cast<string>(i), string());
             r.meta().id = i;
-            cnt[r.meta().label] += 10;
-            cnt_id[i] += 10;
+            r.meta().label = int(sqrt(i)) % config.class_count;
             out.append(r);
         }
     }
-    {
-        auto sz = fs::file_size("picpac.h");
-        FileReader in(path);
-        vector<Locator> ll;
-        in.ping(&ll);
-        for (unsigned i = 0; i < ll.size(); ++i) {
-            Record r;
-            in.read(ll[i], &r);
-            CHECK(r.meta().id == i);
-            CHECK(r.meta().fields[0].size == sz);
-            /*
-            if (i == 10) {
-                cout.write(r.fields[0], sz);
-            }
-            */
-        }
-    }
-    for (auto p: cnt) {
-        cout << p.first << ": " << p.second << endl;
-    }
-    for (unsigned F = 0; F < 5; ++F) {
-        for (int train = 0; train < 2; ++train) {
-            Stream::Config conf;
-            conf.kfold(5, F, bool(train));
-            conf.loop = false;
-            Stream stream(path, conf);
-            for (unsigned xx = 0; xx < 2; ++xx) {
-                for (;;) {
-                    try {
-                        Record r;
-                        stream.read_next(&r);
-                        cnt[r.meta().label] -= 1;
-                        cnt_id[r.meta().id] -= 1;
-                    }
-                    catch (EoS) {
-                        break;
-                    }
-                }
-                stream.reset();
-            }
-        }
-    }
-    for (auto p: cnt) {
-        CHECK(p.second == 0);
-    }
-    for (auto p: cnt_id) {
-        CHECK(p.second == 0);
-    }
-    cout << "XXX" << endl;
-    for (int stra = 0; stra < 2; ++stra) {
-        Stream::Config conf;
-        conf.kfold(5, 3, true);
-        conf.stratify = bool(stra);
-        cout << "STR: " << conf.stratify << endl;
-        Stream stream(path, conf);
-        cnt.clear();
-        for (unsigned i = 0; i < MAX_SEG_RECORDS * 10; ++i) {
+
+    void loop (TestConfig const &config, function<void(Record const &)> f) const {
+        Stream stream(path, config);
+        map<uint32_t, int> cnt;
+        for (unsigned i = 0; i < config.read_count; ++i) {
             Record r;
             stream.read_next(&r);
-//            cerr << r.meta->id << '\t' << r.meta->label << endl;
-            cnt[r.meta().label] += 1;
-        }
-        for (auto p: cnt) {
-            cout << p.first << ": " << p.second << endl;
+            f(r);
         }
     }
+
+    void count_id (TestConfig const &config, map<uint32_t, int> *cnt) const {
+        cnt->clear();
+        loop(config, [cnt](Record const &r) {
+                    ++(*cnt)[r.meta().id];
+                });
+    }
+
+    void count_label (TestConfig const &config, map<uint32_t, int> *cnt) const {
+        cnt->clear();
+        loop(config, [cnt](Record const &r) {
+                    ++(*cnt)[r.meta().label];
+                });
+    }
+
+    void idset (TestConfig const &config, set<uint32_t> *v) const {
+        v->clear();
+        loop(config, [v](Record const &r) {
+                    v->insert(r.meta().id);
+                });
+    }
+
+    void labelset (TestConfig const &config, set<uint32_t> *v) const {
+        v->clear();
+        loop(config, [v](Record const &r) {
+                    v->insert(r.meta().label);
+                });
+    }
+
+    ~TestDB () {
+        fs::remove(path);
+    }
+};
+
+int inbalance (map<uint32_t, int> const &cnt) {
+    int min = numeric_limits<int>::max();
+    int max = 0;
+    for (auto p: cnt) {
+        if (p.second < min) min = p.second;
+        if (p.second > max) max = p.second;
+    }
+    return max - min;
 }
+
+TEST_CASE("split streaming", "") {
+    TestDB db;
+    TestConfig config;
+    config.loop = true;
+    config.shuffle = true;
+    config.split = 7;
+    config.split_fold = 3;
+    config.split_negate = false;
+
+    SECTION("Stratify") {
+        config.stratify = true;
+        std::map<uint32_t, int> cnt;
+        db.count_label(config, &cnt);
+        REQUIRE(inbalance(cnt) <= 1);
+    }
+
+    SECTION("Non Stratify") {
+        config.stratify = false;
+        std::map<uint32_t, int> cnt;
+        db.count_label(config, &cnt);
+        REQUIRE(inbalance(cnt) > 1);
+        db.count_id(config, &cnt);   // ID should be in balance
+        REQUIRE(inbalance(cnt) <= 1);
+    }
+
+    SECTION("Cross validation -- ID") {
+        set<uint32_t> train, val;
+        vector<uint32_t> common;
+        db.idset(config, &train);
+        config.split_negate = true;
+        db.idset(config, &val);
+        set_intersection(train.begin(), train.end(),
+                         val.begin(), val.end(),
+                         back_inserter(common));
+        REQUIRE(train.size() + val.size() == config.write_count);
+        REQUIRE(common.empty());
+        //  n/split ~ n/split + 1
+        //  vs n * (split-1)/split
+        REQUIRE(train.size() >= val.size());
+    }
+
+    SECTION("Cross validation -- Label") {
+        set<uint32_t> train, val;
+        vector<uint32_t> common;
+        db.labelset(config, &train);
+        config.split_negate = true;
+        db.labelset(config, &val);
+        REQUIRE(train.size() == config.class_count);
+        REQUIRE(val.size() == config.class_count);
+    }
+}
+

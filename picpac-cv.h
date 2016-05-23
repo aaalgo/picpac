@@ -44,6 +44,9 @@
     PICPAC_CONFIG_UPDATE(C,pert_max_scale); \
     PICPAC_CONFIG_UPDATE(C,pert_hflip); \
     PICPAC_CONFIG_UPDATE(C,pert_vflip); \
+    PICPAC_CONFIG_UPDATE(C,mean_color1); \
+    PICPAC_CONFIG_UPDATE(C,mean_color2); \
+    PICPAC_CONFIG_UPDATE(C,mean_color3); \
     PICPAC_CONFIG_UPDATE(C,onehot);\
     PICPAC_CONFIG_UPDATE(C,batch);\
     PICPAC_CONFIG_UPDATE(C,pad);\
@@ -135,7 +138,8 @@ namespace picpac {
         };
 
         ImageLoader (Config const &c)
-            : config(c), annotate(ANNOTATE_NONE),
+            : config(c),
+            annotate(ANNOTATE_NONE),
             delta_color1(-c.pert_color1, c.pert_color1),
             delta_color2(-c.pert_color2, c.pert_color2),
             delta_color3(-c.pert_color3, c.pert_color3),
@@ -185,7 +189,7 @@ namespace picpac {
 
     namespace impl {
         template <typename Tfrom = uint8_t, typename Tto = float>
-        Tto *split_helper (cv::Mat image, Tto *buffer, bool bgr2rgb) {
+        Tto *split_helper (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
             Tto *ptr_b = buffer;
             Tto *ptr_g = buffer;
             Tto *ptr_r = buffer;
@@ -195,7 +199,7 @@ namespace picpac {
                 ptr_b += 2 * image.total();
             }
             else if (image.channels() == 2) {
-                ptr_r += image.total();     // g, r
+                ptr_g += image.total();     // g, r
             }
             else if (image.channels() == 3) {
                 ptr_g += image.total();     // b, g, r
@@ -205,13 +209,13 @@ namespace picpac {
             for (int i = 0; i < image.rows; ++i) {
                 Tfrom const *line = image.ptr<Tfrom const>(i);
                 for (int j = 0; j < image.cols; ++j) {
-                    if (image.channels() > 2) {
-                        ptr_b[off] = *line++;
-                    }
+                    ptr_b[off] = (*line++) - mean[0];
                     if (image.channels() > 1) {
-                        ptr_g[off] = *line++;
+                        ptr_g[off] = (*line++) - mean[1];
                     }
-                    ptr_r[off] = *line++;
+                    if (image.channels() > 2) {
+                        ptr_r[off] = (*line++) - mean[2];
+                    }
                     ++off;
                 }
             }
@@ -220,18 +224,18 @@ namespace picpac {
         }
 
         template <typename Tto = float>
-        Tto *split_copy (cv::Mat image, Tto *buffer, bool bgr2rgb) {
+        Tto *split_copy (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
             int depth = image.depth();
             int ch = image.channels();
             CHECK((ch >= 1) && (ch <= 3));
             switch (depth) {
-                case CV_8U: return split_helper<uint8_t, Tto>(image, buffer, bgr2rgb);
-                case CV_8S: return split_helper<int8_t, Tto>(image, buffer, bgr2rgb);
-                case CV_16U: return split_helper<uint16_t, Tto>(image, buffer, bgr2rgb);
-                case CV_16S: return split_helper<int16_t, Tto>(image, buffer, bgr2rgb);
-                case CV_32S: return split_helper<int32_t, Tto>(image, buffer, bgr2rgb);
-                case CV_32F: return split_helper<float, Tto>(image, buffer, bgr2rgb);
-                case CV_64F: return split_helper<double, Tto>(image, buffer, bgr2rgb);
+                case CV_8U: return split_helper<uint8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_8S: return split_helper<int8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16U: return split_helper<uint16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16S: return split_helper<int16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32S: return split_helper<int32_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32F: return split_helper<float, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_64F: return split_helper<double, Tto>(image, buffer, mean, bgr2rgb);
             }
             CHECK(0) << "Mat type not supported.";
             return nullptr;
@@ -290,6 +294,8 @@ namespace picpac {
             TASK_PIXEL_CLASSIFICATION = 4
         };
     private:
+        cv::Scalar label_mean;//(0,0,0,0);
+        cv::Scalar mean;
         unsigned onehot;
         unsigned batch;
         bool pad;
@@ -298,16 +304,26 @@ namespace picpac {
 
     public:
         struct Config: public ImageStream::Config {
+            float mean_color1;
+            float mean_color2;
+            float mean_color3;
             unsigned onehot;
             unsigned batch;
             bool pad;
             bool bgr2rgb;
-            Config (): onehot(0), batch(1), pad(false), bgr2rgb(false) {
+            Config ():
+                mean_color1(0),
+                mean_color2(0),
+                mean_color3(0),
+                onehot(0), batch(1), pad(false), bgr2rgb(false) {
             }
         };
 
         BatchImageStream (fs::path const &path, Config const &c)
-            : ImageStream(path, c), onehot(c.onehot),
+            : ImageStream(path, c),
+            label_mean(0,0,0,0),
+            mean(cv::Scalar(c.mean_color1, c.mean_color2, c.mean_color3)),
+            onehot(c.onehot),
             batch(c.batch), pad(c.pad), bgr2rgb(c.bgr2rgb) {
             ImageStream::Value &v(ImageStream::peek());
             if (!v.annotation.data) {
@@ -325,6 +341,9 @@ namespace picpac {
                 }
                 else {
                     task = TASK_PIXEL_REGRESSION;
+                    if (c.annotate == "auto") {
+                        label_mean = mean;
+                    }
                 }
             }
         }
@@ -381,7 +400,7 @@ namespace picpac {
                         next_shape(&ishape, &lshape);
                     }
                     Value v(next());
-                    images = impl::split_copy<T1>(v.image, images, bgr2rgb);
+                    images = impl::split_copy<T1>(v.image, images, mean, bgr2rgb);
                     switch (task) {
                         case TASK_REGRESSION:
                             *labels = v.label;
@@ -398,7 +417,7 @@ namespace picpac {
                             }
                             break;
                         case TASK_PIXEL_REGRESSION:
-                            labels = impl::split_copy<T2>(v.annotation, labels, bgr2rgb);
+                            labels = impl::split_copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
                             break;
                         case TASK_PIXEL_CLASSIFICATION:
                             labels = impl::onehot_encode<T2>(v.annotation, labels, onehot);

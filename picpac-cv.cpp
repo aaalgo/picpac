@@ -292,6 +292,21 @@ namespace picpac {
 
         if (!config.perturb) {
             *out = cached;
+            if ((config.crop_width > 0) && (config.crop_height > 0)) {
+                CHECK(out->image.cols >= config.crop_width);
+                CHECK(out->image.rows >= config.crop_height);
+                // cropping
+                int marginx = out->image.cols - config.crop_width;
+                int marginy = out->image.rows - config.crop_height;
+                cv::Rect roi(marginx / 2,
+                             marginy / 2,
+                             config.crop_width,
+                             config.crop_height);
+                out->image = out->image(roi);
+                if (out->annotation.data) {
+                    out->annotation = out->annotation(roi);
+                }
+            }
             if (annotate == ANNOTATE_AUTO) {
                 out->annotation = out->image;
             }

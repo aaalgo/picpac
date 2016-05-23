@@ -1,3 +1,4 @@
+#include <iostream>
 #include <linux/types.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -109,7 +110,6 @@ namespace picpac {
 
     FileWriter::~FileWriter () {
         off_t off = lseek(fd, 0, SEEK_CUR);
-        //std::cerr << "CLOSE: " << off << std::endl;
         close_segment();
         int r = ftruncate(fd, off);
         CHECK(r == 0);

@@ -1,8 +1,8 @@
 CC=g++
 CXX=g++
 CFLAGS = -g -O3
-CXXFLAGS = -fPIC -Ijson11 -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
-CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
+CXXFLAGS = -fPIC -Ijson11 -ICatch/include -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
+#CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
 LDFLAGS = -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog
 SERVER_LIBS = -lserved -lmagic
@@ -10,11 +10,11 @@ SERVER_LIBS = -lserved -lmagic
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
-PROGS = stress picpac-import # picpac-stream picpac-server picpac-proto picpac-stat picpac-annotate picpac-dumpvec#load-caffe load-dir test test_tr server
+PROGS = test stress picpac-import picpac-stream picpac-server picpac-proto #picpac-stat picpac-annotate picpac-dumpvec#load-caffe load-dir test test_tr server
 
 .PHONY:	all release python upload_test upload sdist
 
-all:	libpicpac.a $(PROGS) python
+all:	libpicpac.so libpicpac.a $(PROGS) python
 
 python:
 	python setup.py build
@@ -26,6 +26,9 @@ release:
 
 libpicpac.a:	$(COMMON)
 	ar rvs $@ $^
+
+libpicpac.so:	$(COMMON)
+	gcc -shared -o $@ $^
 
 %.o:	%.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -c $*.cpp

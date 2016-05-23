@@ -1,3 +1,6 @@
 [submodule "json11"]
 	path = json11
 	url = https://github.com/dropbox/json11.git
+[submodule "Catch"]
+	path = Catch
+	url = https://github.com/philsquared/Catch.git

@@ -100,6 +100,7 @@ int main(int argc, char **argv) {
     po::notify(vm); 
 
     if (vm.count("help") || input_path.empty() || output_path.empty()) {
+        cerr << "Usage:  picpac-import [options] <input> <output>" << endl;
         cerr << desc;
         cerr << endl;
         cerr << "Formats:" << endl
