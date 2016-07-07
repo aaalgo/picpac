@@ -37,6 +37,7 @@ namespace picpac {
     class Shape {
     public:
         virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
+        virtual void bbox (cv::Rect_<float> *) const = 0;
         static std::shared_ptr<Shape> create (Json const &geo);
     };
 
@@ -57,6 +58,9 @@ namespace picpac {
             box.height = std::round(m->rows * rect.height);
             cv::rectangle(*m, box, v, thickness);
         }
+        virtual void bbox (cv::Rect_<float> *bb) const {
+            *bb = rect;
+        }
     };
 
     class Ellipse: public Shape {
@@ -73,6 +77,9 @@ namespace picpac {
                                m->rows * (rect.y + rect.height/2));
             cv::Size2f size(m->cols * rect.width, m->rows * rect.height);
             cv::ellipse(*m, cv::RotatedRect(center, size, 0), v, thickness);
+        }
+        virtual void bbox (cv::Rect_<float> *bb) const {
+            *bb = rect;
         }
     };
 
@@ -99,6 +106,26 @@ namespace picpac {
             }
             else {
                 cv::polylines(*m, &pps, &nps, 1, true, v, thickness);
+            }
+        }
+        virtual void bbox (cv::Rect_<float> *bb) const {
+            float min_x = 1, min_y = 1;
+            float max_x = 0, max_y = 0;
+            for (auto const &p: points) {
+                if (p.x < min_x) min_x = p.x;
+                if (p.y < min_y) min_y = p.y;
+                if (p.x > max_x) max_x = p.x;
+                if (p.y > max_y) max_y = p.y;
+            }
+            float area = (max_x - min_x) * (max_y - min_y);
+            if (area <= 0) {
+                *bb = cv::Rect_<float>();
+            }
+            else {
+                bb->x = min_x;
+                bb->y = min_y;
+                bb->width = max_x - min_x;
+                bb->height = max_y - min_y;
             }
         }
     };
@@ -137,6 +164,35 @@ namespace picpac {
         void draw (cv::Mat *m, cv::Scalar v, int thickness = -1) const {
             for (auto const &p: shapes) {
                 p->draw(m, v, thickness);
+            }
+        }
+
+        void  bbox (cv::Rect_<float> *bb) const {
+            float min_x = 1, min_y = 1;
+            float max_x = 0, max_y = 0;
+            for (auto const &p: shapes) {
+                cv::Rect_<float> sb;
+                p->bbox(&sb);
+                if (sb.area() <= 0) continue;
+
+                if (sb.x < min_x) min_x = sb.x;
+                if (sb.y < min_y) min_y = sb.y;
+
+                sb.x += sb.width;
+                sb.y += sb.height;
+
+                if (sb.x > max_x) max_x = sb.x;
+                if (sb.y > max_y) max_y = sb.y;
+            }
+            float area = (max_x - min_x) * (max_y - min_y);
+            if (area <= 0) {
+                *bb = cv::Rect_<float>();
+            }
+            else {
+                bb->x = min_x;
+                bb->y = min_y;
+                bb->width = max_x - min_x;
+                bb->height = max_y - min_y;
             }
         }
     };
@@ -265,6 +321,7 @@ namespace picpac {
                         cv::resize(cached.annotation, cached.annotation, cached.image.size(), 0, 0, cv::INTER_NEAREST);
                     }
                 }
+                CHECK(config.anno_min_ratio == 0) << "Not supported";
             }
             else if (annotate == ANNOTATE_JSON) {
                 cv::Mat anno;
@@ -280,15 +337,70 @@ namespace picpac {
                                  config.anno_color2,
                                  config.anno_color3);
                     a.draw(&anno, color, config.anno_thickness);
+
+                    // we might want to perturb the cropping
+                    // this might not be the perfect location either
+                    do {
+                        if (!(config.anno_min_ratio > 0)) break;
+                        if (!(anno.total() > 0)) break;
+                        cv::Rect_<float> fbb;
+                        a.bbox(&fbb);
+                        if (!(fbb.area() > 0)) break;
+                        fbb.x *= anno.cols;
+                        fbb.width *= anno.cols;
+                        fbb.y *= anno.rows;
+                        fbb.height *= anno.rows;
+
+                        float min_roi_size = anno.total() * config.anno_min_ratio;
+                        float roi_size = fbb.area();
+                        if (roi_size >= min_roi_size) break;
+                        float rate = std::sqrt(roi_size / min_roi_size);
+                        int width = std::round(anno.cols * rate);
+                        int height = std::round(anno.rows * rate);
+                        cv::Rect bbox;
+                        bbox.x = std::round(fbb.x);
+                        bbox.y = std::round(fbb.y);
+                        bbox.width = std::round(fbb.width);
+                        bbox.height = std::round(fbb.height);
+                        int dx = (width - bbox.width)/2;
+                        int dy = (height - bbox.height)/2;
+                        bbox.x -= dx;
+                        bbox.y -= dy;
+                        bbox.width = width;
+                        bbox.height = height;
+                        if (bbox.x < 0) {
+                            bbox.x = 0;
+                        }
+                        if (bbox.y < 0) {
+                            bbox.y = 0;
+                        }
+                        if (bbox.x + bbox.width > anno.cols) {
+                            bbox.x = anno.cols - bbox.width;
+                        }
+                        if (bbox.y + bbox.height > anno.rows) {
+                            bbox.y = anno.rows - bbox.height;
+                        }
+                        cv::Mat im = cached.image(bbox);
+                        cv::Mat an = anno(bbox);
+                        cv::Mat rim, ran;
+                        cv::resize(im, rim, cached.image.size());
+                        cv::resize(an, ran, anno.size());
+                        cached.image = rim;
+                        anno = ran;
+                    } while (false);
+
                 }
                 cached.annotation = anno;
             }
+
+
             if (cache) {
                 // write to cache
                 lock_guard lock(*mutex);
                 *cache = cached;
             }
         } while (false);
+
 
         if (!config.perturb) {
             *out = cached;
@@ -374,6 +486,25 @@ namespace picpac {
                 out->annotation = out->annotation(roi);
             }
         }
+#if 0
+        if (out->annotation.data) {
+            // replicate positive region
+            CHECK(out->annotation.type() == CV_8UC1);
+            cv::Rect roi;
+            cv::Rect target = roi;
+            bound(out->annotation, &roi, 0.98);
+            for (unsigned i = 0; i < 10; ++i) {
+                for (;;) {
+                    target.x = rand() % (out->image.cols - roi.width);
+                    target.y = rand() % (out->image.rows - roi.height);
+                    if ((target & roi).area() == 0) break;
+                }
+                out->image(target) = out->image(roi);
+                out->annotation(target) = out->annotation(roi);
+            }
+
+        }
+#endif
         if (annotate == ANNOTATE_AUTO) {
             out->annotation = out->image;
         }

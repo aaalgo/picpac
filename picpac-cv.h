@@ -35,6 +35,7 @@
     PICPAC_CONFIG_UPDATE(C,anno_color2); \
     PICPAC_CONFIG_UPDATE(C,anno_color3); \
     PICPAC_CONFIG_UPDATE(C,anno_thickness);\
+    PICPAC_CONFIG_UPDATE(C,anno_min_ratio); \
     PICPAC_CONFIG_UPDATE(C,perturb);\
     PICPAC_CONFIG_UPDATE(C,pert_color1); \
     PICPAC_CONFIG_UPDATE(C,pert_color2); \
@@ -79,6 +80,7 @@ namespace picpac {
             float anno_color2;
             float anno_color3;
             int anno_thickness;
+            float anno_min_ratio;
                             // -1 to fill (opencv rule)
             // perturbation
             bool perturb;
@@ -101,6 +103,8 @@ namespace picpac {
                 max_size(-1),
                 resize_width(-1),
                 resize_height(-1),
+                crop_width(-1),
+                crop_height(-1),
                 decode_mode(cv::IMREAD_UNCHANGED),
                 anno_type(CV_8UC1),
                 anno_copy(false),
@@ -108,6 +112,7 @@ namespace picpac {
                 anno_color2(0),
                 anno_color3(0),
                 anno_thickness(CV_FILLED),
+                anno_min_ratio(0),
                 perturb(false),
                 pert_color1(0),
                 pert_color2(0),
