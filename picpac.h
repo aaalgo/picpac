@@ -57,6 +57,16 @@ namespace picpac {
     static constexpr unsigned DEFAULT_PRELOAD = 256;
     static constexpr unsigned DEFAULT_THREADS = 4;
 
+    // format stack trace
+    class Stack: public std::vector<char const *> {
+        static const unsigned MAX_BACKTRACE = 100;
+        char **symbols;
+    public:
+        Stack (); 
+        ~Stack (); 
+        string format (std::string const &prefix = "") const;
+    };    
+
     enum FieldType {  // Record field type
         FIELD_NONE = 0,
         /*
@@ -539,7 +549,19 @@ namespace picpac {
                     pc = &cache[task.locator.serial];
                     pm = &cache_mutex;
                 }
-                Loader::load(reader(task.locator), task.perturb, &task.value, pc, pm);
+                try {
+                    Loader::load(reader(task.locator), task.perturb, &task.value, pc, pm);
+                }
+                catch (runtime_error const &e) {
+                    LOG(ERROR) << "runtime_error: " << e.what();
+                    LOG(ERROR) << Stack().format();
+                    throw;
+                }
+                catch (...) {
+                    LOG(ERROR) << "unknown_error";
+                    LOG(ERROR) << Stack().format();
+                    throw;
+                }
                 task.status = Task::LOADED;
                 // add memory barrier
                 has_loaded.notify_one();

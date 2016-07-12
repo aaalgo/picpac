@@ -1,3 +1,4 @@
+#include <execinfo.h>
 #include <iostream>
 #include <linux/types.h>
 #include <sys/types.h>
@@ -9,6 +10,31 @@
 #include "picpac.h"
 
 namespace picpac {
+
+    Stack::Stack (): symbols(nullptr) {
+        void * stack[MAX_BACKTRACE];
+        int sz = backtrace(stack, MAX_BACKTRACE);
+        symbols = backtrace_symbols(stack, sz);
+        resize(sz);
+        for (int i = 0; i < sz; ++i) {
+            at(i) = symbols[i];
+        }
+    }   
+
+    Stack::~Stack () {
+        if (symbols) {
+            free(symbols);
+        }
+    }   
+
+    std::string Stack::format (std::string const &prefix) const {
+        std::ostringstream ss; 
+        ss << "backtrace" << std::endl;
+        for (unsigned i = 0; i < this->size(); ++i) {
+            ss << prefix << '#' << i << "  " << this->at(i) << std::endl;
+        }
+        return ss.str();
+    }   
 
 
     Record::Record (float label, fs::path const &image) {
