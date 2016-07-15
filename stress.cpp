@@ -14,27 +14,18 @@ using namespace picpac;
 int main(int argc, char **argv) {
     namespace po = boost::program_options; 
     fs::path db_path;
-    ImageStream::Config config;
     unsigned N;
-    int resize;
-    string anno;
+    BatchImageStream::Config config;
 
     po::options_description desc("Allowed options");
     desc.add_options()
     ("help,h", "produce help message.")
     ("db", po::value(&db_path), "")
     (",N", po::value(&N)->default_value(16000), "")
-    ("anno", po::value(&anno)->default_value("none"), "")
-    ("resize", po::value(&resize)->default_value(-1), "")
-    ("threads", po::value(&config.threads), "")
-    ("no-cache", "")
-    ("perturb", "")
-    ("angle", po::value(&config.pert_angle), "")
-    ("min-scale", po::value(&config.pert_min_scale), "")
-    ("max-scale", po::value(&config.pert_max_scale), "")
-    ("hflip", "")
-    ("vflip", "")
     ;
+#define PICPAC_CONFIG_UPDATE(C,p) desc.add_options()(#p, po::value(&C.p)->default_value(C.p), "")
+    PICPAC_CONFIG_UPDATE_ALL(config);
+#undef PICPAC_CONFIG_UPDATE
 
     po::positional_options_description p;
     p.add("db", 1);
@@ -48,29 +39,6 @@ int main(int argc, char **argv) {
         cerr << desc;
         return 1;
     }
-    if (vm.count("no-cache")) {
-        config.cache = false;
-    }
-    if (vm.count("perturb")) {
-        config.perturb = true;
-    }
-    if (vm.count("hflip")) config.pert_hflip = true;
-    if (vm.count("vflip")) config.pert_vflip = true;
-    //if (vm.count("gray")) gray = true;
-    if (anno == "none") {
-        config.annotate = ImageLoader::ANNOTATE_NONE;
-    }
-    else if (anno == "json") {
-        config.annotate = ImageLoader::ANNOTATE_JSON;
-    }
-    else if (anno == "image") {
-        config.annotate = ImageLoader::ANNOTATE_IMAGE;
-    }
-    else CHECK(0) << "unknown annotate: " << anno;
-    
-    if (resize > 0) {
-        config.resize_width = config.resize_height = resize;
-    }
 
     google::InitGoogleLogging(argv[0]);
     cv::setNumThreads(1);
@@ -79,7 +47,11 @@ int main(int argc, char **argv) {
 
     progress_display progress(N, cerr);
     for (unsigned i = 0; i < N; ++i) {
-        stream.next();
+        auto v(stream.next());
+        CHECK(v.image.data);
+        if (config.annotate.size()) {
+            CHECK(v.annotation.data);
+        }
         ++progress;
     }
 
