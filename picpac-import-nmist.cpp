@@ -14,7 +14,7 @@ using namespace picpac;
 void load (fs::path const &images_path,
            fs::path const &labels_path,
            fs::path const &output_path) {
-    ImageEncoder encoder(".png");
+    ImageEncoder encoder("raw");
     picpac::FileWriter write(output_path);
     fs::ifstream images(images_path, ios::binary);
     fs::ifstream labels(labels_path, ios::binary);
