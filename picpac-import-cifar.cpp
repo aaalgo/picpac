@@ -31,9 +31,10 @@ void load (string const &path, FileWriter &writer) {
     for (unsigned i = 0; i < total; ++i) {
         uint8_t label;
         is.read((char *)&label, sizeof(label));
-        is.read(channels[2].ptr<char>(0), DIM);
-        is.read(channels[1].ptr<char>(0), DIM);
-        is.read(channels[0].ptr<char>(0), DIM);
+        is.read(channels[2].ptr<char>(0), AREA);
+        is.read(channels[1].ptr<char>(0), AREA);
+        is.read(channels[0].ptr<char>(0), AREA);
+        CHECK(is);
         cv::merge(channels, image);
         encoder.encode(image, &buf);
         picpac::Record rec((int)label, buf);
