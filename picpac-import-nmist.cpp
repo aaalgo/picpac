@@ -1,8 +1,5 @@
 #include <arpa/inet.h>
-#include <boost/program_options.hpp>
 #include <boost/filesystem/fstream.hpp>
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/trim.hpp>
 #include "picpac.h"
 #include "picpac-cv.h"
 #include "picpac-util.h"
@@ -55,31 +52,8 @@ void load (fs::path const &images_path,
 }
 
 int main(int argc, char **argv) {
-    namespace po = boost::program_options; 
-
-    po::options_description desc("Allowed options");
-    desc.add_options()
-    ("help,h", "produce help message.")
-    ;
-
-    po::positional_options_description p;
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(argc, argv).
-                     options(desc).positional(p).run(), vm);
-    po::notify(vm); 
-
-    if (vm.count("help")) {
-        cerr << desc;
-        cerr << endl;
-        return 1;
-    }
-    //if (vm.count("gray")) gray = true;
-
-    google::InitGoogleLogging(argv[0]);
     load("train-images-idx3-ubyte", "train-labels-idx1-ubyte", "train.db");
     load("t10k-images-idx3-ubyte", "t10k-labels-idx1-ubyte", "test.db");
-
     return 0;
 }
 
