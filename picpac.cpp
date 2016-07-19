@@ -88,11 +88,11 @@ namespace picpac {
     }
 
 #define CHECK_OFFSET    1
-    ssize_t Record::write (int fd) const {
+    ssize_t Record::write (int fd, bool compact) const {
 #ifdef CHECK_OFFSET
         off_t off = lseek(fd, 0, SEEK_CUR);
         CHECK(off >= 0);
-        CHECK(off % RECORD_ALIGN == 0);
+        CHECK(compact || (off % RECORD_ALIGN == 0));
         off_t begin = off;
 #endif
         ssize_t written = 0;
@@ -100,7 +100,7 @@ namespace picpac {
         if (r != ssize_t(data.size())) return -1;
         written += r;
         ssize_t roundup = (written + RECORD_ALIGN - 1) / RECORD_ALIGN * RECORD_ALIGN;
-        if (roundup > written) {
+        if ((!compact) && (roundup > written)) {
             off_t x = lseek(fd, (roundup - written), SEEK_CUR);
             CHECK(x > 0);
             written = roundup;
@@ -108,7 +108,7 @@ namespace picpac {
 #ifdef CHECK_OFFSET
         off = lseek(fd, 0, SEEK_CUR);
         CHECK(off - begin == written);
-        CHECK(off % RECORD_ALIGN == 0);
+        CHECK(compact || (off % RECORD_ALIGN == 0));
 #endif
         return written;
     }
@@ -125,7 +125,43 @@ namespace picpac {
             o += meta_ptr->fields[i].size;
         }
         if (o > size) throw DataCorruption();
-        return sz;
+        data.resize(o);
+        return size;
+    }
+
+    void Record::replace (unsigned f, string const &buf, int type) {
+        CHECK(f < meta_ptr->width);
+        // calculate new size
+        size_t sz = data.size() + buf.size() - meta_ptr->fields[f].size;
+        string new_data;
+        new_data.resize(sz);
+        Meta *new_meta = reinterpret_cast<Meta *>(&new_data[0]);
+        *new_meta = *meta_ptr;
+        new_meta->fields[f].size = buf.size();
+        if (type >= 0) {
+            new_meta->fields[f].type = type;
+        }
+        // copy data
+        char *out_ptr = &new_data[sizeof(Meta)];
+        for (unsigned i = 0; i < meta_ptr->width; ++i) {
+            char *in_ptr = field_ptrs[i];
+            field_ptrs[i] = out_ptr;
+            if (i == f) {   // copy from buffer
+                std::copy(buf.begin(), buf.end(), out_ptr);
+                out_ptr += buf.size();
+            }
+            else {
+                size_t sz = meta_ptr->fields[i].size;
+                std::copy(in_ptr, in_ptr + sz, out_ptr);
+                out_ptr += sz;
+            }
+        }
+        CHECK(out_ptr - &new_data[0] == new_data.size());
+        data.swap(new_data);
+        meta_ptr = new_meta;
+        CHECK((meta_ptr == reinterpret_cast<Meta *>(&data[0]))
+              && (field_ptrs[0] == &data[sizeof(Meta)]))
+                << "C++ string::swap is not preserving memory";
     }
 
     FileWriter::FileWriter (fs::path const &path, int flags_): flags(flags_) {
@@ -145,7 +181,7 @@ namespace picpac {
     void FileWriter::open_segment () {
         seg_off = lseek(fd, 0, SEEK_CUR);
         CHECK(seg_off >= 0);
-        CHECK(seg_off % RECORD_ALIGN == 0);
+        CHECK(compact() || (seg_off % RECORD_ALIGN == 0));
         seg.init();
         ssize_t r = write(fd, reinterpret_cast<char const *>(&seg), sizeof(seg));
         CHECK_EQ(r, sizeof(seg));
@@ -155,7 +191,7 @@ namespace picpac {
     void FileWriter::close_segment () {
         off_t off = lseek(fd, 0, SEEK_CUR);
         CHECK(off >= 0);
-        CHECK(off % RECORD_ALIGN == 0);
+        CHECK(compact() || (off % RECORD_ALIGN == 0));
         seg.link = off;
         ssize_t r = pwrite(fd, reinterpret_cast<char const *>(&seg), sizeof(seg), seg_off);
         CHECK_EQ(r, sizeof(seg));
@@ -166,7 +202,7 @@ namespace picpac {
             close_segment();
             open_segment();
         }
-        ssize_t sz = r.write(fd);
+        ssize_t sz = r.write(fd, compact());
         CHECK(sz > 0);
         ++seg.size;
         seg.groups[next] = (flags & INDEX_LABEL2) ? r.meta().label2 : r.meta().label;

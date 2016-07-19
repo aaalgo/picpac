@@ -53,6 +53,9 @@
     PICPAC_CONFIG_UPDATE(C,pad);\
     PICPAC_CONFIG_UPDATE(C,bgr2rgb);
 
+namespace json11 {
+    class Json;
+}
 
 namespace picpac {
 
@@ -439,6 +442,7 @@ namespace picpac {
         }
     };
 
+    cv::Mat decode_buffer (const_buffer, int mode);
     void encode_raw (cv::Mat, string *);
     cv::Mat decode_raw (char const *, size_t);
 
@@ -448,7 +452,6 @@ namespace picpac {
     public:
         ImageEncoder (string const &code_ =  string()): code(code_) {
         }
-
         void encode (cv::Mat const &image, string *);
     };
 
@@ -469,5 +472,31 @@ namespace picpac {
     static inline float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
         return LimitSize(input, -1, max_size, output);
     }
+
+    class Shape {
+        string _type;
+    public:
+        Shape (char const *t): _type(t) {}
+        virtual ~Shape () {}
+        virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
+        virtual void bbox (cv::Rect_<float> *) const = 0;
+        virtual void zoom (cv::Rect_<float> const &) = 0;
+        virtual void dump (json11::Json *) const = 0;
+        string const &type () const {
+            return _type;
+        }
+        virtual std::shared_ptr<Shape> clone () const = 0;
+        static std::shared_ptr<Shape> create (json11::Json const &geo);
+    };
+
+    struct Annotation {
+        vector<std::shared_ptr<Shape>> shapes;
+        Annotation () {}
+        Annotation (string const &txt);
+        void dump (string *) const;
+        void draw (cv::Mat *m, cv::Scalar v, int thickness = -1) const;
+        void bbox (cv::Rect_<float> *bb) const;
+        void zoom (cv::Rect_<float> const &bb);
+    };
 }
 

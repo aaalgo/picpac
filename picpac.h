@@ -27,7 +27,6 @@ namespace picpac {
     typedef std::lock_guard<std::mutex> lock_guard;
     typedef std::unique_lock<std::mutex> unique_lock;
 
-
     namespace fs = boost::filesystem;
 
     /// Static coded maximal number of fields per record
@@ -182,7 +181,7 @@ namespace picpac {
             return *this;
         }
 
-        ssize_t write (int fd) const;
+        ssize_t write (int fd, bool compact) const;
         ssize_t read (int fd, off_t off, size_t size);
         /// Construct an empty record, for future read from disk.
         Record () {}
@@ -202,6 +201,11 @@ namespace picpac {
         /// Return number fields.
         unsigned size () const { return meta_ptr->width; }
 
+        // replace existing field to buf
+        // if type >= 0, type value is also replaced
+        // because a record is compactly stored, replacing a field
+        // needs to reallocate the storage and copy the existing data over
+        void replace (unsigned f, string const &buf, int type = -1);
         /// Get field buffer.
         const_buffer field (unsigned f) const {
             CHECK(f < meta_ptr->width);
@@ -257,10 +261,14 @@ namespace picpac {
         void open_segment ();
         // write the meta data of last segment to file
         void close_segment ();
+        bool compact () const {
+            return !!(flags & COMPACT);
+        }
     public:
         enum {
             INDEX_LABEL2 = 1,   // use "label" by default
                                 // this makes segment header store label2
+            COMPACT = 2
         };
         FileWriter (fs::path const &path, int flags_ = 0);
         ~FileWriter ();

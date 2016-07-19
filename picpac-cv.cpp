@@ -34,21 +34,29 @@ namespace picpac {
     }
 
 
-    class Shape {
-    public:
-        virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
-        virtual void bbox (cv::Rect_<float> *) const = 0;
-        static std::shared_ptr<Shape> create (Json const &geo);
-    };
-
     class Box: public Shape {
+    protected:
         cv::Rect_<float> rect;
     public:
-        Box (Json const &geo) {
+        Box (Json const &geo, char const *t = "rect"): Shape(t) {
             rect.x = geo["x"].number_value();
             rect.y = geo["y"].number_value();
             rect.width = geo["width"].number_value();
             rect.height = geo["height"].number_value();
+        }
+        virtual void dump (Json *json) const {
+            *json = Json::object {
+                {"type", type()},
+                {"geometry", Json::object{
+                                      {"x", rect.x},
+                                      {"y", rect.y},
+                                      {"width", rect.width},
+                                      {"height", rect.height}
+                                   }}
+            };
+        }
+        virtual std::shared_ptr<Shape> clone () const {
+            return std::shared_ptr<Shape>(new Box(*this));
         }
         virtual void draw (cv::Mat *m, cv::Scalar v, int thickness) const {
             cv::Rect box;
@@ -61,16 +69,22 @@ namespace picpac {
         virtual void bbox (cv::Rect_<float> *bb) const {
             *bb = rect;
         }
+        virtual void zoom (cv::Rect_<float> const &bb) {
+            rect.x -= bb.x;
+            rect.y -= bb.y;
+            rect.x /= bb.width;
+            rect.width /= bb.width;
+            rect.y /= bb.height;
+            rect.height /= bb.height;
+        }
     };
 
-    class Ellipse: public Shape {
-        cv::Rect_<float> rect;
+    class Ellipse: public Box {
     public:
-        Ellipse (Json const &geo) {
-            rect.x = geo["x"].number_value();
-            rect.y = geo["y"].number_value();
-            rect.width = geo["width"].number_value();
-            rect.height = geo["height"].number_value();
+        Ellipse (Json const &geo): Box(geo, "ellipse") {
+        }
+        virtual std::shared_ptr<Shape> clone () const {
+            return std::shared_ptr<Shape>(new Ellipse(*this));
         }
         virtual void draw (cv::Mat *m, cv::Scalar v, int thickness) const {
             cv::Point2f center(m->cols * (rect.x + rect.width/2),
@@ -78,18 +92,28 @@ namespace picpac {
             cv::Size2f size(m->cols * rect.width, m->rows * rect.height);
             cv::ellipse(*m, cv::RotatedRect(center, size, 0), v, thickness);
         }
-        virtual void bbox (cv::Rect_<float> *bb) const {
-            *bb = rect;
-        }
     };
 
     class Poly: public Shape {
         vector<cv::Point2f> points;
     public:
-        Poly (Json const &geo) {
+        Poly (Json const &geo): Shape("polygon") {
             for (auto const &p: geo["points"].array_items()) {
                 points.emplace_back(p["x"].number_value(), p["y"].number_value());
             }
+        }
+        virtual void dump (Json *json) const {
+            vector<Json> pts;
+            for (auto const &p: points) {
+                pts.emplace_back(Json::object{{"x", p.x}, {"y", p.y}});
+            }
+            *json = Json::object {
+                {"type", type()},
+                {"geometry", Json::object{{"points", pts}}}
+            };
+        }
+        virtual std::shared_ptr<Shape> clone () const {
+            return std::shared_ptr<Poly>(new Poly(*this));
         }
         virtual void draw (cv::Mat *m, cv::Scalar v, int thickness) const {
             vector<cv::Point> ps(points.size());
@@ -128,6 +152,14 @@ namespace picpac {
                 bb->height = max_y - min_y;
             }
         }
+        virtual void zoom (cv::Rect_<float> const &bb) {
+            for (auto &p: points) {
+                p.x -= bb.x;
+                p.y -= bb.y;
+                p.x /= bb.width;
+                p.y /= bb.height;
+            }
+        }
     };
 
     std::shared_ptr<Shape> Shape::create (Json const &geo) {
@@ -145,57 +177,68 @@ namespace picpac {
         return 0;
     }
 
-    class Annotation {
-        vector<std::shared_ptr<Shape>> shapes;
-    public:
-        Annotation () {}
-        Annotation (string const &txt) {
-            string err;
-            Json json = Json::parse(txt, err);
-            if (err.size()) {
-                LOG(ERROR) << "Bad json: " << err << " (" << txt << ")";
-                return;
-            }
-            for (auto const &x: json["shapes"].array_items()) {
-                shapes.emplace_back(Shape::create(x));
-            }
+    Annotation::Annotation (string const &txt) {
+        string err;
+        Json json = Json::parse(txt, err);
+        if (err.size()) {
+            LOG(ERROR) << "Bad json: " << err << " (" << txt << ")";
+            return;
         }
-
-        void draw (cv::Mat *m, cv::Scalar v, int thickness = -1) const {
-            for (auto const &p: shapes) {
-                p->draw(m, v, thickness);
-            }
+        for (auto const &x: json["shapes"].array_items()) {
+            shapes.emplace_back(Shape::create(x));
         }
+    }
 
-        void  bbox (cv::Rect_<float> *bb) const {
-            float min_x = 1, min_y = 1;
-            float max_x = 0, max_y = 0;
-            for (auto const &p: shapes) {
-                cv::Rect_<float> sb;
-                p->bbox(&sb);
-                if (sb.area() <= 0) continue;
-
-                if (sb.x < min_x) min_x = sb.x;
-                if (sb.y < min_y) min_y = sb.y;
-
-                sb.x += sb.width;
-                sb.y += sb.height;
-
-                if (sb.x > max_x) max_x = sb.x;
-                if (sb.y > max_y) max_y = sb.y;
-            }
-            float area = (max_x - min_x) * (max_y - min_y);
-            if (area <= 0) {
-                *bb = cv::Rect_<float>();
-            }
-            else {
-                bb->x = min_x;
-                bb->y = min_y;
-                bb->width = max_x - min_x;
-                bb->height = max_y - min_y;
-            }
+    void Annotation::dump (string *str) const {
+        vector<Json> ss;
+        for (auto const &p: shapes) {
+            Json json;
+            p->dump(&json);
+            ss.emplace_back(std::move(json));
         }
-    };
+        Json json = Json::object {{"shapes", ss}};
+        *str = json.dump();
+    }
+
+    void Annotation::draw (cv::Mat *m, cv::Scalar v, int thickness) const {
+        for (auto const &p: shapes) {
+            p->draw(m, v, thickness);
+        }
+    }
+
+    void  Annotation::bbox (cv::Rect_<float> *bb) const { float min_x = 1, min_y = 1;
+        float max_x = 0, max_y = 0;
+        for (auto const &p: shapes) {
+            cv::Rect_<float> sb;
+            p->bbox(&sb);
+            if (sb.area() <= 0) continue;
+
+            if (sb.x < min_x) min_x = sb.x;
+            if (sb.y < min_y) min_y = sb.y;
+
+            sb.x += sb.width;
+            sb.y += sb.height;
+
+            if (sb.x > max_x) max_x = sb.x;
+            if (sb.y > max_y) max_y = sb.y;
+        }
+        float area = (max_x - min_x) * (max_y - min_y);
+        if (area <= 0) {
+            *bb = cv::Rect_<float>();
+        }
+        else {
+            bb->x = min_x;
+            bb->y = min_y;
+            bb->width = max_x - min_x;
+            bb->height = max_y - min_y;
+        }
+    }
+
+    void Annotation::zoom (cv::Rect_<float> const &bb) {
+        for (auto &p: shapes) {
+            p->zoom(bb);
+        }
+    }
 
     // for visualization only!!!
     void spectrogram_to_gray (cv::Mat m, cv::Mat *gray) {
@@ -261,14 +304,7 @@ namespace picpac {
             rr(&r); // disk access
             cached.label = r.meta().label;
             //CHECK(r.size() >= (annotate ? 2 : 1));
-            auto imbuf = r.field(0);
-            cached.image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
-                                const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
-                                config.decode_mode);
-            if (!cached.image.data) {
-                cached.image = decode_raw(boost::asio::buffer_cast<char const *>(imbuf),
-                                          boost::asio::buffer_size(imbuf));
-            }
+            cached.image = decode_buffer(r.field(0), config.decode_mode);
             if ((config.channels > 0) && config.channels != cached.image.channels()) {
                 cv::Mat tmp;
                 if (cached.image.channels() == 3 && config.channels == 1) {
@@ -605,5 +641,18 @@ namespace picpac {
         }
         return m;
     }
+
+    cv::Mat decode_buffer (const_buffer imbuf, int mode) {
+        cv::Mat image = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(imbuf), CV_8U,
+                        const_cast<void *>(boost::asio::buffer_cast<void const *>(imbuf))),
+                        mode);
+        if (!image.data) {
+            image = decode_raw(boost::asio::buffer_cast<char const *>(imbuf),
+                        boost::asio::buffer_size(imbuf));
+        }
+        return image;
+    }
+
+
 }
 
