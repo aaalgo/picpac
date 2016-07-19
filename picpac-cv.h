@@ -442,7 +442,7 @@ namespace picpac {
         }
     };
 
-    cv::Mat decode_buffer (const_buffer, int mode);
+    cv::Mat decode_buffer (const_buffer, int mode = -1);
     void encode_raw (cv::Mat, string *);
     cv::Mat decode_raw (char const *, size_t);
 

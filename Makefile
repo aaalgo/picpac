@@ -10,7 +10,7 @@ SERVER_LIBS = -lserved -lmagic
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
-PROGS = picpac-dupe picpac-import-cifar picpac-import-nmist test stress picpac-import picpac-stream picpac-server picpac-proto picpac-roi-scale #picpac-stat picpac-annotate picpac-dumpvec#load-caffe load-dir test test_tr server
+PROGS = picpac-split-region picpac-dupe picpac-import-cifar picpac-import-nmist test stress picpac-import picpac-stream picpac-server picpac-proto picpac-roi-scale #picpac-stat picpac-annotate picpac-dumpvec#load-caffe load-dir test test_tr server
 
 .PHONY:	all release python upload_test upload sdist
 

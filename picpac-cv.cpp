@@ -109,7 +109,7 @@ namespace picpac {
             }
             *json = Json::object {
                 {"type", type()},
-                {"geometry", Json::object{{"points", pts}}}
+                {"geometry", Json::object{{"points", std::move(pts)}}}
             };
         }
         virtual std::shared_ptr<Shape> clone () const {
@@ -192,11 +192,10 @@ namespace picpac {
     void Annotation::dump (string *str) const {
         vector<Json> ss;
         for (auto const &p: shapes) {
-            Json json;
-            p->dump(&json);
-            ss.emplace_back(std::move(json));
+            ss.emplace_back();
+            p->dump(&ss.back());
         }
-        Json json = Json::object {{"shapes", ss}};
+        Json json = Json::object {{"shapes", std::move(ss)}};
         *str = json.dump();
     }
 

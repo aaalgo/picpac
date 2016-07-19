@@ -321,6 +321,14 @@ namespace picpac {
             if (!(i < index.size())) throw std::out_of_range("");
             FileReader::read(index[i], r);
         }
+        void loop (std::function<void(Record const &)> cb) {
+            ping(&index);
+            Record rec;
+            for (auto const &l: index) {
+                FileReader::read(l, &rec);
+                cb(rec);
+            }
+        }
     };
 
     /// End of Stream exception, thrown when no more data is loaded
