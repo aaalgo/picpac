@@ -322,7 +322,6 @@ namespace picpac {
             FileReader::read(index[i], r);
         }
         void loop (std::function<void(Record const &)> cb) {
-            ping(&index);
             Record rec;
             for (auto const &l: index) {
                 FileReader::read(l, &rec);

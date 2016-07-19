@@ -16,6 +16,7 @@ class Splitter {
 public:
     struct Config {
         string path;
+        string bg_path;
         int size;
         int width; 
         int height; 
@@ -28,11 +29,21 @@ private:
     ba::accumulator_set<double, ba::stats<ba::tag::mean, ba::tag::min, ba::tag::max, ba::tag::variance > > acc;
     ImageEncoder encoder;
     FileWriter db;
+    FileWriter *bg;
 public:
-    Splitter (Config const &c): config(c), encoder(".jpg"), db(config.path) {
+    Splitter (Config const &c): config(c), encoder(".jpg"), db(config.path), bg(nullptr) {
+        if (config.bg_path.size()) {
+            bg = new FileWriter(config.bg_path);
+        }
+    }
+    ~Splitter () {
+        delete bg;
     }
     void add (Record const &rec) {
-        if (rec.meta().width < 2) {
+        if ((rec.meta().width < 2) || (rec.meta().fields[1].size == 0)) {
+            if (bg) {
+                bg->append(rec);
+            }
             return;
         }
         cv::Mat image = decode_buffer(rec.field(0), -1);
@@ -98,14 +109,11 @@ public:
                           1.0 * roi.height / scaled.rows);
             cv::Mat out = scaled(roi);
             Annotation anno_out;
-            cout << zoom.x << ' ' << zoom.y << ' ' << zoom.width << ' ' << zoom.height << ' ' << scaled.cols << ' ' << scaled.rows << endl;
             anno_out.shapes.push_back(shape->clone());
             anno_out.dump(&f1);
-            cout << f1 << endl;
             anno_out.zoom(zoom);
             encoder.encode(out, &f0);
             anno_out.dump(&f1);
-            cout << f1 << endl;
             Record rec(1, f0, f1);
             db.append(rec);
         }
@@ -122,12 +130,14 @@ int main(int argc, char const* argv[]) {
         ("help,h", "produce help message.")
         ("input", po::value(&input_path), "")
         ("output", po::value(&config.path), "")
+        ("bg", po::value(&config.bg_path), "")
         ("no-scale", po::value(&config.no_scale), "")
         ;
 
     po::positional_options_description p;
     p.add("input", 1);
     p.add("output", 1);
+    p.add("bg", 1);
 
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv).
