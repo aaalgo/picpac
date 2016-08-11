@@ -37,6 +37,9 @@ public:
         }
     }
     ~Splitter () {
+        cout << "min: " << ba::min(acc) << endl;
+        cout << "mean: " << ba::mean(acc) << endl;
+        cout << "max: " << ba::max(acc) << endl;
         delete bg;
     }
     void add (Record const &rec) {
@@ -46,16 +49,27 @@ public:
             }
             return;
         }
-        cv::Mat image = decode_buffer(rec.field(0), -1);
         Annotation anno(rec.field_string(1));
+        if (anno.shapes.size() == 0) {
+            if (bg) {
+                bg->append(rec);
+            }
+            return;
+        }
+        cv::Mat image = decode_buffer(rec.field(0), -1);
+        cv::Mat image_bg;
+        if (bg) image_bg = image.clone();
         // TODO: add support for multiple bounding boxes
-        CHECK(anno.shapes.size() == 1);
+        //CHECK(anno.shapes.size() == 1);
         string f0;
         string f1;
         for (unsigned i = 0; i < anno.shapes.size(); ++i) {
             auto shape = anno.shapes[i];
             cv::Rect_<float> bb;
             shape->bbox(&bb);
+            if (bg) {
+                shape->draw(&image_bg, cv::Scalar(0,0,0), CV_FILLED);
+            }
             float scale = config.size / std::sqrt(bb.width * bb.height * image.rows * image.cols);
             acc(scale);
             cv::Mat scaled;
@@ -109,13 +123,26 @@ public:
                           1.0 * roi.height / scaled.rows);
             cv::Mat out = scaled(roi);
             Annotation anno_out;
-            anno_out.shapes.push_back(shape->clone());
+            for (unsigned j = 0; j < anno.shapes.size(); ++j) {
+                auto shapex = anno.shapes[j];
+                cv::Rect_<float> bbx;
+                shapex->bbox(&bbx);
+                cv::Rect_<float> sect = bbx & zoom;
+                if (sect.area() > 0) {
+                    anno_out.shapes.push_back(shapex->clone());
+                }
+            }
             anno_out.dump(&f1);
             anno_out.zoom(zoom);
             encoder.encode(out, &f0);
             anno_out.dump(&f1);
             Record rec(1, f0, f1);
             db.append(rec);
+        }
+        if (bg) {
+            encoder.encode(image_bg, &f0);
+            Record rec(0, f0);
+            bg->append(rec);
         }
     }
 };
@@ -132,6 +159,8 @@ int main(int argc, char const* argv[]) {
         ("output", po::value(&config.path), "")
         ("bg", po::value(&config.bg_path), "")
         ("no-scale", po::value(&config.no_scale), "")
+        ("width", po::value(&config.width), "")
+        ("height", po::value(&config.height), "")
         ;
 
     po::positional_options_description p;

@@ -1,3 +1,4 @@
+#include <set>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/program_options.hpp>
 #include "picpac-cv.h"
@@ -11,6 +12,7 @@ int main(int argc, char const* argv[]) {
     float scale;
     fs::path db_path;
     fs::path dir_path;
+    vector<int> picks;
 
     namespace po = boost::program_options;
     po::options_description desc("Allowed options");
@@ -20,6 +22,7 @@ int main(int argc, char const* argv[]) {
         ("scale", po::value(&scale)->default_value(1), "")
         ("db", po::value(&db_path), "")
         ("dir", po::value(&dir_path), "")
+        ("pick,p", po::value(&picks), "pick label")
         ;
 #define PICPAC_CONFIG_UPDATE(C,p) desc.add_options()(#p, po::value(&C.p)->default_value(C.p), "")
     PICPAC_CONFIG_UPDATE_ALL(config);
@@ -46,9 +49,13 @@ int main(int argc, char const* argv[]) {
     fs::ofstream index(dir_path/"index.html");
     int c = 0;
     index << "<html><body><table><tr><th>label</th><th>image</th></tr>" << endl;
-    for (unsigned i = 0; i < max; ++i) {
+    set<int> picked(picks.begin(), picks.end());
+    for (unsigned i = 0; c < max; ++i) {
         try {
             ImageStream::Value v(db.next());
+            if (picks.size()) {
+                if (picked.count(int(v.label)) == 0) continue;
+            }
             index << "<tr><td>" << v.label << "</td><td><img src='" << c << ".jpg'></img></td>";
             fs::path ip = dir_path / (lexical_cast<string>(c) + ".jpg");
             if (scale != 1) {

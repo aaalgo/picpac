@@ -465,19 +465,33 @@ namespace picpac {
         cv::Mat image = cached.image, anno = cached.annotation;
         
         //TODO: scale might break min and/or max restriction
-        cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, p.scale);
-        {
-            cv::Mat tmp;
-            cv::warpAffine(image, tmp, rot, image.size(), cv::INTER_LINEAR, config.pert_border);
-            //cv::resize(tmp, tmp, cv::Size(), p.scale, p.scale);
-            image = tmp;
-        }
+        if (p.angle != 0) {
+            cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, p.scale);
+            {
+                cv::Mat tmp;
+                cv::warpAffine(image, tmp, rot, image.size(), cv::INTER_LINEAR, config.pert_border);
+                //cv::resize(tmp, tmp, cv::Size(), p.scale, p.scale);
+                image = tmp;
+            }
 
-        if (cached.annotation.data) {
-            //cv::resize(anno, anno, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
-            cv::Mat tmp;
-            cv::warpAffine(anno, tmp, rot, anno.size(), cv::INTER_NEAREST, config.pert_border); // cannot interpolate labels
-            anno = tmp;
+            if (cached.annotation.data) {
+                //cv::resize(anno, anno, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
+                cv::Mat tmp;
+                cv::warpAffine(anno, tmp, rot, anno.size(), cv::INTER_NEAREST, config.pert_border); // cannot interpolate labels
+                anno = tmp;
+            }
+        }
+        else if (p.scale != 0) {
+            {
+                cv::Mat tmp;
+                cv::resize(image, tmp, cv::Size(), p.scale, p.scale);
+                image = tmp;
+            }
+            if (cached.annotation.data) {
+                cv::Mat tmp;
+                cv::resize(anno, tmp, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
+                anno = tmp;
+            }
         }
 
         image += p.color;
