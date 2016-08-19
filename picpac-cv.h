@@ -249,42 +249,101 @@ namespace picpac {
             return nullptr;
         }
 
+        template <typename Tfrom = uint8_t, typename Tto = float>
+        Tto *copy_helper (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
+            CHECK(!bgr2rgb);
+            unsigned off = 0;
+            for (int i = 0; i < image.rows; ++i) {
+                Tfrom const *line = image.ptr<Tfrom const>(i);
+                for (int j = 0; j < image.cols; ++j) {
+                    buffer[off++] = (*line++) - mean[0];
+                    if (image.channels() > 1) {
+                        buffer[off++] = (*line++) - mean[1];
+                    }
+                    if (image.channels() > 2) {
+                        buffer[off++] = (*line++) - mean[2];
+                    }
+                }
+            }
+            CHECK(off == image.total() * image.channels());
+            return buffer + image.channels() * image.total();
+        }
+
+        template <typename Tto = float>
+        Tto *copy (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
+            CHECK(!bgr2rgb) << "Not supported";
+            int depth = image.depth();
+            int ch = image.channels();
+            CHECK((ch >= 1) && (ch <= 3));
+            switch (depth) {
+                case CV_8U: return copy_helper<uint8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_8S: return copy_helper<int8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16U: return copy_helper<uint16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16S: return copy_helper<int16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32S: return copy_helper<int32_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32F: return copy_helper<float, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_64F: return copy_helper<double, Tto>(image, buffer, mean, bgr2rgb);
+            }
+            CHECK(0) << "Mat type not supported.";
+            return nullptr;
+        }
+
         
         template <typename Tfrom, typename Tto = float>
-        Tto *onehot_helper (cv::Mat image, Tto *buffer, unsigned onehot) {
+        Tto *onehot_helper (cv::Mat image, Tto *buffer, unsigned onehot, bool cf) {
             size_t ch_size = image.total();
             size_t total_size = ch_size * onehot;
             Tto *buffer_end = buffer + total_size;
             std::fill(buffer, buffer_end, 0);
             int off = 0;
-            for (int i = 0; i < image.rows; ++i) {
-                Tfrom const *row = image.ptr<Tfrom const>(i);
-                for (int j = 0; j < image.cols; ++j) {
-                    Tfrom v = row[j];
-                    unsigned c(v);
-                    CHECK(c == v);
-                    CHECK(c <= MAX_CATEGORIES);
-                    Tto *plane = buffer + c * ch_size;
-                    plane[off] = 1;
-                    ++off;
+            if (cf) { // channel comes first
+                for (int i = 0; i < image.rows; ++i) {
+                    Tfrom const *row = image.ptr<Tfrom const>(i);
+                    for (int j = 0; j < image.cols; ++j) {
+                        Tfrom v = row[j];
+                        unsigned c(v);
+                        CHECK(c == v);
+                        CHECK(c <= MAX_CATEGORIES);
+                        if (c < ch_size) {
+                            Tto *plane = buffer + c * ch_size;
+                            plane[off] = 1;
+                        }
+                        ++off;
+                    }
+                }
+            }
+            else { // channel comes last
+                Tto *o = buffer;
+                for (int i = 0; i < image.rows; ++i) {
+                    Tfrom const *row = image.ptr<Tfrom const>(i);
+                    for (int j = 0; j < image.cols; ++j) {
+                        Tfrom v = row[j];
+                        unsigned c(v);
+                        CHECK(c == v);
+                        CHECK(c <= MAX_CATEGORIES);
+                        if (c < ch_size) {
+                            o[c] = 1;
+                        }
+                        o += ch_size;
+                    }
                 }
             }
             return buffer_end;
         }
 
         template <typename Tto = float>
-        Tto *onehot_encode (cv::Mat image, Tto *buffer, unsigned onehot) {
+        Tto *onehot_encode (cv::Mat image, Tto *buffer, unsigned onehot, bool cf) {
             int depth = image.depth();
             int ch = image.channels();
             CHECK(ch == 1);
             switch (depth) {
-                case CV_8U: return onehot_helper<uint8_t, Tto>(image, buffer, onehot);
-                case CV_8S: return onehot_helper<int8_t, Tto>(image, buffer, onehot);
-                case CV_16U: return onehot_helper<uint16_t, Tto>(image, buffer, onehot);
-                case CV_16S: return onehot_helper<int16_t, Tto>(image, buffer, onehot);
-                case CV_32S: return onehot_helper<int32_t, Tto>(image, buffer, onehot);
-                case CV_32F: return onehot_helper<float, Tto>(image, buffer, onehot);
-                case CV_64F: return onehot_helper<double, Tto>(image, buffer, onehot);
+                case CV_8U: return onehot_helper<uint8_t, Tto>(image, buffer, onehot, cf);
+                case CV_8S: return onehot_helper<int8_t, Tto>(image, buffer, onehot, cf);
+                case CV_16U: return onehot_helper<uint16_t, Tto>(image, buffer, onehot, cf);
+                case CV_16S: return onehot_helper<int16_t, Tto>(image, buffer, onehot, cf);
+                case CV_32S: return onehot_helper<int32_t, Tto>(image, buffer, onehot, cf);
+                case CV_32F: return onehot_helper<float, Tto>(image, buffer, onehot, cf);
+                case CV_64F: return onehot_helper<double, Tto>(image, buffer, onehot, cf);
             }
             CHECK(0) << "Mat type not supported.";
             return nullptr;
@@ -309,6 +368,7 @@ namespace picpac {
         bool pad;
         bool bgr2rgb;
         int task;
+        bool channel_first;
 
     public:
         struct Config: public ImageStream::Config {
@@ -319,11 +379,12 @@ namespace picpac {
             unsigned batch;
             bool pad;
             bool bgr2rgb;
+            bool channel_first;
             Config ():
                 mean_color1(0),
                 mean_color2(0),
                 mean_color3(0),
-                onehot(0), batch(1), pad(false), bgr2rgb(false) {
+                onehot(0), batch(1), pad(false), bgr2rgb(false), channel_first(true) {
             }
         };
 
@@ -332,7 +393,7 @@ namespace picpac {
             label_mean(0,0,0,0),
             mean(cv::Scalar(c.mean_color1, c.mean_color2, c.mean_color3)),
             onehot(c.onehot),
-            batch(c.batch), pad(c.pad), bgr2rgb(c.bgr2rgb) {
+            batch(c.batch), pad(c.pad), bgr2rgb(c.bgr2rgb), channel_first(c.channel_first) {
             ImageStream::Value &v(ImageStream::peek());
             if (!v.annotation.data) {
                 if (onehot > 0) {
@@ -358,13 +419,20 @@ namespace picpac {
 
         template <typename T=unsigned>
         void next_shape (vector<T> *images_shape,
-                         vector<T> *labels_shape) {
+                         vector<T> *labels_shape, bool channel_first = true) {
             Value &next = ImageStream::peek();
             images_shape->clear();
             images_shape->push_back(batch);
-            images_shape->push_back(next.image.channels());
-            images_shape->push_back(next.image.rows);
-            images_shape->push_back(next.image.cols);
+            if (channel_first) {
+                images_shape->push_back(next.image.channels());
+                images_shape->push_back(next.image.rows);
+                images_shape->push_back(next.image.cols);
+            }
+            else {
+                images_shape->push_back(next.image.rows);
+                images_shape->push_back(next.image.cols);
+                images_shape->push_back(next.image.channels());
+            }
 
             labels_shape->clear();
             labels_shape->push_back(batch);
@@ -377,16 +445,30 @@ namespace picpac {
                     labels_shape->push_back(onehot); break;
                 case TASK_PIXEL_REGRESSION:
                     CHECK(next.annotation.data);
-                    labels_shape->push_back(next.annotation.channels());
-                    labels_shape->push_back(next.annotation.rows);
-                    labels_shape->push_back(next.annotation.cols);
+                    if (channel_first) {
+                        labels_shape->push_back(next.annotation.channels());
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                    }
+                    else {
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                        labels_shape->push_back(next.annotation.channels());
+                    }
                     break;
                 case TASK_PIXEL_CLASSIFICATION:
                     CHECK(next.annotation.data);
                     CHECK(next.annotation.channels() == 1);
-                    labels_shape->push_back(onehot);
-                    labels_shape->push_back(next.annotation.rows);
-                    labels_shape->push_back(next.annotation.cols);
+                    if (channel_first) {
+                        labels_shape->push_back(onehot);
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                    }
+                    else {
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                        labels_shape->push_back(onehot);
+                    }
                     break;
                 default: CHECK(0);
             }
@@ -408,7 +490,12 @@ namespace picpac {
                         next_shape(&ishape, &lshape);
                     }
                     Value v(next());
-                    images = impl::split_copy<T1>(v.image, images, mean, bgr2rgb);
+                    if (channel_first) {
+                        images = impl::split_copy<T1>(v.image, images, mean, bgr2rgb);
+                    }
+                    else {
+                        images = impl::copy<T1>(v.image, images, mean, bgr2rgb);
+                    }
                     switch (task) {
                         case TASK_REGRESSION:
                             *labels = v.label;
@@ -425,10 +512,15 @@ namespace picpac {
                             }
                             break;
                         case TASK_PIXEL_REGRESSION:
-                            labels = impl::split_copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
+                            if (channel_first) {
+                                labels = impl::split_copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
+                            }
+                            else {
+                                labels = impl::copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
+                            }
                             break;
                         case TASK_PIXEL_CLASSIFICATION:
-                            labels = impl::onehot_encode<T2>(v.annotation, labels, onehot);
+                            labels = impl::onehot_encode<T2>(v.annotation, labels, onehot, channel_first);
                             break;
                         default: CHECK(0);
                     }

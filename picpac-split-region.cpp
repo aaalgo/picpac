@@ -97,10 +97,20 @@ public:
                              bb.height * scaled.rows);
                 CHECK(roi.width > 0);
                 CHECK(roi.height > 0);
+                /*
                 CHECK(roi.width <= config.width);
                 CHECK(roi.height <= config.height);
                 dw = config.width - roi.width;
                 dh = config.height - roi.height;
+                */
+                dw = 0;
+                if (roi.width <= config.width) {
+                    dw = config.width - roi.width;
+                }
+                dh = 0;
+                if (roi.height <= config.height) {
+                    dh = config.height - roi.height;
+                }
             }
             roi.x -= dw / 2;
             roi.width += dw;
