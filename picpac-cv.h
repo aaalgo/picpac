@@ -51,7 +51,8 @@
     PICPAC_CONFIG_UPDATE(C,onehot);\
     PICPAC_CONFIG_UPDATE(C,batch);\
     PICPAC_CONFIG_UPDATE(C,pad);\
-    PICPAC_CONFIG_UPDATE(C,bgr2rgb);
+    PICPAC_CONFIG_UPDATE(C,bgr2rgb);\
+    PICPAC_CONFIG_UPDATE(C,channel_first);
 
 namespace json11 {
     class Json;
@@ -419,7 +420,7 @@ namespace picpac {
 
         template <typename T=unsigned>
         void next_shape (vector<T> *images_shape,
-                         vector<T> *labels_shape, bool channel_first = true) {
+                         vector<T> *labels_shape) {
             Value &next = ImageStream::peek();
             images_shape->clear();
             images_shape->push_back(batch);
