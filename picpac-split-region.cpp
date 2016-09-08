@@ -171,6 +171,7 @@ int main(int argc, char const* argv[]) {
         ("no-scale", po::value(&config.no_scale), "")
         ("width", po::value(&config.width), "")
         ("height", po::value(&config.height), "")
+        ("size", po::value(&config.size), "")
         ;
 
     po::positional_options_description p;
