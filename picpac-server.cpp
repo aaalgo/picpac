@@ -1,14 +1,23 @@
+#define BOOST_SPIRIT_NO_PREDEFINED_TERMINALS
 #include <chrono>
 #include <mutex>
+#include <vector>
+#include <map>
 #include <unordered_map>
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
+#include <boost/boostache/boostache.hpp>
+#include <boost/boostache/frontend/stache/grammar_def.hpp> // need to work out header only syntax
+#include <boost/boostache/stache.hpp>
+#include <boost/boostache/model/helper.hpp>
 #include <served/served.hpp>
 #include <served/plugins.hpp>
+#include <fmt/format.h>
 #include <magic.h>
 #include "picpac-cv.h"
 #include "rfc3986.h"
+#include "bfdfs/bfdfs-html.h"
 
 using namespace std;
 using namespace picpac;
@@ -20,6 +29,10 @@ public:
     no_throw (callback_type cb_): cb(cb_) {
     }
     void operator () (served::response &res, const served::request &req) {
+#if 1
+        bool ok = true;
+        cb(res, req); 
+#else
         bool ok = false;
         try {
             cb(res, req);
@@ -31,6 +44,7 @@ public:
         catch (...) {
             res.set_header("PicPacError", "unknown error");
         }
+#endif
         res.set_status(ok ? 200 : 500);
     }
 };
@@ -66,6 +80,7 @@ int main(int argc, char const* argv[]) {
         return 0;
     }
 
+    bfdfs::HTML html;
     // Create a multiplexer for handling requests
     served::multiplexer mux;
 
@@ -78,7 +93,7 @@ int main(int argc, char const* argv[]) {
 
     // GET /hello
     mux.handle("/l")
-        .get(no_throw([&db, &cookie](served::response &res, const served::request &req) {
+        .get(no_throw([&db, &html](served::response &res, const served::request &req) {
             rfc3986::Form query(req.url().query());
             rfc3986::Form trans;
             // transfer all applicable image parameters to trans
@@ -90,14 +105,19 @@ int main(int argc, char const* argv[]) {
             string ext = trans.encode(true);
             int count = query.get<int>("count", 20);
             string anno = query.get<string>("anno", "");
-            res << "<html><body><table><tr><th>Image</th></tr>";
+
+            using item_t = map<string, string>;
+            using item_list_t = vector<item_t>;
+            using images_t = map<string, item_list_t>;
+            item_list_t list;
             for (unsigned i = 0; i < count; ++i) {
                 int id = rand() % db.size();
-                res << "<tr><td><img src=\"/image?id="
-                    << lexical_cast<string>(id) << ext
-                    << "\"></img></td></tr>";
+                list.push_back({{"id", lexical_cast<string>(id)},
+                                {"ext", ext}
+                               });
             }
-            res << "</table></body></html>";
+            images_t context = {{"images", list}};
+            html.render_to_response(res, "list.html", context);
         }));
     mux.handle("/file")
         .get(no_throw([&db, &cookie](served::response &res, const served::request &req) {
@@ -141,6 +161,10 @@ int main(int argc, char const* argv[]) {
             encoder.encode(image, &buf);
             res.set_header("Content-Type", "image/jpeg");
             res.set_body(buf);
+        }));
+    mux.handle("/static/{path}")
+        .get(no_throw([&html](served::response &res, const served::request &req) {
+            html.send_to_response(res, req.params["path"]);
         }));
     mux.use_after(served::plugin::access_log);
     LOG(INFO) << "listening at " << address << ':' << port;

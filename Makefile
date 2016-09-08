@@ -1,16 +1,16 @@
 CC=g++
 CXX=g++
 CFLAGS = -g -O3
-CXXFLAGS = -fPIC -Ijson11 -ICatch/include -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
+CXXFLAGS = -fPIC -Ijson11 -ICatch/include -Iboostache/include -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
 #CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
 LDFLAGS = -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog
-SERVER_LIBS = -lserved -lmagic
+SERVER_LIBS = -lfmt -lserved -lmagic
 
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
-PROGS = picpac-unpack picpac-crop picpac-split-region picpac-dupe picpac-import-cifar picpac-import-nmist test stress picpac-import picpac-stream picpac-server picpac-proto picpac-roi-scale #picpac-stat picpac-annotate picpac-dumpvec#load-caffe load-dir test test_tr server
+PROGS = picpac-unpack picpac-crop picpac-split-region picpac-dupe picpac-import-cifar picpac-import-nmist test stress picpac-import picpac-stream picpac-proto picpac-roi-scale #picpac-stat picpac-annotate picpac-dumpvec#load-caffe load-dir test test_tr server
 
 .PHONY:	all release python upload_test upload sdist
 
@@ -39,8 +39,16 @@ json11.o:	json11/json11.cpp
 $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-picpac-server:	picpac-server.o
+picpac-server:	picpac-server.o html_static.o html_template.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) $(LDLIBS)
+	rm html_static.o html_template.o
+
+html_static.o:
+	bfdfs-load $@ html/static --name html_static
+
+html_template.o:
+	bfdfs-load $@ html/template --name html_template
+
 clean:
 	rm *.o $(PROGS)
 

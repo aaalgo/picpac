@@ -4,3 +4,9 @@
 [submodule "Catch"]
 	path = Catch
 	url = https://github.com/philsquared/Catch.git
+[submodule "bfdfs"]
+	path = bfdfs
+	url = https://github.com/aaalgo/bfdfs
+[submodule "boostache"]
+	path = boostache
+	url = https://github.com/cierelabs/boostache.git
