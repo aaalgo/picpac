@@ -1,3 +1,4 @@
+#include <iostream>
 #include <unordered_map>
 #include <boost/program_options.hpp>
 #include "picpac.h"
