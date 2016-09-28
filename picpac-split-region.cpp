@@ -13,15 +13,22 @@ using namespace picpac;
 namespace ba = boost::accumulators;
 
 class Splitter {
+
 public:
     struct Config {
         string path;
+#if 0
         string bg_path;
+#endif
         int size;
         int width; 
         int height; 
         bool no_scale;
-        Config (): size(50), width(240), height(240), no_scale(false) {
+        // for grid splitting
+        float grid_size;
+        float grid_step;
+        float grid_scale;
+        Config (): size(50), width(240), height(240), no_scale(false), grid_size(240), grid_step(200), grid_scale(1) {
         }
     };
 private:
@@ -29,47 +36,106 @@ private:
     ba::accumulator_set<double, ba::stats<ba::tag::mean, ba::tag::min, ba::tag::max, ba::tag::variance > > acc;
     ImageEncoder encoder;
     FileWriter db;
+#if 0
     FileWriter *bg;
+#endif
+    void add_roi (cv::Mat image,
+                  cv::Rect roi,
+                  Annotation const &anno) {
+        cv::Rect_<float> zoom(1.0 * roi.x / image.cols,
+                      1.0 * roi.y / image.rows,
+                      1.0 * roi.width / image.cols,
+                      1.0 * roi.height / image.rows);
+        cv::Mat out = image(roi);
+        Annotation anno_out;
+        int label = 0;
+        for (unsigned j = 0; j < anno.shapes.size(); ++j) {
+            auto shapex = anno.shapes[j];
+            cv::Rect_<float> bbx;
+            shapex->bbox(&bbx);
+            cv::Rect_<float> sect = bbx & zoom;
+            if (sect.area() > 0) {
+                anno_out.shapes.push_back(shapex->clone());
+                //label = 1;
+            }
+        }
+        string f0;
+        string f1;
+        anno_out.zoom(zoom);
+        encoder.encode(out, &f0);
+        anno_out.dump(&f1);
+        Record rec(label, f0, f1);
+        db.append(rec);
+    }
+
+    static void adjust_grid_size(int size, int *patch, int *step, int *nsteps) {
+        if (*patch >= size) {
+            *patch = size;
+            *step = size;
+            *nsteps = 1;
+            return;
+        }
+        int s_size = size - *patch;
+        int n = (s_size + *step - 1) / *step;
+        int miss = (n * (*step) - s_size) / n;
+        *nsteps = n;
+        *step -= miss;
+    }
 public:
-    Splitter (Config const &c): config(c), encoder(".jpg"), db(config.path), bg(nullptr) {
+    Splitter (Config const &c): config(c), encoder(".jpg"), db(config.path)
+#if 0
+                                , bg(nullptr) 
+#endif
+    {
+#if 0
         if (config.bg_path.size()) {
             bg = new FileWriter(config.bg_path);
         }
+#endif
     }
     ~Splitter () {
         cout << "min: " << ba::min(acc) << endl;
         cout << "mean: " << ba::mean(acc) << endl;
         cout << "max: " << ba::max(acc) << endl;
+#if 0
         delete bg;
+#endif
     }
+
     void add (Record const &rec) {
         if ((rec.meta().width < 2) || (rec.meta().fields[1].size == 0)) {
+#if 0
             if (bg) {
                 bg->append(rec);
             }
+#endif
             return;
         }
         Annotation anno(rec.field_string(1));
         if (anno.shapes.size() == 0) {
+#if 0
             if (bg) {
                 bg->append(rec);
             }
+#endif
             return;
         }
         cv::Mat image = decode_buffer(rec.field(0), -1);
+#if 0
         cv::Mat image_bg;
         if (bg) image_bg = image.clone();
+#endif
         // TODO: add support for multiple bounding boxes
         //CHECK(anno.shapes.size() == 1);
-        string f0;
-        string f1;
         for (unsigned i = 0; i < anno.shapes.size(); ++i) {
             auto shape = anno.shapes[i];
             cv::Rect_<float> bb;
             shape->bbox(&bb);
+#if 0
             if (bg) {
                 shape->draw(&image_bg, cv::Scalar(0,0,0), CV_FILLED);
             }
+#endif
             float scale = config.size / std::sqrt(bb.width * bb.height * image.rows * image.cols);
             acc(scale);
             cv::Mat scaled;
@@ -127,32 +193,52 @@ public:
 
             CHECK(scaled.cols > 0);
             CHECK(scaled.rows > 0);
-            cv::Rect_<float> zoom(1.0 * roi.x / scaled.cols,
-                          1.0 * roi.y / scaled.rows,
-                          1.0 * roi.width / scaled.cols,
-                          1.0 * roi.height / scaled.rows);
-            cv::Mat out = scaled(roi);
-            Annotation anno_out;
-            for (unsigned j = 0; j < anno.shapes.size(); ++j) {
-                auto shapex = anno.shapes[j];
-                cv::Rect_<float> bbx;
-                shapex->bbox(&bbx);
-                cv::Rect_<float> sect = bbx & zoom;
-                if (sect.area() > 0) {
-                    anno_out.shapes.push_back(shapex->clone());
-                }
-            }
-            anno_out.dump(&f1);
-            anno_out.zoom(zoom);
-            encoder.encode(out, &f0);
-            anno_out.dump(&f1);
-            Record rec(1, f0, f1);
-            db.append(rec);
+            add_roi(scaled, roi, anno);
         }
+#if 0
         if (bg) {
             encoder.encode(image_bg, &f0);
             Record rec(0, f0);
             bg->append(rec);
+        }
+#endif
+    }
+
+    void add_grid (Record const &rec) {
+        Annotation anno;
+        if ((rec.meta().width >= 2) && (rec.meta().fields[1].size > 0)) {
+            Annotation annox(rec.field_string(1));
+            anno.shapes.swap(annox.shapes);
+        }
+        cv::Mat image = decode_buffer(rec.field(0), -1);
+        if (config.grid_scale != 1) {
+            cv::Mat scaled;
+            cv::resize(image, scaled, cv::Size(), config.grid_scale, config.grid_scale);
+            image = scaled;
+        }
+        int sx = config.grid_size;  // patch size
+        int dx = config.grid_step;  // step
+        int nx;                     // # steps
+        int sy = config.grid_size;
+        int dy = config.grid_step;
+        int ny;
+        adjust_grid_size(image.rows, &sy, &dy, &ny);
+        adjust_grid_size(image.cols, &sx, &dx, &nx);
+        cv::Rect roi;
+        roi.width = sx;
+        roi.height = sy;
+        for (int y = 0; y < ny; ++y) {
+            roi.y = y * dy;
+            if (roi.y + sy > image.rows) {
+                roi.y = image.rows - sy;
+            }
+            for (int x = 0; x < nx; ++x) {
+                roi.x = x * dx;
+                if (roi.x + sx > image.cols) {
+                    roi.x = image.cols - sx;
+                }
+                add_roi(image, roi, anno);
+            }
         }
     }
 };
@@ -167,11 +253,17 @@ int main(int argc, char const* argv[]) {
         ("help,h", "produce help message.")
         ("input", po::value(&input_path), "")
         ("output", po::value(&config.path), "")
+#if 0
         ("bg", po::value(&config.bg_path), "")
+#endif
         ("no-scale", po::value(&config.no_scale), "")
         ("width", po::value(&config.width), "")
         ("height", po::value(&config.height), "")
         ("size", po::value(&config.size), "")
+        ("grid-size", po::value(&config.grid_size), "")
+        ("grid-step", po::value(&config.grid_step), "")
+        ("grid-scale", po::value(&config.grid_scale), "")
+        ("grid", "")
         ;
 
     po::positional_options_description p;
@@ -194,7 +286,12 @@ int main(int argc, char const* argv[]) {
 
     Splitter splitter(config);
     picpac::IndexedFileReader db(input_path);
-    db.loop(std::bind(&Splitter::add, &splitter, placeholders::_1));
+    if (vm.count("grid")) {
+        db.loop(std::bind(&Splitter::add_grid, &splitter, placeholders::_1));
+    }
+    else {
+        db.loop(std::bind(&Splitter::add, &splitter, placeholders::_1));
+    }
     return 0;
 }
 
