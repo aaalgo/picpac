@@ -128,6 +128,15 @@ namespace picpac {
             char *begin = reinterpret_cast<char *>(this);
             std::fill(begin, begin + sizeof(*this), 0);
         }
+
+        // only copies user info
+        void copy (Meta const &m) {
+            id = m.id;
+            label = m.label;
+            reserved1 = m.reserved1;
+            label2 = m.label2;
+            reserved2 = m.reserved2;
+        }
     };
     static_assert(sizeof(Meta) == 64, "bad Meta size");
 
