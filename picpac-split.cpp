@@ -73,7 +73,7 @@ int main(int argc, char const* argv[]) {
     fs::path path0 = output_path;
     path0 += ".0";
     fs::path path1 = output_path;
-    path0 += ".1";
+    path1 += ".1";
     Context ctx(path0, path1);
     for (auto const &input_path: input_paths) {
         picpac::IndexedFileReader db(input_path);
