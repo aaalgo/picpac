@@ -14,14 +14,26 @@ namespace ba = boost::accumulators;
 
 class Context {
     FileWriter db;
+    bool ra;
+    int label;
 public:
-    Context (fs::path const &path): db(path)
+    Context (fs::path const &path, bool ra_): db(path), ra(ra_), label(-1)
     {
     }
     ~Context () {
     }
 
-    void add (Record const &rec) {
+    void set_label (int l) {
+        label = l;
+    }
+
+    void add (Record &rec) {
+        if (label >= 0) {
+            rec.meta().label = label;
+        }
+        if (ra) {
+            rec.meta().width = 1;
+        }
         db.append(rec);
     }
 };
@@ -36,6 +48,8 @@ int main(int argc, char const* argv[]) {
         ("help,h", "produce help message.")
         ("input", po::value(&input_paths), "")
         ("output", po::value(&output_path), "")
+        ("ra", "")
+        ("la", "")
         ;
 
     po::positional_options_description p;
@@ -55,10 +69,16 @@ int main(int argc, char const* argv[]) {
         return 0;
     }
 
-    Context ctx(output_path);
+    bool ra = vm.count("ra");
+    bool la = vm.count("la");
+
+    int l = 0;
+    Context ctx(output_path, ra);
     for (auto const &input_path: input_paths) {
+        if (la) ctx.set_label(l);
         picpac::IndexedFileReader db(input_path);
         db.loop(std::bind(&Context::add, &ctx, placeholders::_1));
+        ++l;
     }
     return 0;
 }
