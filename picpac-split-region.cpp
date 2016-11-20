@@ -28,13 +28,15 @@ public:
         float grid_size;
         float grid_step;
         float grid_scale;
-        Config (): size(50), width(240), height(240), no_scale(false), grid_size(240), grid_step(200), grid_scale(1) {
+        bool image_annotation;
+        Config (): size(50), width(100), height(100), no_scale(false), grid_size(240), grid_step(200), grid_scale(1), image_annotation(false) {
         }
     };
 private:
     Config config;
     ba::accumulator_set<double, ba::stats<ba::tag::mean, ba::tag::min, ba::tag::max, ba::tag::variance > > acc;
     ImageEncoder encoder;
+    ImageEncoder anno_encoder;
     FileWriter db;
 #if 0
     FileWriter *bg;
@@ -68,6 +70,24 @@ private:
         db.append(rec);
     }
 
+    void add_roi_image_anno (cv::Mat image,
+                  cv::Rect roi,
+                  cv::Mat anno) {
+        cv::Rect_<float> zoom(1.0 * roi.x / image.cols,
+                      1.0 * roi.y / image.rows,
+                      1.0 * roi.width / image.cols,
+                      1.0 * roi.height / image.rows);
+        cv::Mat out = image(roi);
+        cv::Mat out_anno = anno(roi);
+        string f0;
+        string f1;
+        encoder.encode(out, &f0);
+        anno_encoder.encode(out_anno, &f1);
+        int label = 0;
+        Record rec(label, f0, f1);
+        db.append(rec);
+    }
+
     static void adjust_grid_size(int size, int *patch, int *step, int *nsteps) {
         if (*patch >= size) {
             *patch = size;
@@ -82,7 +102,7 @@ private:
         *step -= miss;
     }
 public:
-    Splitter (Config const &c): config(c), encoder(".jpg"), db(config.path)
+    Splitter (Config const &c): config(c), encoder(".jpg"), anno_encoder(".png"), db(config.path)
 #if 0
                                 , bg(nullptr) 
 #endif
@@ -103,6 +123,7 @@ public:
     }
 
     void add (Record const &rec) {
+        CHECK(!config.image_annotation);
         if ((rec.meta().width < 2) || (rec.meta().fields[1].size == 0)) {
 #if 0
             if (bg) {
@@ -206,15 +227,24 @@ public:
 
     void add_grid (Record const &rec) {
         Annotation anno;
-        if ((rec.meta().width >= 2) && (rec.meta().fields[1].size > 0)) {
+        if ((rec.meta().width >= 2) && (rec.meta().fields[1].size > 0) && !config.image_annotation) {
             Annotation annox(rec.field_string(1));
             anno.shapes.swap(annox.shapes);
         }
         cv::Mat image = decode_buffer(rec.field(0), -1);
+        cv::Mat anno_image;
+        if (config.image_annotation) {
+            anno_image = decode_buffer(rec.field(1), -1);
+        }
         if (config.grid_scale != 1) {
             cv::Mat scaled;
             cv::resize(image, scaled, cv::Size(), config.grid_scale, config.grid_scale);
             image = scaled;
+            if (config.image_annotation) {
+                scaled = cv::Mat();
+                cv::resize(anno_image, scaled, cv::Size(), config.grid_scale, config.grid_scale);
+                anno_image = scaled;
+            }
         }
         int sx = config.grid_size;  // patch size
         int dx = config.grid_step;  // step
@@ -237,7 +267,12 @@ public:
                 if (roi.x + sx > image.cols) {
                     roi.x = image.cols - sx;
                 }
-                add_roi(image, roi, anno);
+                if (config.image_annotation) {
+                    add_roi_image_anno(image, roi, anno_image);
+                }
+                else {
+                    add_roi(image, roi, anno);
+                }
             }
         }
     }
@@ -264,6 +299,7 @@ int main(int argc, char const* argv[]) {
         ("grid-step", po::value(&config.grid_step), "")
         ("grid-scale", po::value(&config.grid_scale), "")
         ("grid", "")
+        ("image-annotation", "")
         ;
 
     po::positional_options_description p;
@@ -283,6 +319,7 @@ int main(int argc, char const* argv[]) {
         cout << endl;
         return 0;
     }
+    if (vm.count("image-annotation")) config.image_annotation = true;
 
     Splitter splitter(config);
     picpac::IndexedFileReader db(input_path);

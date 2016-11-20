@@ -146,6 +146,8 @@ int main(int argc, char const* argv[]) {
 #define PICPAC_CONFIG_UPDATE(C,P) C.P = query.get<decltype(C.P)>(#P, C.P)
             PICPAC_CONFIG_UPDATE_ALL(conf);
 #undef PICPAC_CONFIG_UPDATE
+            float anno_factor = query.get<float>("anno_factor", 0);
+                    LOG(INFO) << "ANNO: " << anno_factor;
             ImageLoader loader(conf);
             ImageLoader::PerturbVector pv;
             int id = query.get<int>("id", rng() % db.size());
@@ -157,6 +159,9 @@ int main(int argc, char const* argv[]) {
             cv::Mat image = v.image;
             if (conf.annotate.size()) {
                 image = v.annotation;
+                if (anno_factor) {
+                    image *= anno_factor;
+                }
             }
             encoder.encode(image, &buf);
             res.set_header("Content-Type", "image/jpeg");
