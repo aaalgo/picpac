@@ -332,7 +332,7 @@ namespace picpac {
             if (!(i < index.size())) throw std::out_of_range("");
             FileReader::read(index[i], r);
         }
-        void loop (std::function<void(Record const &)> cb) {
+        void loop (std::function<void(Record &)> cb) {
             Record rec;
             for (auto const &l: index) {
                 FileReader::read(l, &rec);
