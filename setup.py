@@ -10,7 +10,7 @@ picpac = Extension('_picpac',
         depends = ['picpac.h', 'picpac-cv.h'])
 
 setup (name = 'picpac',
-       version = '0.1',
+       version = '0.2',
        url = 'https://github.com/aaalgo/picpac',
        author = 'Wei Dong',
        author_email = 'wdong@wdong.org',
