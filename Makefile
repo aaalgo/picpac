@@ -1,12 +1,20 @@
 CC=g++
 CXX=g++
+BUILD_INFO=-DPP_VERSION=\"$(shell git describe --always)\" -DPP_BUILD_ID=\"$(BUILD_ID)\" -DPP_BUILD_NUMBER=\"$(BUILD_NUMBER)\" -DPP_BUILD_TIME=\"$(shell date +%Y-%m-%dT%H:%M:%S)\"
 CFLAGS = -g -O3
-CXXFLAGS = -fPIC -Ijson11 -ICatch/include -Iboostache/include -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 
+CXXFLAGS = -fPIC -Ijson11 -ICatch/include -Iboostache/include -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
 #CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
 LDFLAGS = -fopenmp
-LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog
-SERVER_LIBS = -lfmt -lserved -lmagic
-
+LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
+SERVER_LIBS = libpicpac.a \
+       	      -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core -lopencv_hal -lIlmImf -lippicv \
+	      -lturbojpeg -ltiff -lpng -ljasper -lwebp \
+	      -lserved -lre2  \
+	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
+	      -lfmt -lglog -lgflags \
+	      -lmagic -lunwind \
+	      -lz -lrt -lcares -ldl
+ 
 HEADERS = picpac.h picpac-cv.h picpac-util.h
 COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
@@ -40,14 +48,18 @@ $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 picpac-server:	picpac-server.o html_static.o html_template.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) $(LDLIBS)
+	$(CXX) $(LDFLAGS) -static -o $@ $^ $(SERVER_LIBS) 
 	rm html_static.o html_template.o
+	objcopy --only-keep-debug $@ $@.debug
+	strip -g $@
+	cp $@ $@.bin
+	upx $@
 
 html_static.o:
-	bfdfs-load $@ html/static --name html_static
+	bfdfs/bfdfs-load $@ html/static --name html_static
 
 html_template.o:
-	bfdfs-load $@ html/template --name html_template
+	bfdfs/bfdfs-load $@ html/template --name html_template
 
 clean:
 	rm *.o $(PROGS)

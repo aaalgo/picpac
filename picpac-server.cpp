@@ -4,7 +4,6 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
-#include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
 #include <boost/boostache/boostache.hpp>
@@ -21,6 +20,8 @@
 
 using namespace std;
 using namespace picpac;
+
+char const *version = PP_VERSION "-" PP_BUILD_NUMBER "," PP_BUILD_ID "," PP_BUILD_TIME;
 
 class no_throw {
     typedef function<void(served::response &res, const served::request &req)> callback_type;
@@ -49,7 +50,15 @@ public:
     }
 };
 
+void banner () {
+    cout << "PicPac Server" << endl;
+    cout << "Version: " << version << endl;
+    cout << "https://github.com/aaalgo/picpac" << endl;
+}
+
 int main(int argc, char const* argv[]) {
+    banner();
+
     string address;
     string port;
     int threads = 1;
