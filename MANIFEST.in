@@ -1,3 +1,4 @@
 include picpac.h
 include picpac-cv.h
+include json11/json11.hpp
 

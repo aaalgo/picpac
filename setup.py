@@ -7,10 +7,10 @@ picpac = Extension('_picpac',
         libraries = ['opencv_highgui', 'opencv_core', 'boost_filesystem', 'boost_system', 'boost_python', 'glog'],
         library_dirs = ['/usr/local/lib'],
         sources = ['python-api.cpp', 'picpac.cpp', 'picpac-cv.cpp', 'json11/json11.cpp'],
-        depends = ['picpac.h', 'picpac-cv.h', 'json11/json11.hpp'])
+        depends = ['json11/json11.hpp', 'picpac.h', 'picpac-cv.h'])
 
 setup (name = 'picpac',
-       version = '0.2.1',
+       version = '0.2.2',
        url = 'https://github.com/aaalgo/picpac',
        author = 'Wei Dong',
        author_email = 'wdong@wdong.org',
