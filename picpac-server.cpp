@@ -10,10 +10,9 @@
 #include <boost/boostache/frontend/stache/grammar_def.hpp> // need to work out header only syntax
 #include <boost/boostache/stache.hpp>
 #include <boost/boostache/model/helper.hpp>
-#include <served/served.hpp>
-#include <served/plugins.hpp>
 #include <fmt/format.h>
 #include <magic.h>
+#include <server_http.hpp>
 #include "picpac-cv.h"
 #include "rfc3986.h"
 #include "bfdfs/bfdfs-html.h"
@@ -23,16 +22,19 @@ using namespace picpac;
 
 char const *version = PP_VERSION "-" PP_BUILD_NUMBER "," PP_BUILD_ID "," PP_BUILD_TIME;
 
+typedef SimpleWeb::Server<SimpleWeb::HTTP> HttpServer;
+
 class no_throw {
-    typedef function<void(served::response &res, const served::request &req)> callback_type;
+    typedef function<void(shared_ptr<HttpServer::Response>, shared_ptr<HttpServer::Request>)> callback_type;
     callback_type cb;
 public:
     no_throw (callback_type cb_): cb(cb_) {
     }
-    void operator () (served::response &res, const served::request &req) {
+    void operator () (shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
 #if 1
         bool ok = true;
         cb(res, req); 
+        cout << "OK " << req->path << endl;
 #else
         bool ok = false;
         try {
@@ -46,7 +48,7 @@ public:
             res.set_header("PicPacError", "unknown error");
         }
 #endif
-        res.set_status(ok ? 200 : 500);
+        //res.set_status(ok ? 200 : 500);
     }
 };
 
@@ -56,21 +58,30 @@ void banner () {
     cout << "https://github.com/aaalgo/picpac" << endl;
 }
 
+#define HTTP_Q "(\\?.+)?$"
+
+string http_query (string const &path) {
+    auto p = path.find('?');
+    if (p == path.npos) return "";
+    return path.substr(p+1);
+}
+
 int main(int argc, char const* argv[]) {
     banner();
 
-    string address;
-    string port;
-    int threads = 1;
+    //string address;
+    unsigned short port;
+    int threads;
     fs::path db_path;
 
     namespace po = boost::program_options;
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help,h", "produce help message.")
-        ("address", po::value(&address)->default_value("0.0.0.0"), "")
-        ("port", po::value(&port)->default_value("18888"), "")
+        //("address", po::value(&address)->default_value("0.0.0.0"), "")
+        ("port", po::value(&port)->default_value(18888), "")
         ("db", po::value(&db_path), "")
+        ("threads,t", po::value(&threads)->default_value(1), "")
         ;
 
     po::positional_options_description p;
@@ -91,7 +102,6 @@ int main(int argc, char const* argv[]) {
 
     bfdfs::HTML html;
     // Create a multiplexer for handling requests
-    served::multiplexer mux;
 
     picpac::IndexedFileReader db(db_path);
     default_random_engine rng;
@@ -100,10 +110,11 @@ int main(int argc, char const* argv[]) {
     CHECK(cookie);
     magic_load(cookie, NULL);
 
+    HttpServer server(port, threads);
     // GET /hello
-    mux.handle("/l")
-        .get(no_throw([&db, &html](served::response &res, const served::request &req) {
-            rfc3986::Form query(req.url().query());
+    server.resource["^/l" HTTP_Q]["GET"] = no_throw([&db, &html](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
+            cout << req->path << endl;
+            rfc3986::Form query(http_query(req->path));
             rfc3986::Form trans;
             // transfer all applicable image parameters to trans
             // so we can later use that for image display
@@ -126,22 +137,24 @@ int main(int argc, char const* argv[]) {
                                });
             }
             images_t context = {{"images", list}};
-            html.render_to_response(res, "list.html", context);
-        }));
-    mux.handle("/file")
-        .get(no_throw([&db, &cookie](served::response &res, const served::request &req) {
-            rfc3986::Form query(req.url().query());
+            html.render_to_response(res, "/list.html", context);
+        });
+    server.resource["^/file" HTTP_Q]["GET"] =
+        no_throw([&db, &cookie](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
+            rfc3986::Form query(http_query(req->path));
             int id = lexical_cast<int>(query["id"]);
             Record rec;
             db.read(id, &rec);
             string buf = rec.field_string(0);
             char const *mime = magic_buffer(cookie, &buf[0], buf.size());
-            res.set_header("Content-Type", mime);
-            res.set_body(buf);
-        }));
-    mux.handle("/image")
-        .get(no_throw([&db, &rng](served::response &res, const served::request &req) {
-            rfc3986::Form query(req.url().query());
+            *res << "HTTP/1.1 200 OK\r\n";
+            *res << "Content-Type: " << mime << "\r\n";
+            *res << "Content-Length: " << buf.size() << "\r\n\r\n";
+            *res << buf;
+        });
+    server.resource["^/image" HTTP_Q]["GET"] =
+        no_throw([&db, &rng](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
+            rfc3986::Form query(http_query(req->path));
             PICPAC_CONFIG conf;
             conf.anno_color3 = 255;
             conf.anno_copy = true;
@@ -173,18 +186,18 @@ int main(int argc, char const* argv[]) {
                 }
             }
             encoder.encode(image, &buf);
-            res.set_header("Content-Type", "image/jpeg");
-            res.set_body(buf);
-        }));
-    mux.handle("/static/{path}")
-        .get(no_throw([&html](served::response &res, const served::request &req) {
-            html.send_to_response(res, req.params["path"]);
-        }));
-    mux.use_after(served::plugin::access_log);
-    LOG(INFO) << "listening at " << address << ':' << port;
-    served::net::server server(address, port, mux);
+            *res << "HTTP/1.1 200 OK\r\n";
+            *res << "Content-Type: image/jpeg\r\n";
+            *res << "Content-Length: " << buf.size() << "\r\n\r\n";
+            *res << buf;
+        });
+    server.default_resource["GET"] =
+        no_throw([&html](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
+            html.send_to_response(res, req->path);
+        });
+    LOG(INFO) << "listening at port: " << port;
     LOG(INFO) << "running server with " << threads << " threads.";
-    server.run(threads);
+    server.start();
     magic_close(cookie);
     return 0;
 }

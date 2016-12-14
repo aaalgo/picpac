@@ -2,14 +2,19 @@ CC=g++
 CXX=g++
 BUILD_INFO=-DPP_VERSION=\"$(shell git describe --always)\" -DPP_BUILD_ID=\"$(BUILD_ID)\" -DPP_BUILD_NUMBER=\"$(BUILD_NUMBER)\" -DPP_BUILD_TIME=\"$(shell date +%Y-%m-%dT%H:%M:%S)\"
 CFLAGS = -g -O3
-CXXFLAGS = -fPIC -Ijson11 -ICatch/include -Iboostache/include -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
+CXXFLAGS = -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -Iboostache/include -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
 #CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
 LDFLAGS = -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
-SERVER_LIBS = libpicpac.a \
-       	      -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core -lopencv_hal -lIlmImf -lippicv \
+
+SERVER_LIBS = libpicpac.a $(shell pkg-config --libs opencv) \
+	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
+	      -lfmt -lglog -lgflags \
+	      -lmagic 
+
+STATIC_SERVER_LIBS = libpicpac.a \
+          -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core -lopencv_hal -lIlmImf -lippicv \
 	      -lturbojpeg -ltiff -lpng -ljasper -lwebp \
-	      -lserved -lre2  \
 	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
 	      -lfmt -lglog -lgflags \
 	      -lmagic -lunwind \
@@ -48,7 +53,11 @@ $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 picpac-server:	picpac-server.o html_static.o html_template.o
-	$(CXX) $(LDFLAGS) -static -o $@ $^ $(SERVER_LIBS) 
+	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) 
+	rm html_static.o html_template.o
+
+picpac-server.static:	picpac-server.o html_static.o html_template.o
+	$(CXX) $(LDFLAGS) -static -o $@ $^ $(STATIC_SERVER_LIBS) 
 	rm html_static.o html_template.o
 	objcopy --only-keep-debug $@ $@.debug
 	strip -g $@

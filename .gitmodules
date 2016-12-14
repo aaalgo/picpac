@@ -10,3 +10,6 @@
 [submodule "boostache"]
 	path = boostache
 	url = https://github.com/cierelabs/boostache.git
+[submodule "Simple-Web-Server"]
+	path = Simple-Web-Server
+	url = https://github.com/eidheim/Simple-Web-Server.git
