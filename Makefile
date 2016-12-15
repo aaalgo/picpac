@@ -9,14 +9,14 @@ LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chr
 
 SERVER_LIBS = libpicpac.a $(shell pkg-config --libs opencv) \
 	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
-	      -lfmt -lglog -lgflags \
+	      -lglog -lgflags \
 	      -lmagic 
 
 STATIC_SERVER_LIBS = libpicpac.a \
           -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core -lopencv_hal -lIlmImf -lippicv \
 	      -lturbojpeg -ltiff -lpng -ljasper -lwebp \
 	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
-	      -lfmt -lglog -lgflags \
+	      -lglog -lgflags \
 	      -lmagic -lunwind \
 	      -lz -lrt -lcares -ldl
  
@@ -68,7 +68,7 @@ html_static.o:
 	#cat magic/* > magic.tmp
 	#file -C -m magic.tmp
 	#mv magic.tmp.mgc html/static/magic.mgc
-	make -C copilot
+	#make -C copilot
 	bfdfs/bfdfs-load $@ copilot/dist --name html_static
 
 clean:

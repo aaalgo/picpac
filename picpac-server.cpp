@@ -5,8 +5,8 @@
 #include <map>
 #include <unordered_map>
 #include <boost/lexical_cast.hpp>
+#include <boost/format.hpp>
 #include <boost/program_options.hpp>
-#include <fmt/format.h>
 #include <magic.h>
 #include <json11.hpp>
 #include <server_http.hpp>
@@ -213,7 +213,6 @@ int main(int argc, char const* argv[]) {
     unsigned short port;
     int threads;
     fs::path db_path;
-    string html_root;
 
     namespace po = boost::program_options;
     po::options_description desc("Allowed options");
@@ -223,10 +222,11 @@ int main(int argc, char const* argv[]) {
         ("port", po::value(&port)->default_value(18888), "")
         ("db", po::value(&db_path), "")
         ("threads,t", po::value(&threads)->default_value(1), "")
+        ("no-browser", "do not start browser")
         ;
     po::options_description desc_hidden("Expert options");
     desc_hidden.add_options()
-        ("html_root", po::value(&html_root), "")
+        //("html_root", po::value(&html_root), "")
         ;
     desc.add(desc_hidden);
 
@@ -247,10 +247,23 @@ int main(int argc, char const* argv[]) {
     }
 
     HttpServer server(db_path, port, threads);
+    thread th([&]() {
+                LOG(INFO) << "listening at port: " << port;
+                LOG(INFO) << "running server with " << threads << " threads.";
+                server.start();
+            });
+    do { // test and start web browser
+        if (vm.count("no-browser")) break;
+        char *display = getenv("DISPLAY");
+        if ((!display) || (strlen(display) == 0)) {
+            LOG(WARNING) << "No DISPLAY found, not starting browser.";
+            break;
+        }
+        boost::format cmd("xdg-open http://localhost:%1%");
+        system((cmd % port).str().c_str());
+    } while (false);
     // GET /hello
-    LOG(INFO) << "listening at port: " << port;
-    LOG(INFO) << "running server with " << threads << " threads.";
-    server.start();
+    th.join();
     return 0;
 }
 
