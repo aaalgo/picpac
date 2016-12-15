@@ -1,11 +1,25 @@
 <html>
+<head>
+<script src="/js/jquery-3.1.1.min.js"></script>
+<script src="/js/masonry.pkgd.min.js"></script>
+</head>
 <body>
-<table>
-<th>Image</th>
+<div class="grid" data-masonry='{ "itemSelector": ".grid-item", "columnWidth": 200 }'>
 {{#images}}
-<tr><td><img src="/image?id={{id}}{{ext}}"></img></td></tr>
+<div class="grid-item" height="300" width="300">
+<img src="/image?id={{id}}{{ext}}"></img>
+</div>
 {{/images}}
-</table>
+</div>
+<script>
+$(document).ready(function() {
+    $('.grid').masonry({
+    // options...
+    itemSelector: '.grid-item',
+    columnWidth: 200
+    });
+});
+</script>
 </body>
 </html>
 
