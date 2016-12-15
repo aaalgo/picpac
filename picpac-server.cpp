@@ -122,7 +122,7 @@ int main(int argc, char const* argv[]) {
             os.write(p.first, p.second - p.first);
         }
         magic_load(cookie, tmp.native().c_str());
-        //fs::remove(tmp);
+        fs::remove(tmp);
     }
 
     HttpServer server(port, threads);
