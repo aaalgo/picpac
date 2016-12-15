@@ -114,7 +114,7 @@ int main(int argc, char const* argv[]) {
 
     magic_t cookie = magic_open(MAGIC_MIME_TYPE);
     CHECK(cookie);
-    magic_load(cookie, "/usr/share/misc/magic;/usr/local/share/misc/magic");
+    magic_load(cookie, "/usr/share/misc/magic:/usr/local/share/misc/magic");
 
     HttpServer server(port, threads);
     // GET /hello
