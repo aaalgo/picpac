@@ -199,6 +199,9 @@ int main(int argc, char const* argv[]) {
         });
     server.default_resource["GET"] =
         no_throw([&html](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
+            if (req->path == "/") {
+                html.send_to_response(res, "/index.html");
+            }
             html.send_to_response(res, req->path);
         });
     LOG(INFO) << "listening at port: " << port;

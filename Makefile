@@ -59,10 +59,10 @@ picpac-server:	picpac-server.o html_static.o html_template.o
 picpac-server.static:	picpac-server.o html_static.o html_template.o
 	$(CXX) $(LDFLAGS) -static -o $@ $^ $(STATIC_SERVER_LIBS) 
 	rm html_static.o html_template.o
-	objcopy --only-keep-debug $@ $@.debug
-	strip -g $@
-	cp $@ $@.bin
-	upx $@
+	#objcopy --only-keep-debug $@ $@.debug
+	#strip -g $@
+	#cp $@ $@.bin
+	#upx $@
 
 html_static.o:
 	#cat magic/* > magic.tmp
