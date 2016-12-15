@@ -73,6 +73,7 @@ int main(int argc, char const* argv[]) {
     unsigned short port;
     int threads;
     fs::path db_path;
+    string html_root;
 
     namespace po = boost::program_options;
     po::options_description desc("Allowed options");
@@ -83,6 +84,11 @@ int main(int argc, char const* argv[]) {
         ("db", po::value(&db_path), "")
         ("threads,t", po::value(&threads)->default_value(1), "")
         ;
+    po::options_description desc_hidden("Expert options");
+    desc_hidden.add_options()
+        ("html_root", po::value(&html_root), "")
+        ;
+    desc.add(desc_hidden);
 
     po::positional_options_description p;
     p.add("db", 1);
@@ -100,7 +106,7 @@ int main(int argc, char const* argv[]) {
         return 0;
     }
 
-    bfdfs::HTML html;
+    bfdfs::HTML html(html_root);
     // Create a multiplexer for handling requests
 
     picpac::IndexedFileReader db(db_path);
