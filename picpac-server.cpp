@@ -115,14 +115,14 @@ int main(int argc, char const* argv[]) {
     magic_t cookie = magic_open(MAGIC_MIME_TYPE);
     CHECK(cookie);
     {
-        auto p = html.getStatic("/magic.mgc");
+        auto p = html.getStatic("/magic");
         fs::path tmp(fs::unique_path());
         {
             fs::ofstream os(tmp, std::ios::binary);
             os.write(p.first, p.second - p.first);
         }
         magic_load(cookie, tmp.native().c_str());
-        fs::remove(tmp);
+        //fs::remove(tmp);
     }
 
     HttpServer server(port, threads);

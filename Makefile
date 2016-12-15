@@ -65,9 +65,9 @@ picpac-server.static:	picpac-server.o html_static.o html_template.o
 	upx $@
 
 html_static.o:
-	cat magic/* > magic.tmp
-	file -C -m magic.tmp
-	mv magic.tmp.mgc html/static/magic.mgc
+	#cat magic/* > magic.tmp
+	#file -C -m magic.tmp
+	#mv magic.tmp.mgc html/static/magic.mgc
 	bfdfs/bfdfs-load $@ html/static --name html_static
 
 html_template.o:
