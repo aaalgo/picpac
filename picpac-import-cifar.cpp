@@ -13,7 +13,7 @@ static size_t constexpr CHANNELS = 3;
 static size_t constexpr DIM = WIDTH * HEIGHT * CHANNELS;
 
 void load (string const &path, FileWriter &writer) {
-    ImageEncoder encoder("raw");
+    ImageEncoder encoder(".png");
     ifstream is(path.c_str(), ios::binary);
     size_t sz = 1 + DIM;
     is.seekg(0, ios::end);
@@ -45,7 +45,7 @@ void load (string const &path, FileWriter &writer) {
 int main(int argc, char **argv) {
     google::InitGoogleLogging(argv[0]);
     {
-        picpac::FileWriter writer("train.db");
+        picpac::FileWriter writer("train.db", FileWriter::COMPACT);
         load("cifar-10-batches-bin/data_batch_1.bin", writer);
         load("cifar-10-batches-bin/data_batch_2.bin", writer);
         load("cifar-10-batches-bin/data_batch_3.bin", writer);
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
         load("cifar-10-batches-bin/data_batch_5.bin", writer);
     }
     {
-        picpac::FileWriter writer("test.db");
+        picpac::FileWriter writer("test.db", FileWriter::COMPACT);
         load("cifar-10-batches-bin/test_batch.bin", writer);
     }
 
