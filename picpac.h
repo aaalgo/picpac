@@ -332,6 +332,14 @@ namespace picpac {
             if (!(i < index.size())) throw std::out_of_range("");
             FileReader::read(index[i], r);
         }
+        Locator const &locator (size_t i) const {
+            return index[i];
+        }
+        void loopIndex (std::function<void(Locator const &)> cb) {
+            for (auto const &l: index) {
+                cb(l);
+            }
+        }
         void loop (std::function<void(Record &)> cb) {
             Record rec;
             for (auto const &l: index) {
