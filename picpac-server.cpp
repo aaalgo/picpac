@@ -434,7 +434,7 @@ int main(int argc, char const* argv[]) {
         ("db", po::value(&db_path), "")
         ("threads,t", po::value(&threads)->default_value(1), "")
         ("no-browser", "do not start browser")
-        ("max-peek", po::value(&max_peak_mb)->default_value(200), "read this number MB of data")
+        ("max-peek", po::value(&max_peak_mb)->default_value(1000), "read this number MB of data")
         ;
     po::options_description desc_hidden("Expert options");
     desc_hidden.add_options()
