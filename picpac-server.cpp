@@ -4,6 +4,10 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <sstream>
+#include <boost/iostreams/filtering_streambuf.hpp>
+#include <boost/iostreams/copy.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
@@ -35,11 +39,12 @@ char const *version = PP_VERSION "-" PP_BUILD_NUMBER "," PP_BUILD_ID "," PP_BUIL
 
 extern char _binary_html_static_start;
 
-static std::unordered_map<string, string> const EXT_MIME{
+static vector<pair<string, string>> const EXT_MIME{
     {".html", "text/html"},
     {".css", "text/css"},
     {".js", "application/javascript"},
 };
+static unsigned constexpr EXT_MIME_GZIP = 3;
 static std::string const DEFAULT_MIME("application/octet-stream");
 
 void banner () {
@@ -241,16 +246,38 @@ class HttpServer: public SimpleWeb::Server<SimpleWeb::HTTP> {
     }
 
 
-    static string const &path2mime (string const &path) {
+    static string const &path2mime (string const &path, bool *gzip) {
         do {
             auto p = path.rfind('.');
             if (p == path.npos) break;
             string ext = path.substr(p);
-            auto it = EXT_MIME.find(ext);
-            if (it == EXT_MIME.end()) break;
-            return it->second;
+            *gzip = false;
+            unsigned i = 0; 
+            for (auto const &v: EXT_MIME) {
+                if (v.first == ext) {
+                    if (i < EXT_MIME_GZIP) {
+                        *gzip = true;
+                    }
+                    return v.second;
+                }
+                ++i;
+            }
         } while (false);
         return DEFAULT_MIME;
+    }
+
+    static std::string compress(pair<char const *, char const *> const &buf) {
+        namespace bio = boost::iostreams;
+
+        std::stringstream compressed;
+        std::stringstream origin(string(buf.first, buf.second));
+
+        bio::filtering_streambuf<bio::input> out;
+        out.push(bio::gzip_compressor(bio::gzip_params(bio::gzip::best_compression)));
+        out.push(origin);
+        bio::copy(out, compressed);
+
+        return compressed.str();
     }
 
     class no_throw {
@@ -400,10 +427,28 @@ public:
                 }
                 if (it != statics.end()) {
                     auto text = it->second;
+                    bool gz = false;
                     *res << "HTTP/1.1 200 OK\r\n";
-                    *res << "Content-Type: " << path2mime(path) << "\r\n";
-                    *res << "Content-Length: " << (text.second - text.first) << "\r\n\r\n";
-                    res->write(text.first, text.second - text.first);
+                    *res << "Content-Type: " << path2mime(path, &gz) << "\r\n";
+                    auto accept_enc = req->header.find("Accept-Encoding");
+                    if (accept_enc == req->header.end()) {
+                        gz = false;
+                    }
+                    else {
+                        if (accept_enc->second.find("gzip") == string::npos) {
+                            gz = false;
+                        }
+                    }
+                    if (gz && (text.second - text.first) > 1000) {
+                        *res << "Content-Encoding: gzip\r\n";
+                        auto cc = compress(text);
+                        *res << "Content-Length: " << cc.size() << "\r\n\r\n";
+                        res->write(&cc[0], cc.size());
+                    }
+                    else {
+                        *res << "Content-Length: " << (text.second - text.first) << "\r\n\r\n";
+                        res->write(text.first, text.second - text.first);
+                    }
                 }
                 else {
                     *res << "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
