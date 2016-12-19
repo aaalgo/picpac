@@ -25,7 +25,7 @@ COMMON = picpac-util.o picpac-cv.o picpac.o json11.o
 
 PROGS = picpac-unpack picpac-merge picpac-split picpac-downsize picpac-crop picpac-split-region picpac-dupe picpac-import-cifar picpac-import-nmist test stress picpac-import picpac-stream picpac-proto picpac-roi-scale picpac-stat #picpac-annotate picpac-dumpvec#load-caffe load-dir test test_tr server
 
-.PHONY:	all release python upload_test upload sdist
+.PHONY:	all release python upload_test upload sdist bfdfs
 
 all:	libpicpac.so libpicpac.a $(PROGS) python
 
@@ -65,12 +65,20 @@ picpac-server:	picpac-server.o html_static.o libpicpac.a
 	cp $@ $@.bin
 	upx $@
 
-html_static.o:
+bfdfs:
+	if [ ! -f bfdfs/bfdfs-load ] ; then \
+		pushd bfdfs; cmake . ; make ; popd ; fi
+
+html_static.o:	bfdfs
+	if [ -f html_static.o.dev ]; then	\
+		cp html_static.o.dev html_static.o ; \
+	else \
+		make -C copilot ; \
+		bfdfs/bfdfs-load $@ copilot/dist --name html_static ; \
+	fi
 	#cat magic/* > magic.tmp
 	#file -C -m magic.tmp
 	#mv magic.tmp.mgc html/static/magic.mgc
-	#make -C copilot
-	bfdfs/bfdfs-load $@ copilot/dist --name html_static
 
 clean:
 	rm *.o $(PROGS)

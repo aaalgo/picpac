@@ -1,6 +1,6 @@
 site_name: PicPac Documentation
 theme: readthedocs
-docs_dir: docs
+docs_dir: pydocs
 repo_url: https://github.com/aaalgo/picpac
 site_description: 'Documentation for PicPac, an image streamer for deep learning.'
 
