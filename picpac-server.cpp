@@ -5,9 +5,6 @@
 #include <map>
 #include <unordered_map>
 #include <sstream>
-#include <boost/iostreams/filtering_streambuf.hpp>
-#include <boost/iostreams/copy.hpp>
-#include <boost/iostreams/filter/gzip.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
@@ -23,6 +20,7 @@
 #include <boost/progress.hpp>
 #undef timer
 #include <boost/timer/timer.hpp>
+#include <zlib.h>
 #include <magic.h>
 #include <json11.hpp>
 #include <server_http.hpp>
@@ -230,6 +228,47 @@ public:
     }
 };
 
+static void* zlib_alloc (void *opaque, uInt items, uInt size) {
+    return malloc(items * size);
+}
+
+static void zlib_free (void *opaque, void *addr) {
+    free(addr);
+}
+
+void zlib_deflate (pair<char const *, char const *> const &buf, string *to) {
+    size_t from_size = buf.second - buf.first;
+    z_stream z;
+    memset(&z, sizeof(z), 0);
+    z.opaque = NULL;
+    z.zalloc = zlib_alloc;
+    z.zfree = zlib_free;
+    z.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(buf.first));
+    z.avail_in = from_size;
+    int r = ::deflateInit2 (&z, 9, Z_DEFLATED, 15+16, 9, Z_DEFAULT_STRATEGY);
+    if (r == Z_MEM_ERROR) throw runtime_error("not enough memory");
+    if (r != Z_OK) throw runtime_error("zlib");
+
+    // if (z.avail_in != 0) raise(system, "deflate bad state");
+
+    to->resize(from_size);
+    z.next_out = reinterpret_cast<Bytef *>(&(*to)[0]);
+    z.avail_out = to->size();
+
+    for (;;) {
+        r = ::deflate(&z, Z_FINISH);
+        if (r == Z_STREAM_END) break;
+        if (z.avail_in == 0) break;
+        if (z.avail_out == 0) {
+            to->resize(to->size() + from_size);
+            z.next_out = reinterpret_cast<Bytef *>(&(*to)[z.total_out]);
+            z.avail_out = to->size() - (z.total_out);
+        }
+    }
+
+    deflateEnd(&z);
+}
+
 class HttpServer: public SimpleWeb::Server<SimpleWeb::HTTP> {
     picpac::IndexedFileReader db;
     bfdfs::Loader statics;
@@ -264,20 +303,6 @@ class HttpServer: public SimpleWeb::Server<SimpleWeb::HTTP> {
             }
         } while (false);
         return DEFAULT_MIME;
-    }
-
-    static std::string compress(pair<char const *, char const *> const &buf) {
-        namespace bio = boost::iostreams;
-
-        std::stringstream compressed;
-        std::stringstream origin(string(buf.first, buf.second));
-
-        bio::filtering_streambuf<bio::input> out;
-        out.push(bio::gzip_compressor(bio::gzip_params(bio::gzip::best_compression)));
-        out.push(origin);
-        bio::copy(out, compressed);
-
-        return compressed.str();
     }
 
     class no_throw {
@@ -441,7 +466,8 @@ public:
                     }
                     if (gz && (text.second - text.first) > 1000) {
                         *res << "Content-Encoding: gzip\r\n";
-                        auto cc = compress(text);
+                        string cc;
+                        zlib_deflate(text, &cc);
                         *res << "Content-Length: " << cc.size() << "\r\n\r\n";
                         res->write(&cc[0], cc.size());
                     }

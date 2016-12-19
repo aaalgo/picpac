@@ -7,15 +7,15 @@ CXXFLAGS += -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -Wall -Wno-sign-c
 LDFLAGS += -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
 
-SERVER_LIBS = libpicpac.a $(shell pkg-config --libs opencv) \
+SERVER_LIBS = $(shell pkg-config --libs opencv) \
 	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
 	      -lglog -lgflags \
 	      -lmagic 
 
-STATIC_SERVER_LIBS = libpicpac.a \
+STATIC_SERVER_LIBS = \
           -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core \
-	      -ljpeg -ltiff -lpng -lwebp -llibjasper -lippicv \
-	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lboost_iostreams \
+	      -lturbojpeg -ltiff -lpng -lwebp -llibjasper -lippicv \
+	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
 	      -lglog -lgflags \
 	      -lmagic -lunwind \
 	      -lz -lrt -lcares -ldl
@@ -52,11 +52,11 @@ json11.o:	json11/json11.cpp
 $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-picpac-server:	picpac-server.o html_static.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) 
-	rm html_static.o 
+#picpac-server:	picpac-server.o html_static.o libpicpac.a
+#	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) 
+#	rm html_static.o 
 
-picpac-server.static:	picpac-server.o html_static.o
+picpac-server:	picpac-server.o html_static.o libpicpac.a
 	$(CXX) $(LDFLAGS) -static -o $@ $^ $(STATIC_SERVER_LIBS) 
 	rm html_static.o 
 	cp $@ $@.full
