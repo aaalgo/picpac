@@ -19,7 +19,7 @@ dependencies and build the frontend code.
 The front-end code building is also lengthy.
 If one is paying attention solely to the
 C++ part, it is recommened to download a
-pre-built front-end packge file
+pre-built front-end object file
 [html_static.o.bz2](http://aaalgo.com/picpac/server/html_static.o.bz2)
 and put it in the picpac directory.  When
 this file presents, the making process directly
