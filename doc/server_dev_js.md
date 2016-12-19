@@ -5,8 +5,8 @@ The JS development code is contained in the
 copilot subdirectory.  As many AJAX APIs are
 provided by the C++ server, JS cannot be
 independently developed.  One needs to
-build/download an existing (server binary)[http://aaalgo.com/picpac/server/picpac-server]
-and some (dataset)[http://aaalgo.com/picpac/datasets/]
+build/download an existing [server binary](http://aaalgo.com/picpac/server/picpac-server)
+and some [dataset](http://aaalgo.com/picpac/datasets/)
 to assist JS development.
 
 Star the server with
