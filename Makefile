@@ -7,12 +7,7 @@ CXXFLAGS += -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -Wall -Wno-sign-c
 LDFLAGS += -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
 
-SERVER_LIBS = $(shell pkg-config --libs opencv) \
-	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
-	      -lglog -lgflags \
-	      -lmagic 
-
-STATIC_SERVER_LIBS = \
+SERVER_LIBS = \
           -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core \
 	      -lturbojpeg -ltiff -lpng -lwebp -llibjasper -lippicv \
 	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
@@ -52,12 +47,9 @@ json11.o:	json11/json11.cpp
 $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-#picpac-server:	picpac-server.o html_static.o libpicpac.a
-#	$(CXX) $(LDFLAGS) -o $@ $^ $(SERVER_LIBS) 
-#	rm html_static.o 
-
 picpac-server:	picpac-server.o html_static.o libpicpac.a
-	$(CXX) $(LDFLAGS) -static -o $@ $^ $(STATIC_SERVER_LIBS) 
+	if [ ! -d /opt/cbox ] ; then echo "!!!BUILD SERVER WITH make-server.sh !!!"; false; fi
+	$(CXX) $(LDFLAGS) -static -o $@ $^ $(SERVER_LIBS) 
 	rm html_static.o 
 	cp $@ $@.full
 	objcopy --only-keep-debug $@ $@.debug
