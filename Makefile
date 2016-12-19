@@ -1,10 +1,10 @@
 CC=g++
 CXX=g++
 BUILD_INFO=-DPP_VERSION=\"$(shell git describe --always)\" -DPP_BUILD_ID=\"$(BUILD_ID)\" -DPP_BUILD_NUMBER=\"$(BUILD_NUMBER)\" -DPP_BUILD_TIME=\"$(shell date +%Y-%m-%dT%H:%M:%S)\"
-CFLAGS = -g -O3
-CXXFLAGS = -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
+CFLAGS += -g -O3
+CXXFLAGS += -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
 #CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
-LDFLAGS = -fopenmp
+LDFLAGS += -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
 
 SERVER_LIBS = libpicpac.a $(shell pkg-config --libs opencv) \
@@ -13,8 +13,8 @@ SERVER_LIBS = libpicpac.a $(shell pkg-config --libs opencv) \
 	      -lmagic 
 
 STATIC_SERVER_LIBS = libpicpac.a \
-          -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core -lopencv_hal -lIlmImf -lippicv \
-	      -lturbojpeg -ltiff -lpng -ljasper -lwebp \
+          -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core \
+	      -ljpeg -ltiff -lpng -lwebp -llibjasper -lippicv \
 	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lboost_iostreams \
 	      -lglog -lgflags \
 	      -lmagic -lunwind \
@@ -59,6 +59,7 @@ picpac-server:	picpac-server.o html_static.o
 picpac-server.static:	picpac-server.o html_static.o
 	$(CXX) $(LDFLAGS) -static -o $@ $^ $(STATIC_SERVER_LIBS) 
 	rm html_static.o 
+	cp $@ $@.full
 	objcopy --only-keep-debug $@ $@.debug
 	strip -g $@
 	cp $@ $@.bin
