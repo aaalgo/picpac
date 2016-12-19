@@ -9,12 +9,13 @@ build/download an existing [server binary](http://aaalgo.com/picpac/server/picpa
 and some [dataset](http://aaalgo.com/picpac/datasets/)
 to assist JS development.
 
-Star the server with
+Start the server with the following and keep it running.
 ```
-picpac-server db     # db is any dataset
+picpac-server --no-browser any_dataset_file
 ```
 This server will listen at the port 18888.
 
 Then use the regular ```npm run dev``` to develop the
 JS part.  C++ API calls are automatically forwarded
-to the 18888 port.
+to the 18888 port.  The JS frontend will be at the port
+8080.
