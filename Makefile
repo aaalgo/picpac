@@ -50,7 +50,7 @@ $(PROGS):	%:	%.o libpicpac.a
 picpac-server:	picpac-server.o html_static.o libpicpac.a
 	if [ ! -d /opt/cbox ] ; then echo "!!!BUILD SERVER WITH make-server.sh !!!"; false; fi
 	$(CXX) $(LDFLAGS) -static -o $@ $^ $(SERVER_LIBS) 
-	rm html_static.o 
+	mv html_static.o html_static.o.last
 	cp $@ $@.full
 	objcopy --only-keep-debug $@ $@.debug
 	strip -g $@
@@ -62,8 +62,8 @@ bfdfs:
 		pushd bfdfs; cmake . ; make ; popd ; fi
 
 html_static.o:	bfdfs
-	if [ -f html_static.o.dev ]; then	\
-		cp html_static.o.dev html_static.o ; \
+	if [ -f html_static.o.bz2 ]; then	\
+		bzcat html_static.o.bz2 > html_static.o ; \
 	else \
 		make -C copilot ; \
 		bfdfs/bfdfs-load $@ copilot/dist --name html_static ; \
