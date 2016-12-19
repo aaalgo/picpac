@@ -20,12 +20,12 @@
 #include <boost/progress.hpp>
 #undef timer
 #include <boost/timer/timer.hpp>
-#include <zlib.h>
 #include <magic.h>
 #include <json11.hpp>
 #include <server_http.hpp>
+#include <server_extra.hpp>
+#include <server_extra_zip.hpp>
 #include "picpac-cv.h"
-#include "rfc3986.h"
 #include "bfdfs/bfdfs.h"
 
 using namespace std;
@@ -228,50 +228,11 @@ public:
     }
 };
 
-static void* zlib_alloc (void *opaque, uInt items, uInt size) {
-    return malloc(items * size);
-}
+typedef SimpleWeb::Server<SimpleWeb::HTTP> HttpServer;
+using SimpleWeb::Response;
+using SimpleWeb::Request;
 
-static void zlib_free (void *opaque, void *addr) {
-    free(addr);
-}
-
-void zlib_deflate (pair<char const *, char const *> const &buf, string *to) {
-    size_t from_size = buf.second - buf.first;
-    z_stream z;
-    memset(&z, sizeof(z), 0);
-    z.opaque = NULL;
-    z.zalloc = zlib_alloc;
-    z.zfree = zlib_free;
-    z.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(buf.first));
-    z.avail_in = from_size;
-    int r = ::deflateInit2 (&z, 9, Z_DEFLATED, 15+16, 9, Z_DEFAULT_STRATEGY);
-    if (r == Z_MEM_ERROR) throw runtime_error("not enough memory");
-    if (r != Z_OK) throw runtime_error("zlib");
-
-    // if (z.avail_in != 0) raise(system, "deflate bad state");
-
-    to->resize(from_size);
-    z.next_out = reinterpret_cast<Bytef *>(&(*to)[0]);
-    z.avail_out = to->size();
-
-    for (;;) {
-        r = ::deflate(&z, Z_FINISH);
-        if (r == Z_STREAM_END) break;
-        if (z.avail_in == 0) break;
-        if (z.avail_out == 0) {
-            to->resize(to->size() + from_size);
-            z.next_out = reinterpret_cast<Bytef *>(&(*to)[z.total_out]);
-            z.avail_out = to->size() - (z.total_out);
-        }
-    }
-
-    to->resize(z.total_out);
-
-    deflateEnd(&z);
-}
-
-class HttpServer: public SimpleWeb::Server<SimpleWeb::HTTP> {
+class Service:  public SimpleWeb::Multiplexer {
     picpac::IndexedFileReader db;
     bfdfs::Loader statics;
     default_random_engine rng;  // needs protection!!!TODO
@@ -307,37 +268,9 @@ class HttpServer: public SimpleWeb::Server<SimpleWeb::HTTP> {
         return DEFAULT_MIME;
     }
 
-    class no_throw {
-        typedef function<void(shared_ptr<Response>, shared_ptr<Request>)> callback_type;
-        callback_type cb;
-    public:
-        no_throw (callback_type cb_): cb(cb_) {
-        }
-        void operator () (shared_ptr<Response> res, shared_ptr<Request> req) {
-#if 1
-            bool ok = true;
-            cb(res, req); 
-            cout << "OK " << req->path << endl;
-#else
-            bool ok = false;
-            try {
-                cb(res, req);
-                ok = true;
-            }
-            catch (runtime_error const &e) {
-                res.set_header("PicPacError", e.what());
-            }
-            catch (...) {
-                res.set_header("PicPacError", "unknown error");
-            }
-#endif
-            //res.set_status(ok ? 200 : 500);
-        }
-    };
-
 public:
-    HttpServer (fs::path const &db_path, unsigned short port, size_t num_threads=1)
-        : Server(port, num_threads),
+    Service (fs::path const &db_path, HttpServer *sv)
+        : Multiplexer(sv),
         db(db_path),
         statics(&_binary_html_static_start) {
 
@@ -347,8 +280,8 @@ public:
         Overview ov(db);
         ov.toJson(&overview);
 
-        resource["^/api/overview" HTTP_Q]["GET"] = no_throw([this](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
-                rfc3986::Form query(http_query(req->path));
+        add("^/api/overview" HTTP_Q, "GET", [this](Response &res, Request &req) {
+
                 /*
                 rfc3986::Form trans;
                 // transfer all applicable image parameters to trans
@@ -359,25 +292,12 @@ public:
 #undef PICPAC_CONFIG_UPDATE
                 string ext = trans.encode(true);
                 */
-                *res << "HTTP/1.1 200 OK\r\n";
-                *res << "Content-Type: application/json\r\n";
-                *res << "Content-Length: " << overview.size() << "\r\n\r\n";
-                *res << overview;
+                res.content = overview;
+                res.mime = "application/json";
             });
 
-        resource["^/api/sample" HTTP_Q]["GET"] = no_throw([this](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
-                rfc3986::Form query(http_query(req->path));
-                /*
-                rfc3986::Form trans;
-                // transfer all applicable image parameters to trans
-                // so we can later use that for image display
-#define PICPAC_CONFIG_UPDATE(C,P) \
-                { auto it = query.find(#P); if (it != query.end()) trans.insert(*it);}
-                PICPAC_CONFIG_UPDATE_ALL(0);
-#undef PICPAC_CONFIG_UPDATE
-                string ext = trans.encode(true);
-                */
-                int count = query.get<int>("count", 20);
+        add("^/api/sample" HTTP_Q, "GET", [this](Response &res, Request &req) {
+                int count = req.GET.get<int>("count", 20);
                 //string anno = query.get<string>("anno", "");
                 vector<int> ids(count);
                 for (auto &id: ids) {
@@ -386,28 +306,20 @@ public:
                 Json json = Json::object {
                     {"samples", Json(ids)}
                 };
-                string json_str = json.dump();
-                *res << "HTTP/1.1 200 OK\r\n";
-                *res << "Content-Type: application/json\r\n";
-                *res << "Content-Length: " << json_str.size() << "\r\n\r\n";
-                *res << json_str;
+                res.mime = "application/json";
+                res.content = json.dump();
             });
-        resource["^/api/file" HTTP_Q]["GET"] =
-            no_throw([this](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
-                rfc3986::Form query(http_query(req->path));
-                int id = lexical_cast<int>(query["id"]);
+        add("^/api/file" HTTP_Q, "GET", 
+            [this](Response &res, Request &req) {
+                int id = req.GET.get<int>("id", 0);
                 Record rec;
                 db.read(id, &rec);
                 string buf = rec.field_string(0);
-                char const *mime = magic_buffer(cookie, &buf[0], buf.size());
-                *res << "HTTP/1.1 200 OK\r\n";
-                *res << "Content-Type: " << mime << "\r\n";
-                *res << "Content-Length: " << buf.size() << "\r\n\r\n";
-                *res << buf;
+                res.mime = magic_buffer(cookie, &buf[0], buf.size());
+                res.content.swap(buf);
             });
-        resource["^/api/image" HTTP_Q]["GET"] =
-            no_throw([this](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
-                rfc3986::Form query(http_query(req->path));
+        add("^/api/image" HTTP_Q, "GET", 
+            [this](Response &res, Request &req) {
                 PICPAC_CONFIG conf;
                 conf.anno_color3 = 255;
                 conf.anno_copy = true;
@@ -418,14 +330,14 @@ public:
                 conf.pert_angle = 20;
                 conf.pert_min_scale = 0.8;
                 conf.pert_max_scale = 1.2;
-#define PICPAC_CONFIG_UPDATE(C,P) C.P = query.get<decltype(C.P)>(#P, C.P)
+#define PICPAC_CONFIG_UPDATE(C,P) C.P = req.GET.get<decltype(C.P)>(#P, C.P)
                 PICPAC_CONFIG_UPDATE_ALL(conf);
 #undef PICPAC_CONFIG_UPDATE
-                float anno_factor = query.get<float>("anno_factor", 0);
+                float anno_factor = req.GET.get<float>("anno_factor", 0);
                         LOG(INFO) << "ANNO: " << anno_factor;
                 ImageLoader loader(conf);
                 ImageLoader::PerturbVector pv;
-                int id = query.get<int>("id", rng() % db.size());
+                int id = req.GET.get<int>("id", rng() % db.size());
                 ImageLoader::Value v;
                 loader.sample(rng, &pv);
                 loader.load([this, id](Record *r){db.read(id, r);}, pv, &v);
@@ -439,52 +351,34 @@ public:
                     }
                 }
                 encoder.encode(image, &buf);
-                *res << "HTTP/1.1 200 OK\r\n";
-                *res << "Content-Type: image/jpeg\r\n";
-                *res << "Content-Length: " << buf.size() << "\r\n\r\n";
-                *res << buf;
+                res.mime = "image/jpeg";
+                res.content.swap(buf);
             });
-        default_resource["GET"] =
-            no_throw([this](shared_ptr<HttpServer::Response> res, shared_ptr<HttpServer::Request> req) {
-                string path = req->path;
-                auto it = statics.find(req->path);
+        add_default("GET",
+            [this](Response &res, Request &req) {
+                string path = req.path;
+                auto it = statics.find(req.path);
                 if (it == statics.end()) {
                     path = "/index.html";
                     it = statics.find(path);
                 }
                 if (it != statics.end()) {
                     auto text = it->second;
+                    res.content = string(text.first, text.second);
                     bool gz = false;
-                    *res << "HTTP/1.1 200 OK\r\n";
-                    *res << "Content-Type: " << path2mime(path, &gz) << "\r\n";
-                    auto accept_enc = req->header.find("Accept-Encoding");
-                    if (accept_enc == req->header.end()) {
-                        gz = false;
-                    }
-                    else {
-                        if (accept_enc->second.find("gzip") == string::npos) {
-                            gz = false;
-                        }
-                    }
-                    if (gz && (text.second - text.first) > 1000) {
-                        *res << "Content-Encoding: gzip\r\n";
-                        string cc;
-                        zlib_deflate(text, &cc);
-                        *res << "Content-Length: " << cc.size() << "\r\n\r\n";
-                        res->write(&cc[0], cc.size());
-                    }
-                    else {
-                        *res << "Content-Length: " << (text.second - text.first) << "\r\n\r\n";
-                        res->write(text.first, text.second - text.first);
+                    res.mime = path2mime(path, &gz);
+                    if (gz) {
+                        SimpleWeb::plugins::deflate(res, req);
                     }
                 }
                 else {
-                    *res << "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+                    res.status = 404;
+                    res.content.clear();
                 }
             });
     }
 
-    ~HttpServer () {
+    ~Service () {
         magic_close(cookie);
     }
 
@@ -531,7 +425,8 @@ int main(int argc, char const* argv[]) {
         return 0;
     }
 
-    HttpServer server(db_path, port, threads);
+    HttpServer server(port, threads);
+    Service service(db_path, &server);
     thread th([&]() {
                 LOG(INFO) << "listening at port: " << port;
                 LOG(INFO) << "running server with " << threads << " threads.";

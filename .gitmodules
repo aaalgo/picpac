@@ -13,3 +13,6 @@
 [submodule "Simple-Web-Server"]
 	path = Simple-Web-Server
 	url = https://github.com/eidheim/Simple-Web-Server.git
+[submodule "Simple-Web-Extra"]
+	path = Simple-Web-Extra
+	url = https://github.com/aaalgo/Simple-Web-Extra

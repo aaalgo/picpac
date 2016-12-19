@@ -2,7 +2,7 @@ CC=g++
 CXX=g++
 BUILD_INFO=-DPP_VERSION=\"$(shell git describe --always)\" -DPP_BUILD_ID=\"$(BUILD_ID)\" -DPP_BUILD_NUMBER=\"$(BUILD_NUMBER)\" -DPP_BUILD_TIME=\"$(shell date +%Y-%m-%dT%H:%M:%S)\"
 CFLAGS += -g -O3
-CXXFLAGS += -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
+CXXFLAGS += -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -ISimple-Web-Extra -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
 #CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
 LDFLAGS += -fopenmp
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
