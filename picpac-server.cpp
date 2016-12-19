@@ -266,6 +266,8 @@ void zlib_deflate (pair<char const *, char const *> const &buf, string *to) {
         }
     }
 
+    to->resize(z.total_out);
+
     deflateEnd(&z);
 }
 
