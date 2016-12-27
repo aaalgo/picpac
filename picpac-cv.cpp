@@ -33,7 +33,6 @@ namespace picpac {
         return scale;
     }
 
-
     class Box: public Shape {
     protected:
         cv::Rect_<float> rect;
