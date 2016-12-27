@@ -39,10 +39,10 @@ public:
                     x *= w;
                     y *= h;
                     Json geo = Json::object{
-                                {"x", 1.0 * (x - 1.0 * radius/2) / w},
-                                {"y", 1.0 * (y - 1.0 * radius/2) / h},
-                                {"width", 1.0 * radius / w},
-                                {"height", 1.0 * radius / h}};
+                                {"x", 1.0 * (x - 1.0 * radius) / w},
+                                {"y", 1.0 * (y - 1.0 * radius) / h},
+                                {"width", 2.0 * radius / w},
+                                {"height", 2.0 * radius / h}};
                     /*
                     Json ss = Json::object{
                             {"type", "ellipse"},
@@ -57,14 +57,17 @@ public:
                     shapes.push_back(shape);
                 }
             }
+            if (!update) break;
+            cout << "<< " << rec.field_string(1) << endl;
             Json::object obj = json.object_items();
             obj["shapes"] = Json(shapes);
             json = Json(obj);
             string f2 = json.dump();
-            if (!update) break;
+            cout << ">> " << f2 << endl;
             Record r(0, rec.field_string(0), f2);
             r.meta().copy(rec.meta());
             db.append(r);
+            return;
         } while (false);
         db.append(rec);
     }
@@ -85,8 +88,8 @@ int main(int argc, char const* argv[]) {
         ;
 
     po::positional_options_description p;
+    p.add("input", 1);
     p.add("output", 1);
-    p.add("input", -1);
 
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv).
