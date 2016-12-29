@@ -84,6 +84,7 @@ int main(int argc, char **argv) {
     ("resize", po::value(&resize)->default_value(-1), "")
     ("format,f", po::value(&format)->default_value(1), "")
     ("cache", po::value(&cache)->default_value(".picpac_cache"), "")
+    ("compact", "")
     /*
     ("gray", "")
     ("log-level,v", po::value(&FLAGS_minloglevel)->default_value(1), "")
@@ -112,9 +113,12 @@ int main(int argc, char **argv) {
         return 1;
     }
     //if (vm.count("gray")) gray = true;
+    int flags = 0;
+    if (vm.count("compact")) flags |= picpac::FileWriter::COMPACT;
+
 
     google::InitGoogleLogging(argv[0]);
-    picpac::FileWriter db(output_path);
+    picpac::FileWriter db(output_path, flags);
     CachedDownloader downloader(cache);
     ImageReader imreader(max_size, resize);
     int count = 0;
