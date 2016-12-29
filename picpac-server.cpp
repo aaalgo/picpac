@@ -53,31 +53,64 @@ void banner () {
 
 using namespace json11;
 
-static size_t max_peak_mb = 200;
+static size_t max_peak_mb = 1000;
 static float max_peak_relax = 0.2;
+
+// The class cans an image dataset and produces all kinds of
+// statistics.  It also measures how fast we can read records.
+// A PicPac database is designed such that upon opening,
+// the location information of all images are loaded into memory, but not
+// the image records themselves.
+// struct Locator {      // see picpac.h
+//      off_t offset;    // offset within file
+//      uint32_t size;   // size of record
+//      float group;     // see below    // see below
+//      ......
+// }
+// We can therefore produce precise
+// statistics on locator & group based on the locators.
+// After that, we randomly sample at most "max_peak_mb" megabytes (1G by default)
+// of records.  We load these records into memory.
+// Each record has some meta data:
+// struct Meta {        // see picpac.h
+//      float label;
+//      uint8_t width;  // number of fields.  The first field (index 0) is the image.
+//                      // The second field, if present, is the annotation.  Others are not used.
+//
+//      int16_t label2; // optional secondary label, for stratification
+//      ......
+// }
+// Each record has a label (or label1) and label2.  Locator::group is always
+// the value of either label or label2, which is determined upon the creation
+// of database.  Label is float, though for classification problems it should
+// be of integral values.  Label2 is always integer.
+//
 class Overview {
     static size_t constexpr MB = 1024 * 1024;
-    int total_cnt;
-    int sample_cnt;
-    size_t total_size;
+    int total_cnt;      // total number of records
+    int sample_cnt;     // number of sampled records
+    size_t total_size;  // size in bytes
     size_t sample_size;
     // precise stat
-    Stat size_stat;
+    Stat size_stat;     // per-record size statistics
     map<float, int> group_cnt;
+                        // # of different group values
     // estimation
     int group_is_float_cnt;
     int label1_is_float_cnt;
     int label2_is_float_cnt;
-    int group_isnt_label1_cnt;
-    int group_isnt_label2_cnt;
+    int group_isnt_label1_cnt;  // either this
+    int group_isnt_label2_cnt;  // or this should be 0
     int annotation_cnt;
     map<float, int> label1_cnt;
-    map<float, int> label2_cnt;
-    map<string, int> mime_cnt;
+    map<int16_t, int> label2_cnt;
+    map<string, int> mime_cnt;  // not implemented
     map<int, int> width_cnt;
     map<string, int> shape_cnt;
 
     float scan_time;
+
+    // Stavka: add additional items
 
     static bool is_float (float v) {
         return float(int(v)) != v;
@@ -108,6 +141,7 @@ public:
         size_t max_peak = max_peak_mb * MB;
 
         total_cnt = db.size();
+        // only access locator information, for speed.
         db.loopIndex([this](Locator const &l) {
             total_size += l.size;
             size_stat(l.size);
@@ -117,6 +151,7 @@ public:
         if (total_size < max_peak * (1.0 + max_peak_relax)) {
             max_peak = total_size;
         }
+        // Random sample records of given total size.
         vector<unsigned> ids(db.size());
         for (unsigned i = 0; i < ids.size(); ++i) {
             ids[i] = i;
@@ -139,6 +174,10 @@ public:
                 Locator const &loc = db.locator(id);
                 Record rec;
                 db.read(id, &rec);
+                // rec now holds the record.
+                // we can use:  (details see class Record in picpac.h)
+                //  rec.meta()  // meta data
+                //  rec.field() or rec.field_string() to access the filed
                 float label1 = rec.meta().label;
                 float label2 = rec.meta().label2;
                 if (is_float(label1)) {
@@ -173,6 +212,10 @@ public:
                         }
                     }
                 }
+                cv::Mat image = decode_buffer(rec.field(0), -1);
+                // Stavka:
+                // do statiticis on the image
+                //
                 ++progress;
             }
             scan_time = timer.elapsed().wall/1e9;

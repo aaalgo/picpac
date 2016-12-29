@@ -1,6 +1,7 @@
 #pragma once
 #include <random>
 #include <opencv2/opencv.hpp>
+#include <glog/logging.h>
 #include "picpac.h"
 
 #define PICPAC_CONFIG picpac::BatchImageStream::Config
