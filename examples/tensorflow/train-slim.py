@@ -17,15 +17,23 @@ import tensorflow.contrib.slim as slim
 # e.g. the following have worked for very small datasets
 #   alexnet.alexnet_v2
 #   inception_v3.inception_v3
+#   vgg.vgg_16
+
+# Failed to converge:
+#   vgg.vgg_a
+#   inception_v1.inception_v1
+#
+# Not working yet:  resnet for requirement of special API (blocks)
 
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
+flags.DEFINE_string('db', 'db', 'database')
 flags.DEFINE_integer('classes', '2', 'number of classes')
 flags.DEFINE_integer('resize', '224', '')
 flags.DEFINE_integer('channels', 3, '')
 flags.DEFINE_integer('batch', 32, 'Batch size.  ')
-flags.DEFINE_string('net', 'vgg.vgg_a', 'cnn architecture, e.g. vgg.vgg_a')
+flags.DEFINE_string('net', 'vgg.vgg_16', 'cnn architecture, e.g. vgg.vgg_a')
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
 flags.DEFINE_integer('max_steps', 200000, 'Number of steps to run trainer.')
 flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
@@ -77,8 +85,7 @@ def run_training ():
                 channel_first=False # this is tensorflow specific
                                     # Caffe's dimension order is different.
                 )
-    db='db'
-    tr_stream = picpac.ImageStream(db, negate=False, perturb=True, **config)
+    tr_stream = picpac.ImageStream(FLAGS.db, negate=False, perturb=True, **config)
 
     with tf.Graph().as_default():
         X = tf.placeholder(tf.float32, shape=(FLAGS.batch, FLAGS.resize, FLAGS.resize, FLAGS.channels), name="images")

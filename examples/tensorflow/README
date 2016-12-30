@@ -1,7 +1,7 @@
 Dockerfile:	nvidia-docker for running the above. Need cuda-8.0 & cudnn 5.
 
-train.py:	train one of the tensorflow.contrib.slim.nets models
-		./train.py --net=inception_v3.inception_v3
+train-slim.py:	train one of the tensorflow.contrib.slim.nets models
+		./train-slim.py --net=inception_v3.inception_v3
 		see more from comment in code.
 
 fcn.py, fcn-predict:
