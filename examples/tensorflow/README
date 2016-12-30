@@ -1,0 +1,2 @@
+train.py:	train one of the tensorflow.contrib.slim.nets models
+fcn.py, fcn-predict:		train/apply a very basic version of FCN model.
