@@ -65,7 +65,7 @@ html_static.o:	bfdfs
 	if [ -f html_static.o.bz2 ]; then	\
 		bzcat html_static.o.bz2 > html_static.o ; \
 	else \
-		make -C copilot none ; \
+		make -C copilot ; \
 		bfdfs/bfdfs-load $@ copilot/dist --name html_static ; \
 	fi
 	#cat magic/* > magic.tmp
