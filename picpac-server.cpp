@@ -56,6 +56,30 @@ using namespace json11;
 static size_t max_peak_mb = 1000;
 static float max_peak_relax = 0.2;
 
+// This class wrapes the accumulators for the features of images we are interested in
+// Currently it only count the mean image area in pixel and mean height-width-ratio
+class ImageStat {
+    Stat area_stat;
+    Stat height_width_ratio_stat;
+public:
+    ImageStat () {
+    }
+    void AddImage(cv::Mat &image) {
+        if (image.rows<=0 || image.cols<=0)
+            return;
+        double area = image.rows*image.cols;
+        double height_width_ratio = (image.rows+0.0f)/image.cols;
+        area_stat(area);
+        height_width_ratio_stat(height_width_ratio);
+    }
+    double MeanArea() {
+        return ba::extract_result<ba::tag::mean>(area_stat);
+    }
+    double MeanHWRatio() {
+        return ba::extract_result<ba::tag::mean>(height_width_ratio_stat);
+    }
+};
+
 // The class cans an image dataset and produces all kinds of
 // statistics.  It also measures how fast we can read records.
 // A PicPac database is designed such that upon opening,
@@ -110,7 +134,7 @@ class Overview {
 
     float scan_time;
 
-    // Stavka: add additional items
+    ImageStat image_stat;
 
     static bool is_float (float v) {
         return float(int(v)) != v;
@@ -213,9 +237,7 @@ public:
                     }
                 }
                 cv::Mat image = decode_buffer(rec.field(0), -1);
-                // Stavka:
-                // do statiticis on the image
-                //
+                image_stat.AddImage(image);
                 ++progress;
             }
             scan_time = timer.elapsed().wall/1e9;
@@ -231,6 +253,8 @@ public:
             Json::object{{"key", "Group count"}, {"value", int(group_cnt.size())}},
             Json::object{{"key", "Group is float"}, {"value", group_is_float_cnt}},
             Json::object{{"key", "Scanned images"}, {"value", int(sample_cnt)}},
+            Json::object{{"key", "Mean number of pixels of images"}, {"value", int(image_stat.MeanArea()) }},
+            Json::object{{"key", "Mean height-to-width ratio of images"}, {"value", float(image_stat.MeanHWRatio()) }},
             Json::object{{"key", "Scanned size/MB"}, {"value", float(1.0 * sample_size/MB)}},
             Json::object{{"key", "All scanned"}, {"value", sample_cnt >= total_cnt}},
             Json::object{{"key", "Scan time/s"}, {"value", scan_time}},
