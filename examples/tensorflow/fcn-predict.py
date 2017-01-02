@@ -100,7 +100,7 @@ def main (_):
     image = np.reshape(image, shape)
     prob = run_predict(image)
     prob = prob[0]
-    prob = cv2.resize(prob, sz)
+    prob = cv2.resize(prob, (sz[1], sz[0]))
     print(prob.shape)
     prob *= 255
     cv2.imwrite('output.jpg', prob)
