@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ ! -d json11 ]
+if [ ! -f json11/json11.cpp ]
 then
     git submodule init
     git submodule update
