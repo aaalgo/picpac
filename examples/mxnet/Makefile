@@ -6,7 +6,7 @@ help:
 	@echo "  make run    # run docker with current directory mounted at /picpac"
 
 docker:
-	nvidia-docker build -t aaalgo/tensorflow-picpac .
+	nvidia-docker build -t aaalgo/mxnet-picpac .
 
 run:
-	nvidia-docker run -it -v $(PWD):/root/picpac aaalgo/tensorflow-picpac /bin/bash
+	nvidia-docker run -it -v $(PWD):/root/picpac aaalgo/mxnet-picpac /bin/bash
