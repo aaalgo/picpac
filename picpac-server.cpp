@@ -436,13 +436,30 @@ public:
                     it = statics.find(path);
                 }
                 if (it != statics.end()) {
-                    auto text = it->second;
-                    res.content = string(text.first, text.second);
-                    bool gz = false;
-                    res.mime = path2mime(path, &gz);
-                    if (gz) {
-                        SimpleWeb::plugins::deflate(res, req);
-                    }
+                    auto page = it->second;
+                    auto it = req.header.find("If-None-Match");
+                    do {
+                        if (it != req.header.end()) {
+                            string const &tag = it->second;
+                            if (tag == page.checksum || (true 
+                                && (tag.size() == (page.checksum.size() + 2))
+                                && (tag.find(page.checksum) == 1)
+                                && (tag.front() == '"')
+                                && (tag.back() == '"'))) {
+                                res.status = 304;
+                                res.status_string = "Not Modified";
+                                res.content.clear();
+                                break;
+                            }
+                        }
+                        res.content = string(page.begin, page.end);
+                        bool gz = false;
+                        res.mime = path2mime(path, &gz);
+                        res.header.insert(make_pair(string("ETag"), '"' + page.checksum +'"'));
+                        if (gz) {
+                            SimpleWeb::plugins::deflate(res, req);
+                        }
+                    } while (false);
                 }
                 else {
                     res.status = 404;
