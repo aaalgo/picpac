@@ -402,6 +402,7 @@ public:
 #undef PICPAC_CONFIG_UPDATE
                 float anno_factor = req.GET.get<float>("anno_factor", 0);
                         LOG(INFO) << "ANNO: " << anno_factor;
+                bool do_norm = req.GET.get<int>("norm", 0);
                 ImageLoader loader(conf);
                 ImageLoader::PerturbVector pv;
                 int id = req.GET.get<int>("id", rng() % db.size());
@@ -416,6 +417,11 @@ public:
                     if (anno_factor) {
                         image *= anno_factor;
                     }
+                }
+                if (do_norm) {
+                    cv::Mat tmp;
+                    cv::normalize(image, tmp, 0, 255, cv::NORM_MINMAX, CV_8U);
+                    image = tmp;
                 }
                 encoder.encode(image, &buf);
                 res.mime = "image/jpeg";
