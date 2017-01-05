@@ -60,8 +60,9 @@
             <!--
           <li class="header">TOOLS</li>
             -->
-          <li class="active pageLink" v-on:click="toggleMenu"><router-link to="/"><i class="fa fa-desktop"></i><span class="page">Overview</span></router-link></li>
-          <li class="pageLink" v-on:click="toggleMenu"><router-link to="/stream"><i class="fa fa-table"></i><span class="page">Stream</span></router-link></li>
+          <li class="active pageLink" v-on:click="toggleMenu"><router-link to="/"><i class="fa fa-dashboard"></i><span class="page">Overview</span></router-link></li>
+          <li class="pageLink" v-on:click="toggleMenu"><router-link to="/samples"><i class="fa fa-image"></i><span class="page">Samples</span></router-link></li>
+          <li class="pageLink" v-on:click="toggleMenu"><router-link to="/stream"><i class="fa fa-play-circle-o"></i><span class="page">Stream</span></router-link></li>
 
           <!--
           <li class="header">ME</li>

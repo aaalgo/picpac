@@ -2,36 +2,20 @@
 #include <chrono>
 #include <mutex>
 #include <vector>
-#include <map>
 #include <unordered_map>
-#include <sstream>
-#include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
-#include <boost/accumulators/accumulators.hpp>
-#include <boost/accumulators/statistics/stats.hpp>
-#include <boost/accumulators/statistics/mean.hpp>
-#include <boost/accumulators/statistics/moment.hpp>
-#include <boost/accumulators/statistics/count.hpp>
-#include <boost/accumulators/statistics/min.hpp>
-#include <boost/accumulators/statistics/max.hpp>
-#include <boost/accumulators/statistics/variance.hpp>
-#define timer timer_for_boost_progress_t
-#include <boost/progress.hpp>
-#undef timer
-#include <boost/timer/timer.hpp>
 #include <magic.h>
 #include <json11.hpp>
 #include <server_http.hpp>
 #include <server_extra.hpp>
 #include <server_extra_zip.hpp>
 #include "picpac-cv.h"
+#include "picpac-overview.h"
 #include "bfdfs/bfdfs.h"
 
 using namespace std;
 using namespace picpac;
-namespace ba = boost::accumulators;
-typedef ba::accumulator_set<double, ba::stats<ba::tag::mean, ba::tag::min, ba::tag::max, ba::tag::count, ba::tag::variance, ba::tag::moment<2>>> Stat;
 
 char const *version = PP_VERSION "-" PP_BUILD_NUMBER "," PP_BUILD_ID "," PP_BUILD_TIME;
 
@@ -56,245 +40,6 @@ using namespace json11;
 static size_t max_peak_mb = 1000;
 static float max_peak_relax = 0.2;
 
-// This class wrapes the accumulators for the features of images we are interested in
-// Currently it only count the mean image area in pixel and mean height-width-ratio
-class ImageStat {
-    Stat area_stat;
-    Stat height_width_ratio_stat;
-public:
-    ImageStat () {
-    }
-    void AddImage(cv::Mat &image) {
-        if (image.rows<=0 || image.cols<=0)
-            return;
-        double area = image.rows*image.cols;
-        double height_width_ratio = (image.rows+0.0f)/image.cols;
-        area_stat(area);
-        height_width_ratio_stat(height_width_ratio);
-    }
-    double MeanArea() {
-        return ba::extract_result<ba::tag::mean>(area_stat);
-    }
-    double MeanHWRatio() {
-        return ba::extract_result<ba::tag::mean>(height_width_ratio_stat);
-    }
-};
-
-// The class cans an image dataset and produces all kinds of
-// statistics.  It also measures how fast we can read records.
-// A PicPac database is designed such that upon opening,
-// the location information of all images are loaded into memory, but not
-// the image records themselves.
-// struct Locator {      // see picpac.h
-//      off_t offset;    // offset within file
-//      uint32_t size;   // size of record
-//      float group;     // see below    // see below
-//      ......
-// }
-// We can therefore produce precise
-// statistics on locator & group based on the locators.
-// After that, we randomly sample at most "max_peak_mb" megabytes (1G by default)
-// of records.  We load these records into memory.
-// Each record has some meta data:
-// struct Meta {        // see picpac.h
-//      float label;
-//      uint8_t width;  // number of fields.  The first field (index 0) is the image.
-//                      // The second field, if present, is the annotation.  Others are not used.
-//
-//      int16_t label2; // optional secondary label, for stratification
-//      ......
-// }
-// Each record has a label (or label1) and label2.  Locator::group is always
-// the value of either label or label2, which is determined upon the creation
-// of database.  Label is float, though for classification problems it should
-// be of integral values.  Label2 is always integer.
-//
-class Overview {
-    static size_t constexpr MB = 1024 * 1024;
-    int total_cnt;      // total number of records
-    int sample_cnt;     // number of sampled records
-    size_t total_size;  // size in bytes
-    size_t sample_size;
-    // precise stat
-    Stat size_stat;     // per-record size statistics
-    map<float, int> group_cnt;
-                        // # of different group values
-    // estimation
-    int group_is_float_cnt;
-    int label1_is_float_cnt;
-    int label2_is_float_cnt;
-    int group_isnt_label1_cnt;  // either this
-    int group_isnt_label2_cnt;  // or this should be 0
-    int annotation_cnt;
-    map<float, int> label1_cnt;
-    map<int16_t, int> label2_cnt;
-    map<string, int> mime_cnt;  // not implemented
-    map<int, int> width_cnt;
-    map<string, int> shape_cnt;
-
-    float scan_time;
-
-    ImageStat image_stat;
-
-    static bool is_float (float v) {
-        return float(int(v)) != v;
-    }
-
-    template <typename T>
-    Json::array cnt_to_json (map<T, int> const &mm) {
-        vector<pair<T, int>> cnts(mm.begin(), mm.end());
-        std::sort(cnts.begin(), cnts.end());
-        Json::array counts;
-        for (auto const &p: cnts) {
-            counts.push_back(Json::array{p.first, p.second});
-        }
-        return counts;
-    }
-
-public:
-    Overview (picpac::IndexedFileReader &db)
-        : total_cnt(0), sample_cnt(0),
-        total_size(0), sample_size(0),
-        group_is_float_cnt(0),
-        label1_is_float_cnt(0),
-        label2_is_float_cnt(0),
-        group_isnt_label1_cnt(0),
-        group_isnt_label2_cnt(0),
-        annotation_cnt(0) {
-
-        size_t max_peak = max_peak_mb * MB;
-
-        total_cnt = db.size();
-        // only access locator information, for speed.
-        db.loopIndex([this](Locator const &l) {
-            total_size += l.size;
-            size_stat(l.size);
-            if (is_float(l.group)) ++group_is_float_cnt;
-            group_cnt[l.group] += 1;
-        });
-        if (total_size < max_peak * (1.0 + max_peak_relax)) {
-            max_peak = total_size;
-        }
-        // Random sample records of given total size.
-        vector<unsigned> ids(db.size());
-        for (unsigned i = 0; i < ids.size(); ++i) {
-            ids[i] = i;
-        }
-        std::random_shuffle(ids.begin(), ids.end());
-        // determine # images to scan
-        for (unsigned id: ids) {
-            if (sample_size >= max_peak) break;
-            Locator const &loc = db.locator(id);
-            ++sample_cnt;
-            sample_size += loc.size;
-        }
-        ids.resize(sample_cnt);
-        std::cerr << "Scanning " << sample_cnt << "/" << total_cnt << " images..." << std::endl;
-        
-        {
-            boost::progress_display progress(ids.size(), std::cerr);
-            boost::timer::cpu_timer timer;
-            for (unsigned id: ids) {
-                Locator const &loc = db.locator(id);
-                Record rec;
-                db.read(id, &rec);
-                // rec now holds the record.
-                // we can use:  (details see class Record in picpac.h)
-                //  rec.meta()  // meta data
-                //  rec.field() or rec.field_string() to access the filed
-                float label1 = rec.meta().label;
-                float label2 = rec.meta().label2;
-                if (is_float(label1)) {
-                    ++label1_is_float_cnt;
-                }
-                if (is_float(label2)) {
-                    ++label2_is_float_cnt;
-                }
-                if (loc.group != label1) {
-                    ++group_isnt_label1_cnt;
-                }
-                if (loc.group != label2) {
-                    ++group_isnt_label2_cnt;
-                }
-                label1_cnt[label1] += 1;
-                label2_cnt[label2] += 1;
-                width_cnt[rec.meta().width] += 1;
-                // TODO: mime
-                if (rec.meta().width > 1) {
-                    auto anno = rec.field_string(1);
-                    auto tt = anno.find("\"type\"");
-                    if (tt != anno.npos
-                            && anno.find("geometry") != anno.npos){
-                        auto b = anno.find('"', tt + 6);
-                        if (b != anno.npos) {
-                            auto e = anno.find('"', b + 1);
-                            if (e != anno.npos) {
-                                string shape = anno.substr(b+1, e - b- 1);
-                                annotation_cnt += 1;
-                                shape_cnt[shape] += 1;
-                            }
-                        }
-                    }
-                }
-                cv::Mat image = decode_buffer(rec.field(0), -1);
-                image_stat.AddImage(image);
-                ++progress;
-            }
-            scan_time = timer.elapsed().wall/1e9;
-        }
-        std::cerr << "Scanned " << (1.0 * sample_size / MB) << "MB of data in " << scan_time << " seconds." << std::endl;
-    }
-
-    void toJson (string *buf) {
-        Json::object all;
-        Json::array summary{
-            Json::object{{"key", "Total images"}, {"value", int(total_cnt)}},
-            Json::object{{"key", "Total size/MB"}, {"value", float(1.0 * total_size / MB)}},
-            Json::object{{"key", "Group count"}, {"value", int(group_cnt.size())}},
-            Json::object{{"key", "Group is float"}, {"value", group_is_float_cnt}},
-            Json::object{{"key", "Scanned images"}, {"value", int(sample_cnt)}},
-            Json::object{{"key", "Mean number of pixels of images"}, {"value", int(image_stat.MeanArea()) }},
-            Json::object{{"key", "Mean height-to-width ratio of images"}, {"value", float(image_stat.MeanHWRatio()) }},
-            Json::object{{"key", "Scanned size/MB"}, {"value", float(1.0 * sample_size/MB)}},
-            Json::object{{"key", "All scanned"}, {"value", sample_cnt >= total_cnt}},
-            Json::object{{"key", "Scan time/s"}, {"value", scan_time}},
-            Json::object{{"key", "Label1 count"}, {"value", int(label1_cnt.size())}},
-            Json::object{{"key", "label is float"}, {"value", label1_is_float_cnt}},
-            Json::object{{"key", "Label2 count"}, {"value", int(label2_cnt.size())}},
-            Json::object{{"key", "label2 is float"}, {"value", label2_is_float_cnt}},
-            Json::object{{"key", "Group isnt label1"}, {"value", group_isnt_label1_cnt}},
-            Json::object{{"key", "Group isnt label2"}, {"value", group_isnt_label2_cnt}},
-            Json::object{{"key", "Shape count"}, {"value", int(shape_cnt.size())}},
-        };
-        if (group_cnt.size() == 1) {
-            summary.push_back(Json::object{{"key", "Group value"}, {"value", group_cnt.begin()->first}});
-        }
-        else if (group_cnt.size() > 1 && group_is_float_cnt == 0) {
-            all["group_cnt"] = cnt_to_json(group_cnt);
-        }
-        if (label1_cnt.size() == 1) {
-            summary.push_back(Json::object{{"key", "Label1 value"}, {"value", label1_cnt.begin()->first}});
-        }
-        else if (label1_cnt.size() > 1 && label1_is_float_cnt == 0) {
-            all["label1_cnt"] = cnt_to_json(label1_cnt);
-        }
-        if (label2_cnt.size() == 1) {
-            summary.push_back(Json::object{{"key", "Label2 value"}, {"value", label2_cnt.begin()->first}});
-        }
-        else if (label2_cnt.size() > 1 && label2_is_float_cnt == 0) {
-            all["label2_cnt"] = cnt_to_json(label2_cnt);
-        }
-        if (shape_cnt.size() == 1) {
-            summary.push_back(Json::object{{"key", "Shape value"}, {"value", shape_cnt.begin()->first}});
-        }
-        else if (shape_cnt.size() > 1) {
-            all["shape_cnt"] = cnt_to_json(shape_cnt);
-        }
-        all["summary"] = summary;
-        *buf = Json(all).dump();
-    }
-};
-
 typedef SimpleWeb::Server<SimpleWeb::HTTP> HttpServer;
 using SimpleWeb::Response;
 using SimpleWeb::Request;
@@ -304,6 +49,8 @@ class Service:  public SimpleWeb::Multiplexer {
     bfdfs::Loader statics;
     default_random_engine rng;  // needs protection!!!TODO
     string overview;
+    string collage;
+    vector<vector<string>> samples;
     magic_t cookie;
 
 #define HTTP_Q "(\\?.+)?$"
@@ -344,8 +91,25 @@ public:
         cookie = magic_open(MAGIC_MIME_TYPE);
         CHECK(cookie);
         magic_load(cookie, "/usr/share/misc/magic:/usr/local/share/misc/magic");
-        Overview ov(db);
+        Overview ov(db, max_peak_mb, max_peak_relax);
         ov.toJson(&overview);
+        {
+            ImageEncoder encoder(".jpg");
+            encoder.encode(ov.collage(), &collage);
+            {
+                vector<vector<cv::Mat>> ss;
+                ov.stealSamples(&ss);
+                samples.resize(ss.size());
+                for (unsigned i = 0; i < ss.size(); ++i) {
+                    auto &from = ss[i];
+                    auto &to = samples[i];
+                    to.resize(from.size());
+                    for (unsigned j = 0; j < from.size(); ++j) {
+                        encoder.encode(from[j], &to[j]);
+                    }
+                }
+            }
+        }
 
         add("^/api/overview" HTTP_Q, "GET", [this](Response &res, Request &req) {
 
@@ -362,7 +126,34 @@ public:
                 res.content = overview;
                 res.mime = "application/json";
             });
+        add("^/api/collage.jpg" HTTP_Q, "GET", [this](Response &res, Request &req) {
 
+                /*
+                rfc3986::Form trans;
+                // transfer all applicable image parameters to trans
+                // so we can later use that for image display
+#define PICPAC_CONFIG_UPDATE(C,P) \
+                { auto it = query.find(#P); if (it != query.end()) trans.insert(*it);}
+                PICPAC_CONFIG_UPDATE_ALL(0);
+#undef PICPAC_CONFIG_UPDATE
+                string ext = trans.encode(true);
+                */
+                res.content = collage;
+                res.mime = "image/jpeg";
+            });
+        add("^/api/thumb" HTTP_Q, "GET", [this](Response &res, Request &req) {
+                int cls = req.GET.get<int>("class", 0);
+                int off = req.GET.get<int>("offset", 0);
+                if (cls >= samples.size()
+                        || off >= samples[cls].size()) {
+                    res.status = 404;
+                    res.status_string = "Not Found";
+                }
+                else {
+                    res.mime = "image/jpeg";
+                    res.content = samples[cls][off];
+                }
+            });
         add("^/api/sample" HTTP_Q, "GET", [this](Response &res, Request &req) {
                 int count = req.GET.get<int>("count", 20);
                 //string anno = query.get<string>("anno", "");

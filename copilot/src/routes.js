@@ -5,6 +5,7 @@ import NotFoundView from './components/404.vue'
 // Import Views - Dash
 // import DashboardView from './components/dash/Dashboard.vue'
 import OverviewView from './components/dash/Overview.vue'
+import SamplesView from './components/dash/Samples.vue'
 import StreamView from './components/dash/Stream.vue'
 /*
 import TasksView from './components/dash/Tasks.vue'
@@ -29,7 +30,14 @@ const routes = [
         component: OverviewView,
         name: 'Overview',
         description: 'Overview of environment'
-      }, {
+      },
+      {
+        path: '/samples',
+        component: SamplesView,
+        name: 'Samples',
+        description: 'Simple and advance table in CoPilot'
+      },
+      {
         path: '/stream',
         component: StreamView,
         name: 'Stream',

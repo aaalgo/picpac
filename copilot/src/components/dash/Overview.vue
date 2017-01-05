@@ -11,29 +11,22 @@
           <h3 class="box-title"></h3>
           <div class="box-body">
               <div class="col-sm-6 col-xs-12">
-              <p class="text-center">
-                <strong>Summary</strong>
-              </p>
+                <p class="text-center">
+                    <strong>Summary</strong>
+                </p>
           <!-- /.box-header -->
-            <table class="table table-striped">
-              <tbody>
-                <tr v-for="item in summary">
-                    <th>{{ item.key }}</th>
-                    <th>{{ item.value }}</th>
-                </tr>
-              </tbody>
-            </table>
-        </div>
-          <!-- /.box-body -->
-            <!--
-            <hr class="visible-xs-block">
-            <div class="col-sm-6 col-xs-12">
-              <p class="text-center">
-                <strong>Language Overview</strong>
-              </p>
-              <canvas id="languagePie"></canvas>
-            </div>
--->
+                <table class="table table-striped">
+                  <tbody>
+                    <tr v-for="item in summary" v-if="item.display">
+                        <td>{{ item.name }}</td>
+                        <td>{{ item.value }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="col-sm-6 col-xs-12">
+                  <img src="/api/collage.jpg"></img>
+              </div>
           </div>
         </div>
         <!--
@@ -43,12 +36,6 @@
     </div>
     <!-- /.row -->
     <div class='row'>
-            <div class="col-sm-6 col-xs-12" v-show="showGroupBars">
-              <p class="text-center">
-                <strong>Count by Group</strong>
-              </p>
-              <canvas id="groupBars" ></canvas>
-            </div>
             <div class="col-sm-6 col-xs-12" v-show="showLabel1Bars">
               <p class="text-center">
                 <strong>Count by Label</strong>
@@ -220,24 +207,19 @@ module.exports = {
     this.$nextTick(function () {
       $.getJSON('/api/overview', function (overview) {
         console.log(overview)
-        thisData.summary = overview.summary
-        if ('group_cnt' in overview) {
-          var groupBars = overview['group_cnt']
-          thisData.showGroupBars = true
-          showBars('groupBars', groupBars)
-        }
-        if ('label1_cnt' in overview) {
-          var label1Bars = overview['label1_cnt']
+        thisData.summary = overview.SUMMARY
+        if ('LABEL1_CNT' in overview) {
+          var label1Bars = overview['LABEL1_CNT']
           thisData.showLabel1Bars = true
           showBars('label1Bars', label1Bars)
         }
-        if ('label2_cnt' in overview) {
-          var label2Bars = overview['label2_cnt']
+        if ('LABEL2_CNT' in overview) {
+          var label2Bars = overview['LABEL2_CNT']
           thisData.showLabel2Bars = true
           showBars('label2Bars', label2Bars)
         }
-        if ('shape_cnt' in overview) {
-          var shapeBars = overview['shape_cnt']
+        if ('SHAPE_CNT' in overview) {
+          var shapeBars = overview['SHAPE_CNT']
           thisData.showShapeBars = true
           showBars('shapeBars', shapeBars)
         }
