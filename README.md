@@ -12,9 +12,14 @@ Prerequisits:
 pip install -i https://testpypi.python.org/pypi picpac
 ```
 
-#PicPac Server
+#PicPac Explorer
 
-Download portable distribution of PicPac server here: (http://aaalgo.com/picpac/server/).
+PicPac Explorer is a Web-based UI that allows the user to explore the
+picpac database content and simulate streaming configurations.
+
+Download portable distribution of PicPac Explorer here: (http://aaalgo.com/picpac/binary/).
+
+Run ```picpac-explorer db``` and point the web browser to port 18888.  If the program is executed under a GUI environment, the browser will be automatically opened.
 
 #Building
 
