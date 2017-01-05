@@ -2,4 +2,4 @@
 
 . /etc/profile
 cd /picpac
-make picpac-server
+make picpac-explorer

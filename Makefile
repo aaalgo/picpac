@@ -47,7 +47,7 @@ json11.o:	json11/json11.cpp
 $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-picpac-server:	picpac-server.o html_static.o libpicpac.a
+picpac-explorer:	picpac-explorer.o html_static.o libpicpac.a
 	if [ ! -d /opt/cbox ] ; then echo "!!!BUILD SERVER WITH make-server.sh !!!"; false; fi
 	$(CXX) $(LDFLAGS) -static -o $@ $^ $(SERVER_LIBS) 
 	mv html_static.o html_static.o.last
