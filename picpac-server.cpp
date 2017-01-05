@@ -48,6 +48,7 @@ class Service:  public SimpleWeb::Multiplexer {
     picpac::IndexedFileReader db;
     bfdfs::Loader statics;
     default_random_engine rng;  // needs protection!!!TODO
+    int task;
     string overview;
     string collage;
     vector<vector<string>> samples;
@@ -93,6 +94,7 @@ public:
         magic_load(cookie, "/usr/share/misc/magic:/usr/local/share/misc/magic");
         Overview ov(db, max_peak_mb, max_peak_relax);
         ov.toJson(&overview);
+        task = ov.guessTask();
         {
             ImageEncoder encoder(".jpg");
             encoder.encode(ov.collage(), &collage);
@@ -162,7 +164,7 @@ public:
                     id = rand() % db.size();
                 }
                 Json json = Json::object {
-                    {"samples", Json(ids)}
+                    {"samples", Json(ids)},
                 };
                 res.mime = "application/json";
                 res.content = json.dump();
