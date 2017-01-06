@@ -4,7 +4,7 @@ PicPac is an image database, explorer and streamer for deep learning.
 It is developed so that the user of different deep learning frameworks
 can all use the same image database format.  PicPac currently supports
 streaming data into TensorFlow, MXNet and a Caffe fork, with C++ and
-python API. 
+python API.  Lua/Torch support is under active development.
 
 #[Documentation](http://picpac.readthedocs.org/en/latest/)
 
