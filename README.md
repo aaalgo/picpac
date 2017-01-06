@@ -1,5 +1,11 @@
 PicPac: An Image Streamer for Iterative Training
 
+PicPac is an image database, explorer and streamer for deep learning.
+It is developed so that the user of different deep learning frameworks
+can all use the same image database format.  PicPac currently supports
+streaming data into TensorFlow, MXNet and a Caffe fork, with C++ and
+python API. 
+
 #[Documentation](http://picpac.readthedocs.org/en/latest/)
 
 # Installation with Pip
