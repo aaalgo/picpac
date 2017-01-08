@@ -91,7 +91,7 @@ def run_training ():
                                     # Caffe's dimension order is different.
                 )
     # training stream
-    tr_stream = picpac.ImageStream(FLAGS.db, negate=False, perturb=True, loop=True, **config)
+    tr_stream = picpac.ImageStream(FLAGS.db, split_negate=False, perturb=True, loop=True, **config)
     te_stream = None
     if FLAGS.test_steps > 0:
         # testing stream, "negate" inverts the image selection specified by split & split_fold
@@ -103,7 +103,7 @@ def run_training ():
                 raise Exception("bad parameters")
             te_stream = picpac.ImageStream(FLAGS.test_db, perturb=False, loop=False, **config)
         elif FLAGS.split > 1:
-            te_stream = picpac.ImageStream(FLAGS.db, negate=True, perturb=False, loop=False, **config)
+            te_stream = picpac.ImageStream(FLAGS.db, split_negate=True, perturb=False, loop=False, **config)
             pass
         pass
 
