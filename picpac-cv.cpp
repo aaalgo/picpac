@@ -493,7 +493,23 @@ namespace picpac {
             }
         }
 
+        if (image.channels() == 3) {
+            if (colorspace == COLOR_Lab) {
+                cv::cvtColor(image, image, CV_BGR2Lab);
+            }
+            else if (colorspace  == COLOR_HSV) {
+                cv::cvtColor(image, image, CV_BGR2HSV);
+            }
+        }
         image += p.color;
+        if (image.channels() == 3) {
+            if (colorspace == COLOR_Lab) {
+                cv::cvtColor(image, image, CV_Lab2BGR);
+            }
+            else if (colorspace  == COLOR_HSV) {
+                cv::cvtColor(image, image, CV_HSV2BGR);
+            }
+        }
 
         if (p.hflip && p.vflip) {
             cv::flip(image, out->image, -1);

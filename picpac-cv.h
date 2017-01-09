@@ -38,6 +38,7 @@
     PICPAC_CONFIG_UPDATE(C,anno_thickness);\
     PICPAC_CONFIG_UPDATE(C,anno_min_ratio); \
     PICPAC_CONFIG_UPDATE(C,perturb);\
+    PICPAC_CONFIG_UPDATE(C,pert_colorspace); \
     PICPAC_CONFIG_UPDATE(C,pert_color1); \
     PICPAC_CONFIG_UPDATE(C,pert_color2); \
     PICPAC_CONFIG_UPDATE(C,pert_color3); \
@@ -69,6 +70,11 @@ namespace picpac {
             ANNOTATE_JSON = 2,
             ANNOTATE_AUTO = 3   // for autoencoder, use input as annotation
         };
+        enum {
+            COLOR_DEFAULT = 0,
+            COLOR_HSV = 1,
+            COLOR_Lab = 2
+        };
         struct Config {
             int channels;   // -1: unchanged
             int min_size;
@@ -90,6 +96,7 @@ namespace picpac {
             // perturbation
             bool perturb;
             // perturbation output retains input image size
+            string pert_colorspace;
             float pert_color1;
             float pert_color2;
             float pert_color3;
@@ -165,6 +172,16 @@ namespace picpac {
             else if (config.annotate == "auto") {
                 annotate = ANNOTATE_AUTO;
             }
+
+            if (config.pert_colorspace == "Lab") {
+                colorspace = COLOR_Lab;
+            }
+            else if (config.pert_colorspace == "HSV") {
+                colorspace = COLOR_HSV;
+            }
+            else {
+                colorspace = COLOR_DEFAULT;
+            }
         }
 
         template <typename RNG>
@@ -188,6 +205,7 @@ namespace picpac {
     private:
         Config config;
         int annotate;
+        int colorspace;
         std::uniform_int_distribution<int> delta_color1; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color2; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color3; //(min_R, max_R);

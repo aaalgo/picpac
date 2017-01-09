@@ -12,7 +12,9 @@
         <div class="col-xs-3">
 			  <label for="colorspace">Color Space:</label>
 			  <select class="form-control" id="colorspace">
-				<option>RGB</option>
+				<option>BGR</option>
+				<option>HSV</option>
+				<option>Lab</option>
 				<option>Grayscale</option>
 			  </select>
         </div>
@@ -109,8 +111,10 @@ function Reload (thisData) {
       }
       var colorspace = $('#colorspace > option:selected').text()
       var channels = 3
+      var pert_colorspace = colorspace
       if (colorspace === 'Grayscale') {
         channels = 1
+        pert_colorspace = 'BGR'
       }
       var norm = 0
       if ($('#normalize').prop('checked')) {
@@ -122,6 +126,7 @@ function Reload (thisData) {
           '&pert_color1=' + pertColor1 +
           '&pert_color2=' + pertColor2 +
           '&pert_color3=' + pertColor3 +
+          '&pert_colorspace=' + pert_colorspace +
           '&pert_angle=' + pertAngle +
           '&pert_min_scale=' + pertScale[0] +
           '&pert_max_scale=' + pertScale[1] +
