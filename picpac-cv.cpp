@@ -1,3 +1,4 @@
+#include <iostream>
 #include <sstream>
 #include <json11.hpp>
 #include <boost/filesystem/fstream.hpp>
@@ -480,7 +481,7 @@ namespace picpac {
                 anno = tmp;
             }
         }
-        else if (p.scale != 0) {
+        else if (p.scale != 1) {
             {
                 cv::Mat tmp;
                 cv::resize(image, tmp, cv::Size(), p.scale, p.scale);
@@ -493,6 +494,10 @@ namespace picpac {
             }
         }
 
+        /*
+        std::cout << p.color[0] << " " << p.color[1] << " " << p.color[2] << std::endl;
+        std::cout << colorspace << std::endl;
+        */
         if (image.channels() == 3) {
             if (colorspace == COLOR_Lab) {
                 cv::cvtColor(image, image, CV_BGR2Lab);
