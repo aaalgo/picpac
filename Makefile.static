@@ -33,6 +33,9 @@ json11.o:	json11/json11.cpp
 $(PROGS):	%:	%.o libpicpac.a
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+release:
+	mkdir -p release
+	cp $(PROGS) release
 
 clean:
 	rm *.o $(PROGS)
