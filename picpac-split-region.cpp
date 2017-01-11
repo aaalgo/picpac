@@ -17,6 +17,8 @@ class Splitter {
 public:
     struct Config {
         string path;
+        string codec;
+        string anno_codec;
 #if 0
         string bg_path;
 #endif
@@ -102,7 +104,7 @@ private:
         *step -= miss;
     }
 public:
-    Splitter (Config const &c): config(c), encoder(".jpg"), anno_encoder(".png"), db(config.path)
+    Splitter (Config const &c): config(c), encoder(config.codec), anno_encoder(config.anno_codec), db(config.path)
 #if 0
                                 , bg(nullptr) 
 #endif
@@ -300,6 +302,8 @@ int main(int argc, char const* argv[]) {
         ("grid-scale", po::value(&config.grid_scale), "")
         ("grid", "")
         ("image-annotation", "")
+        ("codec", po::value(&config.codec)->default_value(".jpg"), "use .tiff for 16-bit images") 
+        ("anno-codec", po::value(&config.anno_codec)->default_value(".png"), "not used json annotation") 
         ;
 
     po::positional_options_description p;
