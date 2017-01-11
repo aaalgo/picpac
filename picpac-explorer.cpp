@@ -44,6 +44,8 @@ typedef SimpleWeb::Server<SimpleWeb::HTTP> HttpServer;
 using SimpleWeb::Response;
 using SimpleWeb::Request;
 
+void backtrace ();
+
 class Service:  public SimpleWeb::Multiplexer {
     picpac::IndexedFileReader db;
     bfdfs::Loader statics;

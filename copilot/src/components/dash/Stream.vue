@@ -12,7 +12,9 @@
         <div class="col-xs-3">
 			  <label for="colorspace">Color Space:</label>
 			  <select class="form-control" id="colorspace">
-				<option>RGB</option>
+				<option>BGR</option>
+				<option>HSV</option>
+				<option>Lab</option>
 				<option>Grayscale</option>
 			  </select>
         </div>
@@ -20,19 +22,19 @@
 			  <label for="annotation">Annotation:</label>
 			  <select class="form-control" id="annotation">
 				<option>None</option>
-				<option v-bind:selected="use_json">Json</option>
+				<option>Json</option>
 			  </select>
         </div>
         </div>
         <div class="row">
         <div class="col-xs-2">
-        <label>pert_red</label> <input class="form-control" id="pert_color3" data-slider-id='pert_color3_C' type="text" data-slider-min="0" data-slider-max="100" data-slider-step="1" data-slider-value="20" />
+        <label>pert_color1</label> <input id="pert_color1" data-slider-id='pert_color1_C' type="text" data-slider-min="0" data-slider-max="100" data-slider-step="1" data-slider-value="20" />
         </div>
         <div class="col-xs-2">
-        <label>pert_green</label> <input id="pert_color2" data-slider-id='pert_color2_C' type="text" data-slider-min="0" data-slider-max="100" data-slider-step="1" data-slider-value="20" />
+        <label>pert_color2</label> <input id="pert_color2" data-slider-id='pert_color2_C' type="text" data-slider-min="0" data-slider-max="100" data-slider-step="1" data-slider-value="20" />
         </div>
         <div class="col-xs-2">
-        <label>pert_blue</label> <input id="pert_color1" data-slider-id='pert_color1_C' type="text" data-slider-min="0" data-slider-max="100" data-slider-step="1" data-slider-value="20" />
+        <label>pert_color3</label> <input class="form-control" id="pert_color3" data-slider-id='pert_color3_C' type="text" data-slider-min="0" data-slider-max="100" data-slider-step="1" data-slider-value="20" />
         </div>
         <div class="col-xs-2">
         <label>pert_angle</label> <input id="pert_angle" data-slider-id='pert_angle_C' type="text" data-slider-min="0" data-slider-max="50" data-slider-step="1" data-slider-value="10" />
@@ -109,8 +111,10 @@ function Reload (thisData) {
       }
       var colorspace = $('#colorspace > option:selected').text()
       var channels = 3
+      var pertColorspace = colorspace
       if (colorspace === 'Grayscale') {
         channels = 1
+        pertColorspace = 'BGR'
       }
       var norm = 0
       if ($('#normalize').prop('checked')) {
@@ -122,6 +126,7 @@ function Reload (thisData) {
           '&pert_color1=' + pertColor1 +
           '&pert_color2=' + pertColor2 +
           '&pert_color3=' + pertColor3 +
+          '&pert_colorspace=' + pertColorspace +
           '&pert_angle=' + pertAngle +
           '&pert_min_scale=' + pertScale[0] +
           '&pert_max_scale=' + pertScale[1] +
