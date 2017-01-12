@@ -19,7 +19,7 @@ namespace picpac {
         for (int i = 0; i < sz; ++i) {
             at(i) = symbols[i];
         }
-    }   
+    }
 
     Stack::~Stack () {
         if (symbols) {

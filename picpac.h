@@ -464,13 +464,13 @@ namespace picpac {
         /// Sample a perturb vector.
         /** This is guaranteed to be run in serial. */
         template <typename RNG>
-        void sample (RNG &rng, PerturbVector *) {
+        void sample (RNG &, PerturbVector *) {
         }
         /// Convert a record into value.
         /** This might be invoked in parallel and should be deterministic.
          * All randomization should be done in sample. */
-        void load (RecordReader rr, PerturbVector const &p, Value *out,
-                   CacheValue *cache, std::mutex *mutex) const {
+        void load (RecordReader rr, PerturbVector const &, Value *out,
+                   CacheValue *, std::mutex *) const {
             Record r;
             rr(&r);
             *out = std::move(r);
