@@ -203,7 +203,8 @@ def build_cnn(input_var=None):
 # more functions to better separate the code, but it wouldn't make it any
 # easier to read.
 
-def main(model='mlp', num_epochs=20):
+def main(model='cnn', num_epochs=50):
+    # changed from original mlp, 500 to cnn, 50 for quick training
     # Load the dataset
     print("Loading data...")
     train_str, val_str, test_str = load_dataset()
