@@ -51,6 +51,12 @@ private:
                       1.0 * roi.width / image.cols,
                       1.0 * roi.height / image.rows);
         cv::Mat out = image(roi);
+        if (out.total() == 0) {
+            LOG(ERROR) << "skipping empty image WH="
+                       << image.cols << ',' << image.rows
+                       << " ROI XYWH=" << roi.x << ',' << roi.y << ',' << roi.width << ',' << roi.height;
+            return;
+        }
         Annotation anno_out;
         int label = 0;
         for (unsigned j = 0; j < anno.shapes.size(); ++j) {
