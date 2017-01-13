@@ -281,7 +281,7 @@ def main(model='mlp', num_epochs=20):
         val_err = 0
         val_acc = 0
         val_batches = 0
-        test.reset()
+        test_str.reset() # re-start streaming
         for inputs, targets, pad in val_str:
             if pad: # not full batch
                 break
