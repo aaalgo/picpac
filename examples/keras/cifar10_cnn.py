@@ -100,11 +100,6 @@ model.compile(loss='categorical_crossentropy',
               optimizer='rmsprop',
               metrics=['accuracy'])
 
-#X_train = X_train.astype('float32')
-#X_test = X_test.astype('float32')
-#X_train /= 255
-#X_test /= 255
-
 train_str, val_str, test_str = load_dataset()
 
 epoch_size = train_str.size() / batch_size
@@ -116,6 +111,7 @@ for epoch in range(nb_epoch):
     start_time = time.time()
     for _ in tqdm(range(epoch_size), leave=False):
         inputs, targets, _ = train_str.next()
+        inputs /= 255
         loss, acc = model.train_on_batch(inputs, targets)
         train_loss += loss
         train_acc += acc
@@ -129,6 +125,7 @@ for epoch in range(nb_epoch):
     for inputs, targets, pad in val_str:
         if pad: # not full batch
             break
+        inputs /= 255
         loss, acc = model.test_on_batch(inputs, targets)
         val_loss += loss
         val_acc += acc
@@ -147,6 +144,7 @@ test_batches = 0
 for inputs, targets, pad in test_str:
     if pad: # not full batch
         break
+    inputs /= 255
     loss, acc = model.test_on_batch(inputs, targets)
     test_loss += loss
     test_acc += acc
