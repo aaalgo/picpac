@@ -23,15 +23,15 @@ public:
         string bg_path;
 #endif
         int size;
-        int width; 
-        int height; 
+        int patch_size;
+        int min_patch_size;
         bool no_scale;
         // for grid splitting
         float grid_size;
         float grid_step;
         float grid_scale;
         bool image_annotation;
-        Config (): size(50), width(100), height(100), no_scale(false), grid_size(240), grid_step(200), grid_scale(1), image_annotation(false) {
+        Config (): size(50), patch_size(100), min_patch_size(-1), no_scale(false), grid_size(240), grid_step(200), grid_scale(1), image_annotation(false) {
         }
     };
 private:
@@ -177,8 +177,10 @@ public:
                              bb.width * scaled.cols,
                              bb.height * scaled.rows);
                 float factor = 1.0 * std::sqrt(1.0 * roi.width * roi.height) / config.size;
-                int w = factor * config.width;
-                int h = factor * config.height;
+                int w = factor * config.patch_size;
+                int h = factor * config.patch_size;
+                if (w < config.min_patch_size) w = config.min_patch_size;
+                if (h < config.min_patch_size) h = config.min_patch_size;
                 if (w > roi.width) dw = w - roi.width;
                 if (h > roi.height) dh = h - roi.height;
             }
@@ -199,12 +201,12 @@ public:
                 dh = config.height - roi.height;
                 */
                 dw = 0;
-                if (roi.width <= config.width) {
-                    dw = config.width - roi.width;
+                if (roi.width <= config.patch_size) {
+                    dw = config.patch_size - roi.width;
                 }
                 dh = 0;
-                if (roi.height <= config.height) {
-                    dh = config.height - roi.height;
+                if (roi.height <= config.patch_size) {
+                    dh = config.patch_size - roi.height;
                 }
             }
             roi.x -= dw / 2;
@@ -289,6 +291,7 @@ public:
 int main(int argc, char const* argv[]) {
     Splitter::Config config;
     fs::path input_path;
+    int dummy;
 
     namespace po = boost::program_options;
     po::options_description desc("Allowed options");
@@ -300,9 +303,11 @@ int main(int argc, char const* argv[]) {
         ("bg", po::value(&config.bg_path), "")
 #endif
         ("no-scale", po::value(&config.no_scale), "")
-        ("width", po::value(&config.width), "")
-        ("height", po::value(&config.height), "")
-        ("size", po::value(&config.size), "")
+        ("width", po::value(&dummy), "")
+        ("height", po::value(&dummy), "")
+        ("size,S", po::value(&config.size), "")
+        ("patch-size,P", po::value(&config.patch_size), "")
+        ("min-patch-size,p", po::value(&config.min_patch_size), "")
         ("grid-size", po::value(&config.grid_size), "")
         ("grid-step", po::value(&config.grid_step), "")
         ("grid-scale", po::value(&config.grid_scale), "")
@@ -328,6 +333,11 @@ int main(int argc, char const* argv[]) {
         cout << desc;
         cout << endl;
         return 0;
+    }
+    if (vm.count("width") || vm.count("height")) {
+        cerr << "--width, --height are obsolete" << endl;
+        cerr << "use --patch-size instead" << endl;
+        return 1;
     }
     if (vm.count("image-annotation")) config.image_annotation = true;
 
