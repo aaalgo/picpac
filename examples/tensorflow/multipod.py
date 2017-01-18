@@ -97,6 +97,7 @@ flags.DEFINE_integer('classes', '2', 'number of classes')
 flags.DEFINE_integer('resize', '224', '')
 flags.DEFINE_integer('channels', 3, '')
 flags.DEFINE_integer('branches', 3, '')
+flags.DEFINE_integer('disable', None, 'disable this branch')
 flags.DEFINE_integer('batch', 32, 'Batch size.  ')
 flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
 flags.DEFINE_integer('test_steps', 0, 'Number of steps to run evaluation.')
@@ -163,7 +164,10 @@ def run_training ():
         Xs = [tf.placeholder(tf.float32, shape=shape, name="input%d" % i) for i in range(FLAGS.branches)]
         Y = tf.placeholder(tf.float32, shape=(FLAGS.batch,), name="labels")
 
-        logits = multipod(Xs, FLAGS.classes)
+        if FLAGS.disable:
+            logits = multipod([X for i, X in enumerate(Xs) if i != FLAGS.disable], FLAGS.classes)
+        else:
+            logits = multipod(Xs, FLAGS.classes)
 
         loss, accuracy = fcn_loss(logits, Y)
         train_op = training(loss, FLAGS.learning_rate)
