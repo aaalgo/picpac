@@ -48,8 +48,12 @@ int main(int argc, char const* argv[]) {
         return 0;
     }
 
-    FileWriter train(output_path + ".train", FileWriter::COMPACT);
-    FileWriter test(output_path + ".test", FileWriter::COMPACT);
+    fs::path train_path(output_path);
+    train_path += ".train";
+    fs::path test_path(output_path);
+    test_path += ".test";
+    FileWriter train(train_path, FileWriter::COMPACT);
+    FileWriter test(test_path, FileWriter::COMPACT);
 
     config.loop = false;
     config.shuffle = true;
