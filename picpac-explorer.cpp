@@ -30,7 +30,15 @@ static unsigned constexpr EXT_MIME_GZIP = 3;
 static std::string const DEFAULT_MIME("application/octet-stream");
 
 void banner () {
-    cout << "PicPac Server" << endl;
+	cout <<
+"  ____  _      ____            "
+" |  _ \\(_) ___|  _ \\ __ _  ___ "
+" | |_) | |/ __| |_) / _` |/ __|"
+" |  __/| | (__|  __/ (_| | (__ "
+" |_|   |_|\\___|_|   \\__,_|\\___|"
+"                               "
+	;
+    cout << "PicPac Explorer" << endl;
     cout << "Version: " << version << endl;
     cout << "https://github.com/aaalgo/picpac" << endl;
 }
