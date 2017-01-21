@@ -23,6 +23,7 @@ int main(int argc, char const* argv[]) {
         ("db", po::value(&db_path), "")
         ("dir", po::value(&dir_path), "")
         ("pick,p", po::value(&picks), "pick label")
+        ("norm", "")
         ;
 #define PICPAC_CONFIG_UPDATE(C,p) desc.add_options()(#p, po::value(&C.p)->default_value(C.p), "")
     PICPAC_CONFIG_UPDATE_ALL(config);
@@ -44,6 +45,7 @@ int main(int argc, char const* argv[]) {
         cout << endl;
         return 0;
     }
+    bool do_norm = vm.count("norm");
     ImageStream db(db_path, config);
     fs::create_directories(dir_path);
     fs::ofstream index(dir_path/"index.html");
@@ -64,8 +66,18 @@ int main(int argc, char const* argv[]) {
                     cv::resize(v.annotation, v.annotation, cv::Size(), scale, scale);
                 }
             }
+            if (do_norm) {
+                cv::Mat tmp;
+                cv::normalize(v.image, tmp, 0, 255, cv::NORM_MINMAX, CV_8U);
+                v.image = tmp;
+            }
             cv::imwrite(ip.native(), v.image);
             if (v.annotation.data) {
+                if (config.anno_copy && do_norm) {
+                    cv::Mat tmp;
+                    cv::normalize(v.annotation, tmp, 0, 255, cv::NORM_MINMAX, CV_8U);
+                    v.annotation = tmp;
+                }
                 index << "<td><img src='" << c << "a.jpg'></img></td>";
                 fs::path ap = dir_path / (lexical_cast<string>(c) + "a.jpg");
                 cv::imwrite(ap.native(), v.annotation);
