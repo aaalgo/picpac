@@ -14,16 +14,77 @@ using namespace std;
 using namespace picpac;
 
 namespace {
-    static char const *TNAME_MODULE = "picpac_module";
-    static char const *TNAME_CLASS = "picpac_class";
+
+    template <typename T>
+    struct Extractor {
+        static T apply (lua_State *);
+    };
+    template <>
+    struct Extractor <int32_t> {
+        static int32_t apply (lua_State *L) {
+            return luaL_checkinteger(L, -1);
+        }
+    };
+    template <>
+    struct Extractor <uint32_t> {
+        static uint32_t apply (lua_State *L) {
+            return luaL_checkinteger(L, -1);
+        }
+    };
+    template <>
+    struct Extractor <float> {
+        static float apply (lua_State *L) {
+            return luaL_checknumber(L, -1);
+        }
+    };
+    template <>
+    struct Extractor <bool> {
+        static bool apply (lua_State *L) {
+            return luaT_checkboolean(L, -1);
+        }
+    };
+    template <>
+    struct Extractor <string> {
+        static string apply (lua_State *L) {
+            return luaL_checkstring(L, -1);
+        }
+    };
+
+    class LuaDict {
+        lua_State *L;
+        int idx;
+    public:
+        LuaDict (lua_State *L_, int idx_): L(L_), idx(idx_) {
+        }
+        template <typename T>
+        T get (char const *name, T const &def) {
+            lua_getfield(L, idx, name);
+            T v;
+            if (lua_isnil(L, -1)) {
+                v = def;
+            }
+            else {
+                v = Extractor<T>::apply(L);
+            }
+            //lua_pop(L, 1);
+            return v;
+        }
+    };
+    
+    static char const *TNAME_MODULE = "picpac";
+    static char const *TNAME_CLASS = "picpac.ImageStream";
     static int ImageStream_constructor (lua_State *L) {
         const char *db = luaL_checkstring(L, 1);
-        BatchImageStream **udata = (BatchImageStream **)lua_newuserdata(L, sizeof(BatchImageStream *));
+        luaL_checktype(L, 2, LUA_TTABLE);
+        LuaDict dict(L, 2);
         BatchImageStream::Config config;
-        *udata = new BatchImageStream(db, config);
-        CHECK(*udata) << "failed to construct BatchImageStream";
-        luaL_getmetatable(L, TNAME_CLASS);
-        lua_setmetatable(L, -2);
+#define PICPAC_CONFIG_UPDATE(C, P) \
+        C.P = dict.get<decltype(C.P)>(#P, C.P)
+        PICPAC_CONFIG_UPDATE_ALL(config);
+#undef PICPAC_CONFIG_UPDATE
+        BatchImageStream *ss = new BatchImageStream(db, config);
+        CHECK(ss) << "failed to construct BatchImageStream";
+        luaT_pushudata(L, ss, TNAME_CLASS);
         return 1;
     }
     static BatchImageStream *checkImageStream (lua_State *L, int n) {
@@ -36,26 +97,37 @@ namespace {
     }
     static int ImageStream_next (lua_State *L) {
         BatchImageStream *ss = checkImageStream(L, 1);
-        cout << "ImageStream(" << ss << ")::next" << endl;
+        //cout << "ImageStream(" << ss << ")::next" << endl;
         vector<long> images_dims;
         vector<long> labels_dims;
-        ss->next_shape(&images_dims, &labels_dims);
-        CHECK(images_dims.size() == 4);
-        while (labels_dims.size() < 4) labels_dims.push_back(-1);
-        THFloatTensor *images = THFloatTensor_newWithSize4d(images_dims[0],
-                                    images_dims[1], images_dims[2], images_dims[3]);
-        CHECK(THFloatTensor_isContiguous(images));
-        THFloatTensor *labels = THFloatTensor_newWithSize4d(labels_dims[0],
-                                    labels_dims[1], labels_dims[2], labels_dims[3]);
-        CHECK(THFloatTensor_isContiguous(labels));
-        float *images_buf = THFloatTensor_data(images);
-        float *labels_buf = THFloatTensor_data(images);
-        unsigned padding;
-        ss->next_fill(images_buf, labels_buf, &padding);
-        luaT_pushudata(L, images, "torch.FloatTensor");
-        luaT_pushudata(L, labels, "torch.FloatTensor");
-        luaT_pushinteger(L, lua_Integer(padding));
-        return 3;
+        THFloatTensor *images = nullptr;
+        THFloatTensor *labels = nullptr;
+        try {
+            ss->next_shape(&images_dims, &labels_dims);
+            CHECK(images_dims.size() == 4);
+            while (labels_dims.size() < 4) labels_dims.push_back(-1);
+            images = THFloatTensor_newWithSize4d(images_dims[0],
+                                        images_dims[1], images_dims[2], images_dims[3]);
+            CHECK(THFloatTensor_isContiguous(images));
+            labels = THFloatTensor_newWithSize4d(labels_dims[0],
+                                        labels_dims[1], labels_dims[2], labels_dims[3]);
+            CHECK(THFloatTensor_isContiguous(labels));
+            float *images_buf = THFloatTensor_data(images);
+            float *labels_buf = THFloatTensor_data(images);
+            unsigned padding;
+            ss->next_fill(images_buf, labels_buf, &padding);
+            luaT_pushudata(L, images, "torch.FloatTensor");
+            luaT_pushudata(L, labels, "torch.FloatTensor");
+            luaT_pushinteger(L, lua_Integer(padding));
+            return 3;
+        }
+        catch (EoS const &) {
+            THFloatTensor_free(images);
+            THFloatTensor_free(labels);
+            lua_pushnil(L);
+            return 1;
+        }
+
     }
     static int ImageStream_destructor (lua_State *L) {
         delete checkImageStream(L, 1);
@@ -72,6 +144,7 @@ extern "C" {
         luaL_Reg ImageStreamMethods [] = {
             {"next", ImageStream_next},
             {"size", ImageStream_size},
+            {"__call", ImageStream_next},
             {"__gc", ImageStream_destructor},
             {NULL, NULL}
         };
