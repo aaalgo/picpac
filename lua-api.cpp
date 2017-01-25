@@ -72,7 +72,37 @@ namespace {
     };
     
     static char const *TNAME_MODULE = "picpac";
-    static char const *TNAME_CLASS = "picpac.ImageStream";
+    static char const *TNAME_IMAGESTREAM = "picpac.ImageStream";
+    static char const *TNAME_WRITER = "picpac.Writer";
+
+    static int Writer_constructor (lua_State *L) {
+        const char *db = luaL_checkstring(L, 1);
+        FileWriter *ss = new FileWriter(fs::path(db), FileWriter::COMPACT);
+        CHECK(ss) << "failed to construct Writer";
+        luaT_pushudata(L, ss, TNAME_WRITER);
+        return 1;
+    }
+    static FileWriter *checkWriter (lua_State *L, int n) {
+        return *(FileWriter **)luaL_checkudata(L, n, TNAME_WRITER);
+    }
+    static int Writer_append (lua_State *L) {
+        FileWriter *ss = checkWriter(L, 1);
+        if (lua_isnumber(L, 1)) {
+            Record record(float(luaL_checknumber(L, 1)),
+                      string(luaL_checkstring(L, 2)));
+            ss->append(record);
+        }
+        else {
+            Record record(0, string(luaL_checkstring(L, 1)),
+                      string(luaL_checkstring(L, 2)));
+            ss->append(record);
+        }
+        return 0;
+    }
+    static int Writer_destructor (lua_State *L) {
+        delete checkWriter(L, 1);
+        return 0;
+    }
     static int ImageStream_constructor (lua_State *L) {
         const char *db = luaL_checkstring(L, 1);
         luaL_checktype(L, 2, LUA_TTABLE);
@@ -84,11 +114,11 @@ namespace {
 #undef PICPAC_CONFIG_UPDATE
         BatchImageStream *ss = new BatchImageStream(db, config);
         CHECK(ss) << "failed to construct BatchImageStream";
-        luaT_pushudata(L, ss, TNAME_CLASS);
+        luaT_pushudata(L, ss, TNAME_IMAGESTREAM);
         return 1;
     }
     static BatchImageStream *checkImageStream (lua_State *L, int n) {
-        return *(BatchImageStream **)luaL_checkudata(L, n, TNAME_CLASS);
+        return *(BatchImageStream **)luaL_checkudata(L, n, TNAME_IMAGESTREAM);
     }
     static int ImageStream_size (lua_State *L) {
         BatchImageStream *ss = checkImageStream(L, 1);
@@ -139,6 +169,12 @@ extern "C" {
     LUALIB_API int luaopen_picpac (lua_State *L) {
         luaL_Reg PicPacMethods [] = {
             {"ImageStream", ImageStream_constructor},
+            {"Writer", Writer_constructor},
+            {NULL, NULL}
+        };
+        luaL_Reg WriterMethods [] = {
+            {"append", Writer_append},
+            {"__gc", Writer_destructor},
             {NULL, NULL}
         };
         luaL_Reg ImageStreamMethods [] = {
@@ -148,7 +184,11 @@ extern "C" {
             {"__gc", ImageStream_destructor},
             {NULL, NULL}
         };
-        luaL_newmetatable(L, TNAME_CLASS);
+        luaL_newmetatable(L, TNAME_WRITER);
+        luaL_register(L, NULL, WriterMethods);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, -1, "__index");
+        luaL_newmetatable(L, TNAME_IMAGESTREAM);
         luaL_register(L, NULL, ImageStreamMethods);
         lua_pushvalue(L, -1);
         lua_setfield(L, -1, "__index");
