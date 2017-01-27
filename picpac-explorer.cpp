@@ -31,13 +31,12 @@ static std::string const DEFAULT_MIME("application/octet-stream");
 
 void banner () {
 	cout <<
-"  ____  _      ____            "
-" |  _ \\(_) ___|  _ \\ __ _  ___ "
-" | |_) | |/ __| |_) / _` |/ __|"
-" |  __/| | (__|  __/ (_| | (__ "
-" |_|   |_|\\___|_|   \\__,_|\\___|"
-"                               "
-	;
+"  ____  _      ____            " << endl <<
+" |  _ \\(_) ___|  _ \\ __ _  ___ " << endl <<
+" | |_) | |/ __| |_) / _` |/ __|" << endl <<
+" |  __/| | (__|  __/ (_| | (__ " << endl <<
+" |_|   |_|\\___|_|   \\__,_|\\___|" << endl <<
+"                               " << endl;
     cout << "PicPac Explorer" << endl;
     cout << "Version: " << version << endl;
     cout << "https://github.com/aaalgo/picpac" << endl;
