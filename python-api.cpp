@@ -75,7 +75,7 @@ object return_iterator (tuple args, dict kwargs) {
 
 class Writer: public FileWriter {
 public:
-    Writer (string const &path): FileWriter(fs::path(path)) {
+    Writer (string const &path): FileWriter(fs::path(path), FileWriter::COMPACT) {
     }
     void append (float label, string const &buf) {
         Record record(label, buf);
