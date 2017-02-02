@@ -28,6 +28,8 @@
     PICPAC_CONFIG_UPDATE(C,resize_height);\
     PICPAC_CONFIG_UPDATE(C,crop_width);\
     PICPAC_CONFIG_UPDATE(C,crop_height);\
+    PICPAC_CONFIG_UPDATE(C,round_div);\
+    PICPAC_CONFIG_UPDATE(C,round_mod);\
     PICPAC_CONFIG_UPDATE(C,decode_mode);\
     PICPAC_CONFIG_UPDATE(C,annotate);\
     PICPAC_CONFIG_UPDATE(C,anno_type);\
@@ -83,6 +85,8 @@ namespace picpac {
             int resize_height;
             int crop_width;
             int crop_height;
+            int round_div;
+            int round_mod;
             int decode_mode;       // image load mode
             string annotate;
             int anno_type;  // annotate image opencv type
@@ -117,6 +121,8 @@ namespace picpac {
                 resize_height(-1),
                 crop_width(-1),
                 crop_height(-1),
+                round_div(0),
+                round_mod(0),
                 decode_mode(cv::IMREAD_UNCHANGED),
                 anno_type(CV_8UC1),
                 anno_copy(false),

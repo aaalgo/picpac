@@ -555,6 +555,35 @@ namespace picpac {
                 out->annotation = out->annotation(roi);
             }
         }
+        if (config.round_div > 0) {
+            int width = out->image.cols;
+            int height = out->image.rows;
+            width = width / config.round_div * config.round_div + config.round_mod;
+            height = height / config.round_div * config.round_div + config.round_mod;
+            if (width > out->image.cols) {
+                width -= config.round_div;
+            }
+            if (height > out->image.rows) {
+                height -= config.round_div;
+            }
+            CHECK((width > 0) && (height > 0));
+            int marginx = out->image.cols - width;
+            int marginy = out->image.rows - height;
+            if (!config.perturb) {
+                marginx /= 2;
+                marginy /= 2;
+            }
+            else {
+                marginx = p.shiftx % marginx;
+                marginy = p.shifty % marginy;
+            }
+            cv::Rect roi(marginx, marginy, 
+                         width, height); 
+            out->image = out->image(roi);
+            if (out->annotation.data) {
+                out->annotation = out->annotation(roi);
+            }
+        }
 #if 0
         if (out->annotation.data) {
             // replicate positive region
