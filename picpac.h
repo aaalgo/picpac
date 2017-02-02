@@ -279,7 +279,8 @@ namespace picpac {
         enum {
             INDEX_LABEL2 = 1,   // use "label" by default
                                 // this makes segment header store label2
-            COMPACT = 2
+            COMPACT = 2,
+            OVERWRITE = 4,
         };
         FileWriter (fs::path const &path, int flags_ = 0);
         ~FileWriter ();
