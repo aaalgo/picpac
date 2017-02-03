@@ -30,8 +30,9 @@ public:
         float grid_size;
         float grid_step;
         float grid_scale;
+        float min_color;
         bool image_annotation;
-        Config (): size(50), patch_size(100), min_patch_size(-1), no_scale(false), grid_size(240), grid_step(200), grid_scale(1), image_annotation(false) {
+        Config (): size(50), patch_size(100), min_patch_size(-1), no_scale(false), grid_size(240), grid_step(200), grid_scale(1), min_color(-1), image_annotation(false) {
         }
     };
 private:
@@ -56,6 +57,10 @@ private:
                        << image.cols << ',' << image.rows
                        << " ROI XYWH=" << roi.x << ',' << roi.y << ',' << roi.width << ',' << roi.height;
             return;
+        }
+        if (image.channels() == 1) {
+            float m = cv::mean(out)[0];
+            if (m < config.min_color) return;
         }
         Annotation anno_out;
         int label = 0;
@@ -308,6 +313,7 @@ int main(int argc, char const* argv[]) {
         ("size,S", po::value(&config.size), "")
         ("patch-size,P", po::value(&config.patch_size), "")
         ("min-patch-size,p", po::value(&config.min_patch_size), "")
+        ("min-color", po::value(&config.min_color), "")
         ("grid-size", po::value(&config.grid_size), "")
         ("grid-step", po::value(&config.grid_step), "")
         ("grid-scale", po::value(&config.grid_scale), "")

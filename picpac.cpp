@@ -165,7 +165,14 @@ namespace picpac {
     }
 
     FileWriter::FileWriter (fs::path const &path, int flags_): flags(flags_) {
-        fd = open(path.native().c_str(), O_CREAT | O_EXCL | O_WRONLY, 0666);
+        int f = O_WRONLY | O_CREAT;
+        if (flags_ & OVERWRITE) {
+            f |= O_TRUNC;
+        }
+        else {
+            f |= O_EXCL;
+        }
+        fd = open(path.native().c_str(), f, 0666);
         CHECK(fd >= 0) << "fail to open " << path;
         open_segment();
     }
