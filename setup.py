@@ -2,7 +2,7 @@ from distutils.core import setup, Extension
 
 picpac = Extension('_picpac',
         language = 'c++',
-        extra_compile_args = ['-O3', '-std=c++1y'], 
+        extra_compile_args = ['-O3', '-std=c++1y', '-ftls-model=global-dynamic'], 
         include_dirs = ['/usr/local/include', 'json11'],
         libraries = ['opencv_highgui', 'opencv_core', 'boost_filesystem', 'boost_system', 'boost_python', 'glog'],
         library_dirs = ['/usr/local/lib'],
