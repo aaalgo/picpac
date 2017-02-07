@@ -233,7 +233,8 @@ public:
                 bfdfs::Page page;
                 bool loaded = statics.load(path, &page);
                 if (!loaded) { 
-                    loaded = statics.load("/index.html", &page);
+                    path = "/index.html";
+                    loaded = statics.load(path, &page);
                 }
                 if (loaded) {
                     auto it = req.header.find("If-None-Match");
