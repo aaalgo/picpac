@@ -23,6 +23,7 @@
 			  <select class="form-control" id="annotation">
 				<option>None</option>
 				<option>Json</option>
+				<option>Mask</option>
 			  </select>
         </div>
         </div>
@@ -136,6 +137,9 @@ function Reload (thisData) {
           '&norm=' + norm
       if ($('#annotation > option:selected').text() === 'Json') {
         urlExtra += '&annotate=json'
+      }
+      else if ($('#annotation > option:selected').text() === 'Mask') {
+        urlExtra += '&annotate=image&anno_factor=255'
       }
 
       var x = []
