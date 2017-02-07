@@ -95,7 +95,7 @@ public:
     Service (fs::path const &db_path, HttpServer *sv)
         : Multiplexer(sv),
         db(db_path),
-        statics("", &_binary_html_static_start) {
+        statics(&_binary_html_static_start, "") {
 
         cookie = magic_open(MAGIC_MIME_TYPE);
         CHECK(cookie);
