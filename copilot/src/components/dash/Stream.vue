@@ -137,8 +137,7 @@ function Reload (thisData) {
           '&norm=' + norm
       if ($('#annotation > option:selected').text() === 'Json') {
         urlExtra += '&annotate=json'
-      }
-      else if ($('#annotation > option:selected').text() === 'Mask') {
+      } else if ($('#annotation > option:selected').text() === 'Mask') {
         urlExtra += '&annotate=image&anno_factor=255'
       }
 

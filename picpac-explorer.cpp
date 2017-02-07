@@ -95,7 +95,7 @@ public:
     Service (fs::path const &db_path, HttpServer *sv)
         : Multiplexer(sv),
         db(db_path),
-        statics(&_binary_html_static_start) {
+        statics("", &_binary_html_static_start) {
 
         cookie = magic_open(MAGIC_MIME_TYPE);
         CHECK(cookie);
@@ -230,13 +230,12 @@ public:
         add_default("GET",
             [this](Response &res, Request &req) {
                 string path = req.path;
-                auto it = statics.find(req.path);
-                if (it == statics.end()) {
-                    path = "/index.html";
-                    it = statics.find(path);
+                bfdfs::Page page;
+                bool loaded = statics.load(path, &page);
+                if (!loaded) { 
+                    loaded = statics.load("/index.html", &page);
                 }
-                if (it != statics.end()) {
-                    auto page = it->second;
+                if (loaded) {
                     auto it = req.header.find("If-None-Match");
                     do {
                         if (it != req.header.end()) {
