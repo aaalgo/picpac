@@ -593,8 +593,10 @@ namespace picpac {
 
     class Shape {
         string _type;
+        bool _have_label;
+        cv::Scalar _label;
     public:
-        Shape (char const *t): _type(t) {}
+        Shape (char const *t): _type(t), _have_label(false), _label(0,0,0) {}
         virtual ~Shape () {}
         virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
         virtual void bbox (cv::Rect_<float> *) const = 0;
@@ -603,6 +605,12 @@ namespace picpac {
         string const &type () const {
             return _type;
         }
+        void setLabel (cv::Scalar l) {
+            _have_label = true;
+            _label = l;
+        }
+        bool haveLabel () const { return _have_label; }
+        cv::Scalar label () const { return _label; }
         virtual std::shared_ptr<Shape> clone () const = 0;
         static std::shared_ptr<Shape> create (json11::Json const &geo);
     };

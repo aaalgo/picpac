@@ -164,16 +164,32 @@ namespace picpac {
 
     std::shared_ptr<Shape> Shape::create (Json const &geo) {
         string type = geo["type"].string_value();
+        std::shared_ptr<Shape> shape;
         if (type == "rect") {
-            return std::shared_ptr<Shape>(new Box(geo["geometry"]));
+            shape = std::shared_ptr<Shape>(new Box(geo["geometry"]));
         }
         if (type == "ellipse") {
-            return std::shared_ptr<Shape>(new Ellipse(geo["geometry"]));
+            shape = std::shared_ptr<Shape>(new Ellipse(geo["geometry"]));
         }
         else if (type == "polygon") {
-            return std::shared_ptr<Shape>(new Poly(geo["geometry"]));
+            shape = std::shared_ptr<Shape>(new Poly(geo["geometry"]));
         }
-        CHECK(0) << "unknown shape: " << type;
+        else {
+            CHECK(0) << "unknown shape: " << type;
+        }
+        Json const &label = geo["label"];
+        if (label.is_array()) {
+            cv::Scalar ll(0,0,0);
+            auto const &array = label.array_items();
+            CHECK(array.size() <= 3) << "can only support label of <= 3 channels";
+            for (unsigned i = 0; i < array.size(); ++i) {
+                ll[i] = array[i].number_value();
+            }
+            shape->setLabel(ll);
+        }
+        else {
+            shape->setLabel(cv::Scalar(label.number_value(), 0,0));
+        }
         return 0;
     }
 
@@ -201,6 +217,9 @@ namespace picpac {
 
     void Annotation::draw (cv::Mat *m, cv::Scalar v, int thickness) const {
         for (auto const &p: shapes) {
+            if (p->haveLabel()) {
+                v = p->label();
+            }
             p->draw(m, v, thickness);
         }
     }
