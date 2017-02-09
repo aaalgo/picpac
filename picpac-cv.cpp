@@ -190,7 +190,7 @@ namespace picpac {
         else {
             shape->setLabel(cv::Scalar(label.number_value(), 0,0));
         }
-        return 0;
+        return shape;
     }
 
     Annotation::Annotation (string const &txt) {
