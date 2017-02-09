@@ -188,7 +188,9 @@ public:
         add("^/api/image" HTTP_Q, "GET", 
             [this](Response &res, Request &req) {
                 PICPAC_CONFIG conf;
-                conf.anno_color3 = 255;
+                conf.anno_color1 = 1;
+                conf.anno_color2 = 0;
+                conf.anno_color3 = 0;
                 conf.anno_copy = true;
                 conf.anno_thickness = 1;
                 conf.pert_color1 = 20;

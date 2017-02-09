@@ -26,6 +26,13 @@
 				<option>Mask</option>
 			  </select>
         </div>
+        <div class="col-xs-3">
+			  <label for="annotation_palette">Annotation Palette:</label>
+			  <select class="form-control" id="annotation_palette">
+				<option>Default</option>
+				<option>None</option>
+			  </select>
+        </div>
         </div>
         <div class="row">
         <div class="col-xs-2">
@@ -139,6 +146,11 @@ function Reload (thisData) {
         urlExtra += '&annotate=json'
       } else if ($('#annotation > option:selected').text() === 'Mask') {
         urlExtra += '&annotate=image&anno_factor=255'
+      }
+      if ($('#annotation_palette > option:selected').text() === 'Default') {
+        urlExtra += '&anno_palette=default'
+      } else {
+        urlExtra += '&anno_palette=none'
       }
 
       var x = []

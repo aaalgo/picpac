@@ -6,6 +6,15 @@
 
 namespace picpac {
 
+    vector<cv::Scalar> PALETTE_TABLEAU20{
+        {0, 0, 0},
+		{31, 119, 180}, {174, 199, 232}, {255, 127, 14}, {255, 187, 120},
+        {44, 160, 44}, {152, 223, 138}, {214, 39, 40}, {255, 152, 150},
+        {148, 103, 189}, {197, 176, 213}, {140, 86, 75}, {196, 156, 148},
+        {227, 119, 194}, {247, 182, 210}, {127, 127, 127}, {199, 199, 199},
+        {188, 189, 34}, {219, 219, 141}, {23, 190, 207}, {158, 218, 229}
+    };
+
     using namespace json11;
 
     float LimitSize (cv::Mat input, int min_size, int max_size, cv::Mat *output) {
@@ -218,10 +227,18 @@ namespace picpac {
         *str = json.dump();
     }
 
-    void Annotation::draw (cv::Mat *m, cv::Scalar v, int thickness) const {
+    void Annotation::draw (cv::Mat *m, cv::Scalar v, int thickness, vector<cv::Scalar> const *palette) const {
         for (auto const &p: shapes) {
+            cv::Scalar vv = v;
             if (p->haveLabel()) {
-                v = p->label();
+                vv = p->label();
+            }
+            if (palette) {
+                unsigned idx = unsigned(vv[0]);
+                if ((vv[1] != 0) || (vv[2] != 0) || idx >= palette->size()) {
+                    idx = 0;
+                }
+                vv = palette->at(idx);
             }
             p->draw(m, v, thickness);
         }
@@ -393,7 +410,12 @@ namespace picpac {
                     cv::Scalar color(config.anno_color1,
                                  config.anno_color2,
                                  config.anno_color3);
-                    a.draw(&anno, color, config.anno_thickness);
+					auto const *palette = &PALETTE_TABEAU20;
+                    if (anno_palette == ANNOTATE_PALETTE_NONE) {
+                        palette = nullptr;
+                    }
+					
+                    a.draw(&anno, color, config.anno_thickness, palette);
 
                     // we might want to perturb the cropping
                     // this might not be the perfect location either

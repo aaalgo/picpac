@@ -34,6 +34,7 @@
     PICPAC_CONFIG_UPDATE(C,annotate);\
     PICPAC_CONFIG_UPDATE(C,anno_type);\
     PICPAC_CONFIG_UPDATE(C,anno_copy);\
+    PICPAC_CONFIG_UPDATE(C,anno_palette);\
     PICPAC_CONFIG_UPDATE(C,anno_color1); \
     PICPAC_CONFIG_UPDATE(C,anno_color2); \
     PICPAC_CONFIG_UPDATE(C,anno_color3); \
@@ -73,6 +74,10 @@ namespace picpac {
             ANNOTATE_AUTO = 3   // for autoencoder, use input as annotation
         };
         enum {
+            ANNOTATE_PALETTE_NONE = 0,
+            ANNOTATE_PALETTE_TABLEAU20 = 1
+        };
+        enum {
             COLOR_DEFAULT = 0,
             COLOR_HSV = 1,
             COLOR_Lab = 2
@@ -91,6 +96,7 @@ namespace picpac {
             string annotate;
             int anno_type;  // annotate image opencv type
             bool anno_copy; // copy input image first for visualization
+            string anno_palette;
             float anno_color1;
             float anno_color2;
             float anno_color3;
@@ -178,6 +184,13 @@ namespace picpac {
             else if (config.annotate == "auto") {
                 annotate = ANNOTATE_AUTO;
             }
+            if (config.anno_palette == "default"
+                    || config.anno_palette == "tableau20") {
+                anno_pallet = ANNOTATE_PALETTE_TABLEAU20;
+            }
+            else {
+                anno_pallet = ANNOTATE_PALETTE_NONE;
+            }
 
             if (config.pert_colorspace == "Lab") {
                 colorspace = COLOR_Lab;
@@ -211,6 +224,7 @@ namespace picpac {
     private:
         Config config;
         int annotate;
+        int anno_pallet;
         int colorspace;
         std::uniform_int_distribution<int> delta_color1; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color2; //(min_R, max_R);
@@ -620,7 +634,7 @@ namespace picpac {
         Annotation () {}
         Annotation (string const &txt);
         void dump (string *) const;
-        void draw (cv::Mat *m, cv::Scalar v, int thickness = -1) const;
+        void draw (cv::Mat *m, cv::Scalar v, int thickness = -1, vector<cv::Scalar> const *palette=nullptr) const;
         void bbox (cv::Rect_<float> *bb) const;
         void zoom (cv::Rect_<float> const &bb);
     };
