@@ -22,7 +22,7 @@
 			  <label for="annotation">Annotation:</label>
 			  <select class="form-control" id="annotation">
 				<option>None</option>
-				<option>Json</option>
+				<option id="annotation_json">Json</option>
 				<option>Mask</option>
 			  </select>
         </div>
@@ -181,6 +181,7 @@ module.exports = {
   data: function () {
     return {
       images: [],
+      annotation: 'None',
       use_json: false
     }
   },
@@ -196,10 +197,12 @@ module.exports = {
     $('#pert_scale').slider({ formatter: function (value) { return value }, value: [0.8, 1.2] })
     $('#load_images').slider({ formatter: function (value) { return value } })
     $.getJSON('/api/overview', function (overview) {
+      $('#annotation_json').removeAttr('selected')
       for (var j in overview.SUMMARY) {
         var f = overview.SUMMARY[j]
         if (f.key === 'SHAPE_CNT' && f.value > 0) {
           thisData.use_json = true
+          $('#annotation_json').attr('selected', true)
           console.log('use json')
           break
         }

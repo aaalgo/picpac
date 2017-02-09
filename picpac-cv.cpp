@@ -177,7 +177,7 @@ namespace picpac {
         if (type == "rect") {
             shape = std::shared_ptr<Shape>(new Box(geo["geometry"]));
         }
-        if (type == "ellipse") {
+        else if (type == "ellipse") {
             shape = std::shared_ptr<Shape>(new Ellipse(geo["geometry"]));
         }
         else if (type == "polygon") {
@@ -240,7 +240,7 @@ namespace picpac {
                 }
                 vv = palette->at(idx);
             }
-            p->draw(m, v, thickness);
+            p->draw(m, vv, thickness);
         }
     }
 
