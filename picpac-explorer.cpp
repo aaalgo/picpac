@@ -190,7 +190,7 @@ public:
                 PICPAC_CONFIG conf;
                 conf.anno_color3 = 255;
                 conf.anno_copy = true;
-                conf.anno_thickness = 2;
+                conf.anno_thickness = 1;
                 conf.pert_color1 = 20;
                 conf.pert_color2 = 20;
                 conf.pert_color3 = 20;

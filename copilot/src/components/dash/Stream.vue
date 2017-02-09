@@ -57,7 +57,7 @@
         <label>images</label> <input id="load_images" data-slider-id='load_images_C' type="text" data-slider-min="20" data-slider-max="200" data-slider-step="10" data-slider-value="50" />
         </div>
         <div class="col-xs-3">
-        <label>Perturb</label> <input id="perturb" type="checkbox" checked/>
+        <label>Perturb</label> <input id="perturb" type="checkbox" />
         </div>
         <div class="col-xs-3">
         <label>Normalize</label> <input id="normalize" type="checkbox"/>
