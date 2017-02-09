@@ -410,7 +410,7 @@ namespace picpac {
                     cv::Scalar color(config.anno_color1,
                                  config.anno_color2,
                                  config.anno_color3);
-					auto const *palette = &PALETTE_TABEAU20;
+					auto const *palette = &PALETTE_TABLEAU20;
                     if (anno_palette == ANNOTATE_PALETTE_NONE) {
                         palette = nullptr;
                     }

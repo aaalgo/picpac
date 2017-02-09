@@ -186,10 +186,10 @@ namespace picpac {
             }
             if (config.anno_palette == "default"
                     || config.anno_palette == "tableau20") {
-                anno_pallet = ANNOTATE_PALETTE_TABLEAU20;
+                anno_palette = ANNOTATE_PALETTE_TABLEAU20;
             }
             else {
-                anno_pallet = ANNOTATE_PALETTE_NONE;
+                anno_palette = ANNOTATE_PALETTE_NONE;
             }
 
             if (config.pert_colorspace == "Lab") {
@@ -224,7 +224,7 @@ namespace picpac {
     private:
         Config config;
         int annotate;
-        int anno_pallet;
+        int anno_palette;
         int colorspace;
         std::uniform_int_distribution<int> delta_color1; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color2; //(min_R, max_R);
