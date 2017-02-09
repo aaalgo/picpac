@@ -178,7 +178,10 @@ namespace picpac {
             CHECK(0) << "unknown shape: " << type;
         }
         Json const &label = geo["label"];
-        if (label.is_array()) {
+        if (label.is_null()) {
+            ;
+        }
+        else if (label.is_array()) {
             cv::Scalar ll(0,0,0);
             auto const &array = label.array_items();
             CHECK(array.size() <= 3) << "can only support label of <= 3 channels";
