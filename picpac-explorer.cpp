@@ -203,7 +203,6 @@ public:
                 PICPAC_CONFIG_UPDATE_ALL(conf);
 #undef PICPAC_CONFIG_UPDATE
                 float anno_factor = req.GET.get<float>("anno_factor", 0);
-                        LOG(INFO) << "ANNO: " << anno_factor;
                 bool do_norm = req.GET.get<int>("norm", 0);
                 ImageLoader loader(conf);
                 ImageLoader::PerturbVector pv;

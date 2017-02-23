@@ -145,7 +145,7 @@ function Reload (thisData) {
       if ($('#annotation > option:selected').text() === 'Json') {
         urlExtra += '&annotate=json'
       } else if ($('#annotation > option:selected').text() === 'Mask') {
-        urlExtra += '&annotate=image&anno_factor=255'
+        urlExtra += '&annotate=image'
       }
       if ($('#annotation_palette > option:selected').text() === 'Default') {
         urlExtra += '&anno_palette=default'

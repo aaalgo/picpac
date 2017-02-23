@@ -391,6 +391,30 @@ namespace picpac {
                         cached.annotation = decode_raw(boost::asio::buffer_cast<char const *>(anbuf),
                                             boost::asio::buffer_size(anbuf));
                     }
+                    auto const *palette = &PALETTE_TABLEAU20;
+                    if (anno_palette == ANNOTATE_PALETTE_NONE) {
+                        palette = nullptr;
+                    }
+                    if (cached.annotation.data && palette) {
+                        CHECK(cached.annotation.type() == CV_8UC1);
+                        cv::Mat mat(cached.annotation.rows,
+                                    cached.annotation.cols, CV_8UC3);
+                        // apply pallet
+                        for (int i = 0; i < mat.rows; ++i) {
+                            uint8_t const *from = cached.annotation.ptr<uint8_t const>(i);
+                            uint8_t *to = mat.ptr<uint8_t>(i);
+                            for (int j = 0; j < mat.cols; ++j) {
+                                unsigned x = from[j];
+                                if (x >= palette->size()) x = 0;
+                                auto c = palette->at(x);
+                                to[0] = c[0];
+                                to[1] = c[1];
+                                to[2] = c[2];
+                                to += 3;
+                            }
+                        }
+                        cached.annotation = mat;
+                    }
                     if (cached.annotation.size() != cached.image.size()) {
                         cv::resize(cached.annotation, cached.annotation, cached.image.size(), 0, 0, cv::INTER_NEAREST);
                     }
