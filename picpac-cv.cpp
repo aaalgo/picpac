@@ -596,6 +596,9 @@ namespace picpac {
         std::cout << colorspace << std::endl;
         */
         if (image.channels() == 3) {
+            if (image.type() == CV_16UC3) {
+                image.convertTo(image, CV_32FC3);
+            }
             if (colorspace == COLOR_Lab) {
                 cv::cvtColor(image, image, CV_BGR2Lab);
             }
