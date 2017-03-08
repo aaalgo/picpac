@@ -43,6 +43,13 @@ namespace picpac {
         return scale;
     }
 
+    void check_add_label (Shape const *shape, Json::object *obj) {
+        if (!shape->haveLabel()) return;
+        cv::Scalar c = shape->label();
+        Json::array v{c[0], c[1], c[2]};
+        (*obj)["label"] = v;
+    }
+
     class Box: public Shape {
     protected:
         cv::Rect_<float> rect;
@@ -54,7 +61,7 @@ namespace picpac {
             rect.height = geo["height"].number_value();
         }
         virtual void dump (Json *json) const {
-            *json = Json::object {
+            Json::object obj{
                 {"type", type()},
                 {"geometry", Json::object{
                                       {"x", rect.x},
@@ -63,6 +70,8 @@ namespace picpac {
                                       {"height", rect.height}
                                    }}
             };
+            check_add_label(this, &obj);
+            *json = obj;
         }
         virtual std::shared_ptr<Shape> clone () const {
             return std::shared_ptr<Shape>(new Box(*this));
@@ -116,10 +125,12 @@ namespace picpac {
             for (auto const &p: points) {
                 pts.emplace_back(Json::object{{"x", p.x}, {"y", p.y}});
             }
-            *json = Json::object {
+            Json::object obj{
                 {"type", type()},
                 {"geometry", Json::object{{"points", std::move(pts)}}}
             };
+            check_add_label(this, &obj);
+            *json = obj;
         }
         virtual std::shared_ptr<Shape> clone () const {
             return std::shared_ptr<Poly>(new Poly(*this));
