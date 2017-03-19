@@ -87,6 +87,45 @@ public:
         FileWriter::append(record);
     }
 
+    void append (float label, string const &buf1, string const &buf2) {
+        Record record(label, buf1, buf2);
+        FileWriter::append(record);
+    }
+};
+
+class Reader: public IndexedFileReader {
+    int _next;
+    object ctor;
+public:
+    Reader (string const &path): IndexedFileReader(path), _next(0) {
+        auto collections = import("collections");
+        auto namedtuple = collections.attr("namedtuple");
+        list fields;
+        fields.append("id"); 
+        fields.append("label"); 
+        fields.append("label2");
+        fields.append("fields");
+        ctor = namedtuple("Record", fields);
+    }
+    object next () {
+        if (_next >= size()) {
+            throw EoS();
+        }
+        return read(_next++);
+    }
+    void reset () {
+        _next = 0;
+    }
+    object read (int i) {
+        Record rec;
+        IndexedFileReader::read(i, &rec);
+        list fields;
+        for (unsigned i = 0; i < rec.size(); ++i) {
+            fields.append(rec.field_string(i));
+        }
+        auto const &meta = rec.meta();
+        return ctor(meta.id, meta.label, meta.label2, fields);
+    }
 };
 
 void serialize_raw_ndarray (object &obj, std::ostream &os) {
@@ -142,6 +181,7 @@ void write_raw_ndarray (string const &path, object &obj) {
 
 void (Writer::*append1) (float, string const &) = &Writer::append;
 void (Writer::*append2) (string const &, string const &) = &Writer::append;
+void (Writer::*append3) (float, string const &, string const &) = &Writer::append;
 
 void translate_eos (EoS const &)
 {
@@ -165,9 +205,17 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("reset", &NumpyBatchImageStream::reset)
         .def("categories", &NumpyBatchImageStream::categories)
     ;
+    class_<Reader>("Reader", init<string>())
+        .def("__iter__", raw_function(return_iterator))
+        .def("next", &Reader::next)
+        .def("size", &Reader::size)
+        .def("read", &Reader::read)
+        .def("reset", &Reader::reset)
+    ;
     class_<Writer>("Writer", init<string>())
         .def("append", append1)
         .def("append", append2)
+        .def("append", append3)
     ;
     def("encode_raw", ::encode_raw_ndarray);
     def("write_raw", ::write_raw_ndarray);

@@ -221,8 +221,9 @@ public:
                 }
                 if (do_norm) {
                     cv::Mat tmp;
-                    cv::normalize(image, tmp, 0, 255, cv::NORM_MINMAX, CV_8U);
-                    image = tmp;
+                    cv::Mat onec = image.reshape(1, 0);
+                    cv::normalize(onec, onec, 0, 255, cv::NORM_MINMAX, CV_8U);
+                    image = onec.reshape(image.channels(), image.rows);
                 }
                 encoder.encode(image, &buf);
                 res.mime = "image/jpeg";
