@@ -220,10 +220,10 @@ public:
                     }
                 }
                 if (do_norm) {
-                    cv::Mat tmp;
                     cv::Mat onec = image.reshape(1, 0);
-                    cv::normalize(onec, onec, 0, 255, cv::NORM_MINMAX, CV_8U);
-                    image = onec.reshape(image.channels(), image.rows);
+                    cv::Mat out;
+                    cv::normalize(onec, out, 0, 255, cv::NORM_MINMAX, CV_32F);
+                    image = out.reshape(image.channels(), image.rows);
                 }
                 encoder.encode(image, &buf);
                 res.mime = "image/jpeg";
