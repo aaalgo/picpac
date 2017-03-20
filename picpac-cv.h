@@ -80,7 +80,9 @@ namespace picpac {
         enum {
             COLOR_DEFAULT = 0,
             COLOR_HSV = 1,
-            COLOR_Lab = 2
+            COLOR_Lab = 2,
+            COLOR_SAME = 3
+            
         };
         struct Config {
             int channels;   // -1: unchanged
@@ -197,6 +199,9 @@ namespace picpac {
             }
             else if (config.pert_colorspace == "HSV") {
                 colorspace = COLOR_HSV;
+            }
+            else if (config.pert_colorspace == "SAME") {
+                colorspace = COLOR_SAME;
             }
             else {
                 colorspace = COLOR_DEFAULT;

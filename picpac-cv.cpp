@@ -606,6 +606,7 @@ namespace picpac {
         std::cout << p.color[0] << " " << p.color[1] << " " << p.color[2] << std::endl;
         std::cout << colorspace << std::endl;
         */
+        cv::Scalar pert_color = p.color;
         if (image.channels() == 3) {
             if (image.type() == CV_16UC3) {
                 image.convertTo(image, CV_32FC3);
@@ -616,8 +617,11 @@ namespace picpac {
             else if (colorspace  == COLOR_HSV) {
                 cv::cvtColor(image, image, CV_BGR2HSV);
             }
+            else if (colorspace == COLOR_SAME) {
+                pert_color[1] = pert_color[2] = pert_color[0];
+            }
         }
-        image += p.color;
+        image += pert_color;
         if (image.channels() == 3) {
             if (colorspace == COLOR_Lab) {
                 cv::cvtColor(image, image, CV_Lab2BGR);
