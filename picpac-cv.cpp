@@ -23,20 +23,22 @@ namespace picpac {
             return 0;
         }
         float scale = 1.0;
-        int maxs = std::max(input.cols, input.rows);
-        int mins = std::min(input.cols, input.rows);
+        cv::Size sz(input.cols, input.rows);
+        int maxs = std::max(sz.width, sz.height);
 
         if ((max_size > 0) && (maxs > max_size)) {
-            cv::Mat tmp;
-            scale = 1.0 * maxs / max_size;
-            cv::resize(input, tmp, cv::Size(input.cols * max_size / maxs, input.rows * max_size / maxs));
-            input = tmp;
+            scale = 1.0 * max_size / maxs;
+            sz = cv::Size(sz.width * max_size / maxs, sz.height * max_size / maxs);
         }
         // large side > max
+        int mins = std::min(sz.width, sz.height);
         if ((min_size > 0) && (mins < min_size)) {
+            scale *= 1.0 * min_size / mins;
+            sz = cv::Size(sz.width * min_size / mins, sz.height * min_size / mins);
+        }
+        if ((sz.width != input.cols) || (sz.height != input.rows)) {
             cv::Mat tmp;
-            scale = 1.0 * min_size / mins;
-            cv::resize(input, tmp, cv::Size(input.cols * min_size / mins, input.rows * min_size / mins));
+            cv::resize(input, tmp, sz);
             input = tmp;
         }
         *output = input;
