@@ -43,6 +43,24 @@ namespace picpac {
         return scale;
     }
 
+    float LimitSizeBelow (cv::Mat input, int max_size, cv::Mat *output) {
+        if (input.rows == 0) {
+            *output = cv::Mat();
+            return 0;
+        }
+        float scale = 1.0;
+        int maxs = std::min(input.cols, input.rows);
+
+        if ((max_size > 0) && (maxs > max_size)) {
+            cv::Mat tmp;
+            scale = 1.0 * maxs / max_size;
+            cv::resize(input, tmp, cv::Size(input.cols * max_size / maxs, input.rows * max_size / maxs));
+            input = tmp;
+        }
+        *output = input;
+        return scale;
+    }
+
     void check_add_label (Shape const *shape, Json::object *obj) {
         if (!shape->haveLabel()) return;
         cv::Scalar c = shape->label();
@@ -740,7 +758,7 @@ namespace picpac {
             return;
         }
         std::vector<uint8_t> buffer;
-        cv::imencode(code.empty() ? ".jpg": code, image, buffer);
+        cv::imencode(code.empty() ? ".jpg": code, image, buffer, _params);
         char const *from = reinterpret_cast<char const *>(&buffer[0]);
         *data = string(from, from + buffer.size());
     }
@@ -767,7 +785,7 @@ namespace picpac {
         }
         else if (max > 0) {
             cv::Mat rs;
-            LimitSize(image, max, &rs);
+            LimitSizeBelow(image, max, &rs);
             if (rs.total() != image.total()) {
                 image = rs;
                 do_code = true;
@@ -783,6 +801,34 @@ namespace picpac {
             fs::ifstream is(path, std::ios::binary);
             is.read(&data->at(0), data->size());
             if (!is) throw BadFile(path);
+        }
+    }
+
+    void ImageReader::transcode (string const &binary, string *data) {
+        bool do_code = code.size() || (mode != cv::IMREAD_UNCHANGED);
+        cv::Mat buffer(1, binary.size(), CV_8U, const_cast<void *>(reinterpret_cast<void const *>(&binary[0])));
+        cv::Mat image = cv::imdecode(buffer, mode);
+        if (!image.data) { // try raw
+            image = decode_raw(&binary[0], binary.size());
+        }
+        if (!image.data) throw BadFile("");
+        if (resize > 0) {
+            cv::resize(image, image, cv::Size(resize, resize));
+            do_code = true;
+        }
+        else if (max > 0) {
+            cv::Mat rs;
+            LimitSizeBelow(image, max, &rs);
+            if (rs.total() != image.total()) {
+                image = rs;
+                do_code = true;
+            }
+        }
+        if (do_code) {
+            encode(image, data);
+        }
+        else {
+            *data = binary;
         }
     }
 

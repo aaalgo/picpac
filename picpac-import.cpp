@@ -15,7 +15,8 @@ enum {
     FORMAT_LIST = 1,
     FORMAT_SUB_DIR = 2,
     FORMAT_ANNO_JSON = 3,
-    FORMAT_ANNO_IMAGE = 4
+    FORMAT_ANNO_IMAGE = 4,
+    FORMAT_PICPAC = 5
 };
 
 class Paths: public vector<fs::path> {
@@ -71,9 +72,12 @@ int main(int argc, char **argv) {
     fs::path cache;
     fs::path input_path;
     fs::path output_path;
+    string encode;
     int max_size;
     int resize;
     int format;
+    int limit;
+    int quality = 0;
 
     po::options_description desc("Allowed options");
     desc.add_options()
@@ -85,6 +89,9 @@ int main(int argc, char **argv) {
     ("format,f", po::value(&format)->default_value(1), "")
     ("cache", po::value(&cache)->default_value(".picpac_cache"), "")
     ("compact", "")
+    ("limit", po::value(&limit)->default_value(0), "")
+    ("encode", po::value(&encode), "")
+    ("jpeg_quality", po::value(&quality), "")
     /*
     ("gray", "")
     ("log-level,v", po::value(&FLAGS_minloglevel)->default_value(1), "")
@@ -120,7 +127,13 @@ int main(int argc, char **argv) {
     google::InitGoogleLogging(argv[0]);
     picpac::FileWriter db(output_path, flags);
     CachedDownloader downloader(cache);
-    ImageReader imreader(max_size, resize);
+    ImageReader imreader(max_size, resize, cv::IMREAD_UNCHANGED, encode);
+
+    if (vm.count("jpeg_quality")) {
+        imreader.params().push_back(CV_IMWRITE_JPEG_QUALITY);
+        imreader.params().push_back(quality);
+    }   
+
     int count = 0;
 
     if (format == FORMAT_DIR || format == FORMAT_SUB_DIR) {
@@ -143,6 +156,29 @@ int main(int argc, char **argv) {
                 picpac::Record rec(i, data);
                 db.append(rec);
                 ++count;
+            }
+        }
+    }
+    else if (format == FORMAT_PICPAC) {
+        IndexedFileReader indb(input_path);
+        for (unsigned i = 0; i < indb.size(); ++i) {
+            if (limit > 0 && i >= limit) break;
+            Record in;
+            indb.read(i, &in);
+            string binary;
+            string in_image = in.field_string(0);
+            if (in_image.size() > 0) {
+                imreader.transcode(in_image, &binary);
+            }
+            if (in.size() == 1) {
+                Record rec(in.meta().label, binary);
+                rec.meta().label2 = in.meta().label2;
+                db.append(rec);
+            }
+            else if (in.size() == 2) {
+                Record rec(in.meta().label, binary, in.field_string(1));
+                rec.meta().label2 = in.meta().label2;
+                db.append(rec);
             }
         }
     }

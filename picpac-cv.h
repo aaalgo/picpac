@@ -586,9 +586,11 @@ namespace picpac {
     class ImageEncoder {
     protected:
         string code;
+        vector<int> _params;
     public:
         ImageEncoder (string const &code_ =  string()): code(code_) {
         }
+        vector<int> &params() { return _params; }
         void encode (cv::Mat const &image, string *);
     };
 
@@ -602,6 +604,7 @@ namespace picpac {
         }
 
         void read (fs::path const &path, string *data);
+        void transcode (string const &input, string *data);
     };
 
     float LimitSize (cv::Mat input, int min_size, int max_size, cv::Mat *output);
