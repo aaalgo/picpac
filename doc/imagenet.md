@@ -1,4 +1,4 @@
-Imagenet is delivered as a list of tar files.
+Imagenet is delivered as a bunch of tar files.
 picpac-import has a special mode to support such format.
 To import the full imagenet, generate a list file
 containing all the tar paths (using ```find -name '*.tar'```).
