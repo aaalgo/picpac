@@ -22,7 +22,6 @@ class NumpyBatchImageStream: public BatchImageStream {
 public:
     NumpyBatchImageStream (std::string const &path, Config const &c)
         : BatchImageStream(fs::path(path), c) {
-        import_array();
     }
     tuple next () {
         vector<npy_intp> images_dims;
@@ -219,5 +218,8 @@ BOOST_PYTHON_MODULE(_picpac)
     ;
     def("encode_raw", ::encode_raw_ndarray);
     def("write_raw", ::write_raw_ndarray);
+#undef NUMPY_IMPORT_ARRAY_RETVAL
+#define NUMPY_IMPORT_ARRAY_RETVAL
+    import_array();
 }
 

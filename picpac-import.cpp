@@ -17,7 +17,8 @@ enum {
     FORMAT_SUB_DIR = 2,
     FORMAT_ANNO_JSON = 3,
     FORMAT_ANNO_IMAGE = 4,
-    FORMAT_IMAGENET_TARS = 5
+    FORMAT_PICPAC = 5,
+    FORMAT_IMAGENET_TARS = 6
 };
 
 class Paths: public vector<fs::path> {
@@ -73,9 +74,12 @@ int main(int argc, char **argv) {
     fs::path cache;
     fs::path input_path;
     fs::path output_path;
+    string encode;
     int max_size;
     int resize;
     int format;
+    int limit;
+    int quality = 0;
 
     po::options_description desc("Allowed options");
     desc.add_options()
@@ -87,6 +91,9 @@ int main(int argc, char **argv) {
     ("format,f", po::value(&format)->default_value(1), "")
     ("cache", po::value(&cache)->default_value(".picpac_cache"), "")
     ("compact", "")
+    ("limit", po::value(&limit)->default_value(0), "")
+    ("encode", po::value(&encode), "")
+    ("jpeg_quality", po::value(&quality), "")
     /*
     ("gray", "")
     ("log-level,v", po::value(&FLAGS_minloglevel)->default_value(1), "")
@@ -122,7 +129,13 @@ int main(int argc, char **argv) {
     google::InitGoogleLogging(argv[0]);
     picpac::FileWriter db(output_path, flags);
     CachedDownloader downloader(cache);
-    ImageReader imreader(max_size, resize);
+    ImageReader imreader(max_size, resize, cv::IMREAD_UNCHANGED, encode);
+
+    if (vm.count("jpeg_quality")) {
+        imreader.params().push_back(CV_IMWRITE_JPEG_QUALITY);
+        imreader.params().push_back(quality);
+    }   
+
     int count = 0;
 
     if (format == FORMAT_DIR || format == FORMAT_SUB_DIR) {
@@ -151,49 +164,53 @@ int main(int argc, char **argv) {
     else if (format == FORMAT_IMAGENET_TARS) {
         fs::ifstream is(input_path.c_str());
         string line;
-        int l = 0
+        int l = 0;
+        uint32_t id = 0;
+
+
         while (getline(is, line)) {
             Tar tar(line);
-            vector<uint8_t> jpeg;
+            string buffer;
             Tar::posix_header const *header;
-            while (tar.next(&jpeg, &header)) {
+            int n = 0;
+            while (tar.next(&buffer, &header)) {
                 string data;
-                imreader.read(path, &data);
-
-                rec.meta.serial = serial.fetch_add(1);
-                if (max && rec.meta.serial >= max) break;
-                cv::Mat image = cv::imdecode(cv::Mat(jpeg), cv::IMREAD_COLOR);
-                if (image.total() == 0) {
-                    LOG(WARNING) << "fail to load image of size " << jpeg.size();
-                    continue;
+                try {
+                    imreader.transcode(buffer, &data);
+                    Record rec(l, data);
+                    rec.meta().id = id;
+                    db.append(rec);
+                }
+                catch (BadFile const &) {
+                    LOG(ERROR) << "bad file in tar " << l << "/" << n << "/" << id;
+                }
+                ++n;
+                ++id;
             }
-
-                if (data.empty()) {
-                    LOG(ERROR) << "not a image: " << path;
-                    continue;
-                }
-                if (format == FORMAT_LIST) {
-                    float l = lexical_cast<float>(ss[1]);
-                    Record record(l, data);
-                    db.append(record);
-                }
-                else if (format == FORMAT_ANNO_JSON) {
-                    Record record(0, data, ss[1]);
-                    db.append(record);
-                }
-                else if (format == FORMAT_ANNO_IMAGE) {
-                    string data2;
-                    if (ss[1].size()) {
-                        fs::path path2 = downloader.download(ss[1]);
-                        imreader.read(path2, &data2);
-                    }
-                    Record record(0, data, data2);
-                    db.append(record);
-                }
-                ++count;
+            LOG(INFO) << line;
+            l++;
+        }
+    }
+    else if (format == FORMAT_PICPAC) {
+        IndexedFileReader indb(input_path);
+        for (unsigned i = 0; i < indb.size(); ++i) {
+            if (limit > 0 && i >= limit) break;
+            Record in;
+            indb.read(i, &in);
+            string binary;
+            string in_image = in.field_string(0);
+            if (in_image.size() > 0) {
+                imreader.transcode(in_image, &binary);
             }
-            catch (...) {
-                LOG(ERROR) << "Fail to load " << ss[0];
+            if (in.size() == 1) {
+                Record rec(in.meta().label, binary);
+                rec.meta().label2 = in.meta().label2;
+                db.append(rec);
+            }
+            else if (in.size() == 2) {
+                Record rec(in.meta().label, binary, in.field_string(1));
+                rec.meta().label2 = in.meta().label2;
+                db.append(rec);
             }
         }
     }

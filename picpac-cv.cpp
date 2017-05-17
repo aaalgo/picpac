@@ -23,20 +23,40 @@ namespace picpac {
             return 0;
         }
         float scale = 1.0;
-        int maxs = std::max(input.cols, input.rows);
-        int mins = std::min(input.cols, input.rows);
+        cv::Size sz(input.cols, input.rows);
+        int maxs = std::max(sz.width, sz.height);
+
+        if ((max_size > 0) && (maxs > max_size)) {
+            scale = 1.0 * max_size / maxs;
+            sz = cv::Size(sz.width * max_size / maxs, sz.height * max_size / maxs);
+        }
+        // large side > max
+        int mins = std::min(sz.width, sz.height);
+        if ((min_size > 0) && (mins < min_size)) {
+            scale *= 1.0 * min_size / mins;
+            sz = cv::Size(sz.width * min_size / mins, sz.height * min_size / mins);
+        }
+        if ((sz.width != input.cols) || (sz.height != input.rows)) {
+            cv::Mat tmp;
+            cv::resize(input, tmp, sz);
+            input = tmp;
+        }
+        *output = input;
+        return scale;
+    }
+
+    float LimitSizeBelow (cv::Mat input, int max_size, cv::Mat *output) {
+        if (input.rows == 0) {
+            *output = cv::Mat();
+            return 0;
+        }
+        float scale = 1.0;
+        int maxs = std::min(input.cols, input.rows);
 
         if ((max_size > 0) && (maxs > max_size)) {
             cv::Mat tmp;
             scale = 1.0 * maxs / max_size;
             cv::resize(input, tmp, cv::Size(input.cols * max_size / maxs, input.rows * max_size / maxs));
-            input = tmp;
-        }
-        // large side > max
-        if ((min_size > 0) && (mins < min_size)) {
-            cv::Mat tmp;
-            scale = 1.0 * min_size / mins;
-            cv::resize(input, tmp, cv::Size(input.cols * min_size / mins, input.rows * min_size / mins));
             input = tmp;
         }
         *output = input;
@@ -740,7 +760,7 @@ namespace picpac {
             return;
         }
         std::vector<uint8_t> buffer;
-        cv::imencode(code.empty() ? ".jpg": code, image, buffer);
+        cv::imencode(code.empty() ? ".jpg": code, image, buffer, _params);
         char const *from = reinterpret_cast<char const *>(&buffer[0]);
         *data = string(from, from + buffer.size());
     }
@@ -767,7 +787,7 @@ namespace picpac {
         }
         else if (max > 0) {
             cv::Mat rs;
-            LimitSize(image, max, &rs);
+            LimitSizeBelow(image, max, &rs);
             if (rs.total() != image.total()) {
                 image = rs;
                 do_code = true;
@@ -786,9 +806,13 @@ namespace picpac {
         }
     }
 
-    void ImageReader::__transcode (vector<uint8_t> &buffer, string *data) {
+    void ImageReader::transcode (string const &binary, string *data) {
         bool do_code = code.size() || (mode != cv::IMREAD_UNCHANGED);
-        cv::Mat image = cv::imdecode(cv::Mat(buffer), mode);
+        cv::Mat buffer(1, binary.size(), CV_8U, const_cast<void *>(reinterpret_cast<void const *>(&binary[0])));
+        cv::Mat image = cv::imdecode(buffer, mode);
+        if (!image.data) { // try raw
+            image = decode_raw(&binary[0], binary.size());
+        }
         if (!image.data) throw BadFile("");
         if (resize > 0) {
             cv::resize(image, image, cv::Size(resize, resize));
@@ -796,7 +820,7 @@ namespace picpac {
         }
         else if (max > 0) {
             cv::Mat rs;
-            LimitSize(image, max, &rs);
+            LimitSizeBelow(image, max, &rs);
             if (rs.total() != image.total()) {
                 image = rs;
                 do_code = true;
@@ -806,12 +830,7 @@ namespace picpac {
             encode(image, data);
         }
         else {
-            // read original file
-            uintmax_t sz = fs::file_size(path);
-            data->resize(sz);
-            fs::ifstream is(path, std::ios::binary);
-            is.read(&data->at(0), data->size());
-            if (!is) throw BadFile(path);
+            *data = binary;
         }
     }
 
