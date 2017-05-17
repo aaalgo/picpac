@@ -5,6 +5,7 @@
 #include "picpac.h"
 #include "picpac-cv.h"
 #include "picpac-util.h"
+#include "tar.h"
 
 using namespace std;
 using namespace boost;
@@ -15,7 +16,8 @@ enum {
     FORMAT_LIST = 1,
     FORMAT_SUB_DIR = 2,
     FORMAT_ANNO_JSON = 3,
-    FORMAT_ANNO_IMAGE = 4
+    FORMAT_ANNO_IMAGE = 4,
+    FORMAT_IMAGENET_TARS = 5
 };
 
 class Paths: public vector<fs::path> {
@@ -143,6 +145,55 @@ int main(int argc, char **argv) {
                 picpac::Record rec(i, data);
                 db.append(rec);
                 ++count;
+            }
+        }
+    }
+    else if (format == FORMAT_IMAGENET_TARS) {
+        fs::ifstream is(input_path.c_str());
+        string line;
+        int l = 0
+        while (getline(is, line)) {
+            Tar tar(line);
+            vector<uint8_t> jpeg;
+            Tar::posix_header const *header;
+            while (tar.next(&jpeg, &header)) {
+                string data;
+                imreader.read(path, &data);
+
+                rec.meta.serial = serial.fetch_add(1);
+                if (max && rec.meta.serial >= max) break;
+                cv::Mat image = cv::imdecode(cv::Mat(jpeg), cv::IMREAD_COLOR);
+                if (image.total() == 0) {
+                    LOG(WARNING) << "fail to load image of size " << jpeg.size();
+                    continue;
+            }
+
+                if (data.empty()) {
+                    LOG(ERROR) << "not a image: " << path;
+                    continue;
+                }
+                if (format == FORMAT_LIST) {
+                    float l = lexical_cast<float>(ss[1]);
+                    Record record(l, data);
+                    db.append(record);
+                }
+                else if (format == FORMAT_ANNO_JSON) {
+                    Record record(0, data, ss[1]);
+                    db.append(record);
+                }
+                else if (format == FORMAT_ANNO_IMAGE) {
+                    string data2;
+                    if (ss[1].size()) {
+                        fs::path path2 = downloader.download(ss[1]);
+                        imreader.read(path2, &data2);
+                    }
+                    Record record(0, data, data2);
+                    db.append(record);
+                }
+                ++count;
+            }
+            catch (...) {
+                LOG(ERROR) << "Fail to load " << ss[0];
             }
         }
     }

@@ -786,6 +786,35 @@ namespace picpac {
         }
     }
 
+    void ImageReader::__transcode (vector<uint8_t> &buffer, string *data) {
+        bool do_code = code.size() || (mode != cv::IMREAD_UNCHANGED);
+        cv::Mat image = cv::imdecode(cv::Mat(buffer), mode);
+        if (!image.data) throw BadFile("");
+        if (resize > 0) {
+            cv::resize(image, image, cv::Size(resize, resize));
+            do_code = true;
+        }
+        else if (max > 0) {
+            cv::Mat rs;
+            LimitSize(image, max, &rs);
+            if (rs.total() != image.total()) {
+                image = rs;
+                do_code = true;
+            }
+        }
+        if (do_code) {
+            encode(image, data);
+        }
+        else {
+            // read original file
+            uintmax_t sz = fs::file_size(path);
+            data->resize(sz);
+            fs::ifstream is(path, std::ios::binary);
+            is.read(&data->at(0), data->size());
+            if (!is) throw BadFile(path);
+        }
+    }
+
     void encode_raw (cv::Mat m, string *s) {
         std::ostringstream ss;
         int type = m.type();

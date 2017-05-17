@@ -602,6 +602,9 @@ namespace picpac {
         }
 
         void read (fs::path const &path, string *data);
+        // transcode is a hack for imagenet tars, only works with opencv image formats
+        // needs improvement
+        void __transcode (vector<uint8_t> &buffer, string *data);
     };
 
     float LimitSize (cv::Mat input, int min_size, int max_size, cv::Mat *output);
