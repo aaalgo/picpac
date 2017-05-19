@@ -122,31 +122,11 @@ public:
 
         add("^/api/overview" HTTP_Q, "GET", [this](Response &res, Request &req) {
 
-                /*
-                rfc3986::Form trans;
-                // transfer all applicable image parameters to trans
-                // so we can later use that for image display
-#define PICPAC_CONFIG_UPDATE(C,P) \
-                { auto it = query.find(#P); if (it != query.end()) trans.insert(*it);}
-                PICPAC_CONFIG_UPDATE_ALL(0);
-#undef PICPAC_CONFIG_UPDATE
-                string ext = trans.encode(true);
-                */
                 res.content = overview;
                 res.mime = "application/json";
             });
         add("^/api/collage.jpg" HTTP_Q, "GET", [this](Response &res, Request &req) {
 
-                /*
-                rfc3986::Form trans;
-                // transfer all applicable image parameters to trans
-                // so we can later use that for image display
-#define PICPAC_CONFIG_UPDATE(C,P) \
-                { auto it = query.find(#P); if (it != query.end()) trans.insert(*it);}
-                PICPAC_CONFIG_UPDATE_ALL(0);
-#undef PICPAC_CONFIG_UPDATE
-                string ext = trans.encode(true);
-                */
                 res.content = collage;
                 res.mime = "image/jpeg";
             });
@@ -199,7 +179,8 @@ public:
                 conf.pert_angle = 20;
                 conf.pert_min_scale = 0.8;
                 conf.pert_max_scale = 1.2;
-#define PICPAC_CONFIG_UPDATE(C,P) C.P = req.GET.get<decltype(C.P)>(#P, C.P)
+#define PICPAC_CONFIG_UPDATE(C,P) \
+                C.P = req.GET.get<decltype(C.P)>(#P, C.P) 
                 PICPAC_CONFIG_UPDATE_ALL(conf);
 #undef PICPAC_CONFIG_UPDATE
                 float anno_factor = req.GET.get<float>("anno_factor", 0);

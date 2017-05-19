@@ -109,7 +109,7 @@ namespace {
         LuaDict dict(L, 2);
         BatchImageStream::Config config;
 #define PICPAC_CONFIG_UPDATE(C, P) \
-        C.P = dict.get<decltype(C.P)>(#P, C.P)
+        C.P = dict.get<decltype(C.P)>(#P, C.P) 
         PICPAC_CONFIG_UPDATE_ALL(config);
 #undef PICPAC_CONFIG_UPDATE
         BatchImageStream *ss = new BatchImageStream(db, config);

@@ -59,7 +59,7 @@ object create_image_stream (tuple args, dict kwargs) {
     }
     */
 #define PICPAC_CONFIG_UPDATE(C, P) \
-    C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P))
+    C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P)) 
     PICPAC_CONFIG_UPDATE_ALL(config);
 #undef PICPAC_CONFIG_UPDATE
     return self.attr("__init__")(path, config);

@@ -73,6 +73,7 @@ namespace picpac {
     class Box: public Shape {
     protected:
         cv::Rect_<float> rect;
+        Box (char const *t): Shape(t) {}
     public:
         Box (Json const &geo, char const *t = "rect"): Shape(t) {
             rect.x = geo["x"].number_value();
@@ -118,6 +119,8 @@ namespace picpac {
     };
 
     class Ellipse: public Box {
+    protected:
+        Ellipse (char const *t): Box(t) {}
     public:
         Ellipse (Json const &geo): Box(geo, "ellipse") {
         }
@@ -129,6 +132,23 @@ namespace picpac {
                                m->rows * (rect.y + rect.height/2));
             cv::Size2f size(m->cols * rect.width, m->rows * rect.height);
             cv::ellipse(*m, cv::RotatedRect(center, size, 0), v, thickness);
+        }
+    };
+
+    class Point: public Ellipse {
+    public:
+        Point (Json const &geo, cv::Mat const &image, ImageLoader::Config const &config): Ellipse("point") { 
+            float x = geo["x"].number_value();
+            float y = geo["y"].number_value();
+            float xr = 1.0 * config.point_radius / image.cols;
+            float yr = 1.0 * config.point_radius / image.rows;
+            rect.x = x - xr;
+            rect.y = y - yr;
+            rect.width = 2 * xr;
+            rect.height = 2 * yr;
+        }
+        virtual std::shared_ptr<Shape> clone () const {
+            return std::shared_ptr<Shape>(new Point(*this));
         }
     };
 
@@ -202,7 +222,7 @@ namespace picpac {
         }
     };
 
-    std::shared_ptr<Shape> Shape::create (Json const &geo) {
+    std::shared_ptr<Shape> Shape::create (Json const &geo, cv::Mat const &image, ImageLoader::Config const &config) {
         string type = geo["type"].string_value();
         std::shared_ptr<Shape> shape;
         if (type == "rect") {
@@ -213,6 +233,9 @@ namespace picpac {
         }
         else if (type == "polygon") {
             shape = std::shared_ptr<Shape>(new Poly(geo["geometry"]));
+        }
+        else if (type == "point") {
+            shape = std::shared_ptr<Shape>(new Point(geo["geometry"], image, config));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
@@ -236,7 +259,7 @@ namespace picpac {
         return shape;
     }
 
-    Annotation::Annotation (string const &txt) {
+    Annotation::Annotation (string const &txt, cv::Mat const &image, ImageLoader::Config const &config) {
         string err;
         Json json = Json::parse(txt, err);
         if (err.size()) {
@@ -244,7 +267,7 @@ namespace picpac {
             return;
         }
         for (auto const &x: json["shapes"].array_items()) {
-            shapes.emplace_back(Shape::create(x));
+            shapes.emplace_back(Shape::create(x, image, config));
         }
     }
 
@@ -461,7 +484,7 @@ namespace picpac {
                     anno = cv::Mat(cached.image.size(), config.anno_type, cv::Scalar(0));
                 }
                 if (r.size() > 1) {
-                    Annotation a(r.field_string(1));
+                    Annotation a(r.field_string(1), cached.image, config);
                     cv::Scalar color(config.anno_color1,
                                  config.anno_color2,
                                  config.anno_color3);

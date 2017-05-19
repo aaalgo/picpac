@@ -57,7 +57,9 @@
     PICPAC_CONFIG_UPDATE(C,batch);\
     PICPAC_CONFIG_UPDATE(C,pad);\
     PICPAC_CONFIG_UPDATE(C,bgr2rgb);\
-    PICPAC_CONFIG_UPDATE(C,channel_first);
+    PICPAC_CONFIG_UPDATE(C,channel_first);\
+    PICPAC_CONFIG_UPDATE(C,point_radius);
+
 
 namespace json11 {
     class Json;
@@ -120,6 +122,8 @@ namespace picpac {
             bool pert_hflip, pert_vflip;
             float pert_border;
 
+            float point_radius; // in pixels
+
 
             Config ()
                 : channels(0),
@@ -148,7 +152,8 @@ namespace picpac {
                 pert_max_scale(1),
                 pert_hflip(false),
                 pert_vflip(false),
-                pert_border(cv::BORDER_CONSTANT)
+                pert_border(cv::BORDER_CONSTANT),
+                point_radius(3)
             {
             }
         };
@@ -634,13 +639,13 @@ namespace picpac {
         bool haveLabel () const { return _have_label; }
         cv::Scalar label () const { return _label; }
         virtual std::shared_ptr<Shape> clone () const = 0;
-        static std::shared_ptr<Shape> create (json11::Json const &geo);
+        static std::shared_ptr<Shape> create (json11::Json const &geo, cv::Mat const &image, ImageLoader::Config const &config);
     };
 
     struct Annotation {
         vector<std::shared_ptr<Shape>> shapes;
         Annotation () {}
-        Annotation (string const &txt);
+        Annotation (string const &txt, cv::Mat const &image, ImageLoader::Config const &config);
         void dump (string *) const;
         void draw (cv::Mat *m, cv::Scalar v, int thickness = -1, vector<cv::Scalar> const *palette=nullptr) const;
         void bbox (cv::Rect_<float> *bb) const;
