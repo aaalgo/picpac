@@ -31,12 +31,14 @@ public:
         float grid_step;
         float grid_scale;
         float min_color;
+        float point_radius;
         bool image_annotation;
-        Config (): size(50), patch_size(100), min_patch_size(-1), no_scale(false), grid_size(240), grid_step(200), grid_scale(1), min_color(-1), image_annotation(false) {
+        Config (): size(50), patch_size(100), min_patch_size(-1), no_scale(false), grid_size(240), grid_step(200), grid_scale(1), min_color(-1), point_radius(3), image_annotation(false) {
         }
     };
 private:
     Config config;
+    ImageLoader::Config loader_config;
     ba::accumulator_set<double, ba::stats<ba::tag::mean, ba::tag::min, ba::tag::max, ba::tag::variance > > acc;
     ImageEncoder encoder;
     ImageEncoder anno_encoder;
@@ -125,6 +127,7 @@ public:
             bg = new FileWriter(config.bg_path);
         }
 #endif
+        loader_config.point_radius = config.point_radius;
     }
     ~Splitter () {
         cout << "min: " << ba::min(acc) << endl;
@@ -145,7 +148,8 @@ public:
 #endif
             return;
         }
-        Annotation anno(rec.field_string(1));
+        cv::Mat image = decode_buffer(rec.field(0), -1);
+        Annotation anno(rec.field_string(1), image, loader_config);
         if (anno.shapes.size() == 0) {
 #if 0
             if (bg) {
@@ -154,7 +158,6 @@ public:
 #endif
             return;
         }
-        cv::Mat image = decode_buffer(rec.field(0), -1);
 #if 0
         cv::Mat image_bg;
         if (bg) image_bg = image.clone();
@@ -241,12 +244,12 @@ public:
     }
 
     void add_grid (Record const &rec) {
+        cv::Mat image = decode_buffer(rec.field(0), -1);
         Annotation anno;
         if ((rec.meta().width >= 2) && (rec.meta().fields[1].size > 0) && !config.image_annotation) {
-            Annotation annox(rec.field_string(1));
+            Annotation annox(rec.field_string(1), image, loader_config);
             anno.shapes.swap(annox.shapes);
         }
-        cv::Mat image = decode_buffer(rec.field(0), -1);
         cv::Mat anno_image;
         if (config.image_annotation) {
             anno_image = decode_buffer(rec.field(1), -1);
@@ -321,6 +324,7 @@ int main(int argc, char const* argv[]) {
         ("image-annotation", "")
         ("codec", po::value(&config.codec)->default_value(".jpg"), "use .tiff for 16-bit images") 
         ("anno-codec", po::value(&config.anno_codec)->default_value(".png"), "not used json annotation") 
+        ("point-radius", po::value(&config.point_radius)->default_value(config.point_radius), "not used json annotation") 
         ;
 
     po::positional_options_description p;
