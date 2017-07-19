@@ -87,6 +87,13 @@ namespace picpac {
         std::copy(extra.begin(), extra.end(), field_ptrs[1]);
     }
 
+    Record::Record (float label, string const &image, string const &extra, string const &extra2) {
+        alloc(label, image.size(), extra.size(), extra2.size());
+        std::copy(image.begin(), image.end(), field_ptrs[0]);
+        std::copy(extra.begin(), extra.end(), field_ptrs[1]);
+        std::copy(extra2.begin(), extra2.end(), field_ptrs[2]);
+    }
+
 #define CHECK_OFFSET    1
     ssize_t Record::write (int fd, bool compact) const {
 #ifdef CHECK_OFFSET

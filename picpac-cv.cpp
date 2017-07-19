@@ -150,6 +150,19 @@ namespace picpac {
         virtual std::shared_ptr<Shape> clone () const {
             return std::shared_ptr<Shape>(new Point(*this));
         }
+        virtual void draw (cv::Mat *m, cv::Scalar v, int thickness) const {
+            if (rect.width == 0 && rect.height == 0) {
+                // this is really a point
+                int x = int(round(m->cols * rect.x));
+                int y = int(round(m->rows * rect.y));
+                // we really want a single point
+                // and have to rely on that cv::line doesn't draw the end point
+                cv::line(*m, cv::Point(x,y), cv::Point(x+1, y), v);
+            }
+            else {
+                Ellipse::draw(m, v, thickness);
+            }
+        }
     };
 
     class Poly: public Shape {
