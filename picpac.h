@@ -206,6 +206,7 @@ namespace picpac {
         Record (float label, string const &data, string const &extra);
         /// Construct a record with file content and extra string.
         Record (float label, string const &data, string const &extra, string const &extra2);
+        Record (float label, string const &data, string const &extra, string const &extra2, string const &extra3);
 
         Meta &meta () { return *meta_ptr; }
         Meta const &meta () const { return *meta_ptr; }

@@ -95,6 +95,11 @@ public:
         Record record(label, buf1, buf2, buf3);
         FileWriter::append(record);
     }
+
+    void append (float label, string const &buf1, string const &buf2, string const &buf3, string const &buf4) {
+        Record record(label, buf1, buf2, buf3, buf4);
+        FileWriter::append(record);
+    }
 };
 
 class Reader: public IndexedFileReader {
@@ -189,6 +194,8 @@ void (Writer::*append3) (float, string const &, string const &) = &Writer::appen
 
 void (Writer::*append4) (float, string const &, string const &, string const &) = &Writer::append;
 
+void (Writer::*append5) (float, string const &, string const &, string const &, string const &) = &Writer::append;
+
 void translate_eos (EoS const &)
 {
     // Use the Python 'C' API to set up an exception object
@@ -223,6 +230,7 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("append", append2)
         .def("append", append3)
         .def("append", append4)
+        .def("append", append5)
     ;
     def("encode_raw", ::encode_raw_ndarray);
     def("write_raw", ::write_raw_ndarray);
