@@ -73,31 +73,47 @@ object return_iterator (tuple args, dict kwargs) {
 
 
 class Writer: public FileWriter {
+    int nextid;
 public:
-    Writer (string const &path): FileWriter(fs::path(path), FileWriter::COMPACT) {
+    Writer (string const &path): FileWriter(fs::path(path), FileWriter::COMPACT), nextid(0) {
     }
+
+    void setNextId (int v) {
+        nextid = v;
+    }
+
     void append (float label, string const &buf) {
         Record record(label, buf);
+        record.meta().id = nextid;
+        ++nextid;
         FileWriter::append(record);
     }
 
     void append (string const &buf1, string const &buf2) {
         Record record(0, buf1, buf2);
+        record.meta().id = nextid;
+        ++nextid;
         FileWriter::append(record);
     }
 
     void append (float label, string const &buf1, string const &buf2) {
         Record record(label, buf1, buf2);
+        record.meta().id = nextid;
+        ++nextid;
         FileWriter::append(record);
     }
 
     void append (float label, string const &buf1, string const &buf2, string const &buf3) {
         Record record(label, buf1, buf2, buf3);
+        record.meta().id = nextid;
+        ++nextid;
         FileWriter::append(record);
     }
 
     void append (float label, string const &buf1, string const &buf2, string const &buf3, string const &buf4) {
         Record record(label, buf1, buf2, buf3, buf4);
+        record.meta().id = nextid;
+        ++nextid;
         FileWriter::append(record);
     }
 };
@@ -231,6 +247,7 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("append", append3)
         .def("append", append4)
         .def("append", append5)
+        .def("setNextId", &Writer::setNextId);
     ;
     def("encode_raw", ::encode_raw_ndarray);
     def("write_raw", ::write_raw_ndarray);
