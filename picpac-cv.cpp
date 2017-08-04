@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sstream>
 #include <json11.hpp>
+#include <fmt/printf.h>
 #include <boost/filesystem/fstream.hpp>
 #include "picpac-cv.h"
 
@@ -13,6 +14,15 @@ namespace picpac {
         {148, 103, 189}, {197, 176, 213}, {140, 86, 75}, {196, 156, 148},
         {227, 119, 194}, {247, 182, 210}, {127, 127, 127}, {199, 199, 199},
         {188, 189, 34}, {219, 219, 141}, {23, 190, 207}, {158, 218, 229}
+    };
+
+    vector<cv::Scalar> PALETTE_TABLEAU20A{
+        {0, 0, 0},
+        {44, 160, 44}, {152, 223, 138}, {214, 39, 40}, {255, 152, 150},
+		{31, 119, 180}, {174, 199, 232}, {255, 127, 14}, {255, 187, 120},
+        {188, 189, 34}, {219, 219, 141}, {23, 190, 207}, {158, 218, 229},
+        {227, 119, 194}, {247, 182, 210}, {127, 127, 127}, {199, 199, 199},
+        {148, 103, 189}, {197, 176, 213}, {140, 86, 75}, {196, 156, 148}
     };
 
     using namespace json11;
@@ -294,7 +304,11 @@ namespace picpac {
         *str = json.dump();
     }
 
-    void Annotation::draw (cv::Mat *m, cv::Scalar v, int thickness, vector<cv::Scalar> const *palette) const {
+    void Annotation::draw (cv::Mat *m, cv::Scalar v, int thickness, vector<cv::Scalar> const *palette, bool show_number) const {
+        static constexpr int font_face = cv::FONT_HERSHEY_SIMPLEX;
+		static constexpr double font_scale = 0.8;
+        
+        int cc = 0;
         for (auto const &p: shapes) {
             cv::Scalar vv = v;
             if (p->haveLabel()) {
@@ -308,6 +322,12 @@ namespace picpac {
                 vv = palette->at(idx);
             }
             p->draw(m, vv, thickness);
+            if (show_number) {
+                cv::Rect_<float> bbox;
+                p->bbox(&bbox);
+                cv::putText(*m, fmt::sprintf("%x", cc), bbox.br(), font_face, font_scale, vv);
+            }
+            ++cc;
         }
     }
 
@@ -462,6 +482,9 @@ namespace picpac {
                     if (anno_palette == ANNOTATE_PALETTE_NONE) {
                         palette = nullptr;
                     }
+                    else if (anno_palette == ANNOTATE_PALETTE_TABLEAU20A) {
+                        palette = &PALETTE_TABLEAU20A;
+                    }
                     if (cached.annotation.data && palette) {
                         CHECK(cached.annotation.type() == CV_8UC1);
                         cv::Mat mat(cached.annotation.rows,
@@ -506,7 +529,7 @@ namespace picpac {
                         palette = nullptr;
                     }
 					
-                    a.draw(&anno, color, config.anno_thickness, palette);
+                    a.draw(&anno, color, config.anno_thickness, palette, config.anno_number);
 
                     // we might want to perturb the cropping
                     // this might not be the perfect location either

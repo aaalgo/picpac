@@ -34,6 +34,7 @@
     PICPAC_CONFIG_UPDATE(C,annotate);\
     PICPAC_CONFIG_UPDATE(C,anno_type);\
     PICPAC_CONFIG_UPDATE(C,anno_copy);\
+    PICPAC_CONFIG_UPDATE(C,anno_number);\
     PICPAC_CONFIG_UPDATE(C,anno_palette);\
     PICPAC_CONFIG_UPDATE(C,anno_color1); \
     PICPAC_CONFIG_UPDATE(C,anno_color2); \
@@ -77,7 +78,8 @@ namespace picpac {
         };
         enum {
             ANNOTATE_PALETTE_NONE = 0,
-            ANNOTATE_PALETTE_TABLEAU20 = 1
+            ANNOTATE_PALETTE_TABLEAU20 = 1,
+            ANNOTATE_PALETTE_TABLEAU20A = 2
         };
         enum {
             COLOR_DEFAULT = 0,
@@ -100,6 +102,7 @@ namespace picpac {
             string annotate;
             int anno_type;  // annotate image opencv type
             bool anno_copy; // copy input image first for visualization
+            bool anno_number;   // display number along the annotation for inspection
             string anno_palette;
             float anno_color1;
             float anno_color2;
@@ -138,6 +141,7 @@ namespace picpac {
                 decode_mode(cv::IMREAD_UNCHANGED),
                 anno_type(CV_8UC1),
                 anno_copy(false),
+                anno_number(false),
                 anno_color1(1),
                 anno_color2(0),
                 anno_color3(0),
@@ -194,6 +198,9 @@ namespace picpac {
             if (config.anno_palette == "default"
                     || config.anno_palette == "tableau20") {
                 anno_palette = ANNOTATE_PALETTE_TABLEAU20;
+            }
+            else if (config.anno_palette == "tableau20a") {
+                anno_palette = ANNOTATE_PALETTE_TABLEAU20A;
             }
             else {
                 anno_palette = ANNOTATE_PALETTE_NONE;
@@ -647,7 +654,7 @@ namespace picpac {
         Annotation () {}
         Annotation (string const &txt, cv::Mat const &image, ImageLoader::Config const &config);
         void dump (string *) const;
-        void draw (cv::Mat *m, cv::Scalar v, int thickness = -1, vector<cv::Scalar> const *palette=nullptr) const;
+        void draw (cv::Mat *m, cv::Scalar v, int thickness = -1, vector<cv::Scalar> const *palette=nullptr, bool show_number = false) const;
         void bbox (cv::Rect_<float> *bb) const;
         void zoom (cv::Rect_<float> const &bb);
     };
