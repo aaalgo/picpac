@@ -7,7 +7,7 @@ CXXFLAGS += -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -ISimple-Web-Extr
 LDFLAGS += -fopenmp -std=c++1y
 LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
 
-SERVER_LIBS = -lfmt\
+SERVER_LIBS = \
           -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core \
 	      -lturbojpeg -ltiff -lpng -lwebp -llibjasper -lippicv \
 	      -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system \
