@@ -71,6 +71,54 @@ object return_iterator (tuple args, dict kwargs) {
     return self;
 };
 
+class NumpyMultiImageStream: public MultiImageStream {
+public:
+    NumpyMultiImageStream (std::string const &path, Config const &c)
+        : MultiImageStream(fs::path(path), c) {
+    }
+    tuple next () {
+        /*
+        vector<npy_intp> images_dims;
+        vector<npy_intp> labels_dims;
+        next_shape(&images_dims, &labels_dims);
+        object images = object(boost::python::handle<>(PyArray_SimpleNew(images_dims.size(), &images_dims[0], NPY_FLOAT)));
+        CHECK(images.ptr());
+        float *images_buf = get_ndarray_data<float>(images);
+        object labels = object(boost::python::handle<>(PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT)));
+        CHECK(labels.ptr());
+        float *labels_buf = get_ndarray_data<float>(labels);
+        unsigned padding;
+        next_fill(images_buf, labels_buf, &padding);
+        */
+        return make_tuple(0, 0);
+    }
+};
+
+object create_multi_image_stream (tuple args, dict kwargs) {
+    object self = args[0];
+    CHECK(len(args) > 1);
+    string path = extract<string>(args[1]);
+    NumpyBatchImageStream::Config config;
+    /*
+    bool train = extract<bool>(kwargs.get("train", true));
+    unsigned K = extract<unsigned>(kwargs.get("K", 1));
+    unsigned fold = extract<unsigned>(kwargs.get("fold", 0));
+    if (K <= 1) {
+        if (!train) {
+            config.loop = false;
+            config.reshuffle = false;
+        }
+    }
+    else {
+        config.kfold(K, fold, train);
+    }
+    */
+#define PICPAC_CONFIG_UPDATE(C, P) \
+    C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P)) 
+    PICPAC_CONFIG_UPDATE_ALL(config);
+#undef PICPAC_CONFIG_UPDATE
+    return self.attr("__init__")(path, config);
+};
 
 class Writer: public FileWriter {
     int nextid;
@@ -233,6 +281,14 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("size", &NumpyBatchImageStream::size)
         .def("reset", &NumpyBatchImageStream::reset)
         .def("categories", &NumpyBatchImageStream::categories)
+    ;
+    class_<NumpyMultiImageStream, boost::noncopyable>("MultiImageStream", no_init)
+        .def("__init__", raw_function(create_multi_image_stream), "exposed ctor")
+        .def("__iter__", raw_function(return_iterator))
+        .def(init<string, NumpyMultiImageStream::Config const&>()) // C++ constructor not exposed
+        .def("next", &NumpyMultiImageStream::next)
+        .def("size", &NumpyMultiImageStream::size)
+        .def("reset", &NumpyMultiImageStream::reset)
     ;
     class_<Reader>("Reader", init<string>())
         .def("__iter__", raw_function(return_iterator))

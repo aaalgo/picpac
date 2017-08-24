@@ -418,7 +418,7 @@ namespace picpac {
         cv::cvtColor(o, *bgr, CV_HSV2BGR);
     }
 
-    cv::Mat ImageLoader::preload_image (const_buffer buffer, LoadState *state) {
+    cv::Mat ImageLoader::preload_image (const_buffer buffer, LoadState *state) const {
         cv::Mat image = decode_buffer(buffer, config.decode_mode);
         if ((config.channels > 0) && config.channels != image.channels()) {
             cv::Mat tmp;
@@ -456,13 +456,13 @@ namespace picpac {
             image = tmp;
         }
         state->size = image.size();
-        if (annotate == ANNOTATE_JSON && config.anno_copy) {
+        if (annotate == ANNOTATE_JSON && config.anno_copy && !state->copy_for_anno.data) {
             state->copy_for_anno = image.clone();
         }
         return image;
     }
 
-    cv::Mat ImageLoader::preload_annotation (const_buffer buffer, LoadState *state) {
+    cv::Mat ImageLoader::preload_annotation (const_buffer buffer, LoadState *state) const {
         cv::Mat annotation;
         if (annotate == ANNOTATE_IMAGE) {
             if (boost::asio::buffer_size(buffer) == 0) {
@@ -588,7 +588,7 @@ namespace picpac {
     }
 
 
-    cv::Mat ImageLoader::process_image (cv::Mat image, PerturbVector const &p, LoadState const *state, bool is_anno) {
+    cv::Mat ImageLoader::process_image (cv::Mat image, PerturbVector const &p, LoadState const *state, bool is_anno) const {
         //TODO: scale might break min and/or max restriction
         auto CV_INTER = is_anno ? cv::INTER_NEAREST : cv::INTER_LINEAR;
         if (state->crop) {
@@ -705,12 +705,12 @@ namespace picpac {
         return image;
     }
 
-    cv::Mat ImageLoader::load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) {
+    cv::Mat ImageLoader::load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const {
         cv::Mat image = preload_image(buffer, state);
         return process_image(image, pv, state, false);
     }
 
-    cv::Mat ImageLoader::load_annotation (const_buffer buffer, PerturbVector const &pv, LoadState *state) {
+    cv::Mat ImageLoader::load_annotation (const_buffer buffer, PerturbVector const &pv, LoadState *state) const {
         cv::Mat image = preload_annotation(buffer, state);
         return process_image(image, pv, state, true);
     }

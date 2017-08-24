@@ -59,7 +59,8 @@
     PICPAC_CONFIG_UPDATE(C,pad);\
     PICPAC_CONFIG_UPDATE(C,bgr2rgb);\
     PICPAC_CONFIG_UPDATE(C,channel_first);\
-    PICPAC_CONFIG_UPDATE(C,point_radius);
+    PICPAC_CONFIG_UPDATE(C,point_radius);\
+    PICPAC_CONFIG_UPDATE(C,multi_images);
 
 
 namespace json11 {
@@ -127,7 +128,7 @@ namespace picpac {
 
             float point_radius; // in pixels
 
-
+            int multi_images;   // for MultiImageLoader
             Config ()
                 : channels(0),
                 min_size(-1),
@@ -157,7 +158,8 @@ namespace picpac {
                 pert_hflip(false),
                 pert_vflip(false),
                 pert_border(cv::BORDER_CONSTANT),
-                point_radius(3)
+                point_radius(3),
+                multi_images(1)
             {
             }
         };
@@ -245,17 +247,17 @@ namespace picpac {
             LoadState (): crop(false) {
             }
         };
-        cv::Mat preload_image (const_buffer buffer, LoadState *state);
-        cv::Mat preload_annotation (const_buffer buffer, LoadState *state);
-        cv::Mat process_image (cv::Mat image, PerturbVector const &pv, LoadState const *state, bool is_anno);
+        cv::Mat preload_image (const_buffer buffer, LoadState *state) const;
+        cv::Mat preload_annotation (const_buffer buffer, LoadState *state) const;
+        cv::Mat process_image (cv::Mat image, PerturbVector const &pv, LoadState const *state, bool is_anno) const;
 
-        cv::Mat load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state);
-        cv::Mat load_annotation (const_buffer buffer, PerturbVector const &pv, LoadState *state);
+        cv::Mat load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
+        cv::Mat load_annotation (const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
 
         void load (RecordReader, PerturbVector const &, Value *,
                 CacheValue *c = nullptr, std::mutex *m = nullptr) const;
 
-    private:
+    protected:
         Config config;
         int annotate;
         int anno_palette;
@@ -268,6 +270,38 @@ namespace picpac {
     };
 
     typedef PrefetchStream<ImageLoader> ImageStream;
+
+    class MultiImageLoader: public ImageLoader {
+    public:
+        using ImageLoader::ImageLoader;
+
+        struct Value {
+            float label;
+            vector<cv::Mat> images;
+            cv::Mat annotation;
+        };
+
+        void load (RecordReader reader, PerturbVector const &pv, Value *value,
+                CacheValue *c = nullptr, std::mutex *m = nullptr) const {
+            CHECK(c == nullptr);
+            CHECK(m == nullptr);
+            Record r;
+            reader(&r); // disk access
+            value->label = r.meta().label;
+            LoadState state;
+            for (int i = 0; i < config.multi_images; ++i) {
+                cv::Mat image = preload_image(r.field(i), &state);
+                image = process_image(image, pv, &state, false);
+                value->images.push_back(image);
+            }
+            if (annotate != ANNOTATE_NONE) {
+                cv::Mat image = preload_annotation(r.field(config.multi_images), &state);
+                value->annotation = process_image(image, pv, &state, true);
+            }
+        }
+    };
+
+    typedef PrefetchStream<MultiImageLoader> MultiImageStream;
 
     namespace impl {
         template <typename Tfrom = uint8_t, typename Tto = float>
