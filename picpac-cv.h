@@ -234,6 +234,23 @@ namespace picpac {
                 p->shifty = e();
             }
         }
+        // helper functions
+
+        // loads image from buffer, apply preprocessing transformations but do not perturb
+        struct LoadState {
+            cv::Size size;
+            cv::Mat copy_for_anno;
+            bool crop;
+            cv::Rect crop_bb;
+            LoadState (): crop(false) {
+            }
+        };
+        cv::Mat preload_image (const_buffer buffer, LoadState *state);
+        cv::Mat preload_annotation (const_buffer buffer, LoadState *state);
+        cv::Mat process_image (cv::Mat image, PerturbVector const &pv, LoadState const *state, bool is_anno);
+
+        cv::Mat load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state);
+        cv::Mat load_annotation (const_buffer buffer, PerturbVector const &pv, LoadState *state);
 
         void load (RecordReader, PerturbVector const &, Value *,
                 CacheValue *c = nullptr, std::mutex *m = nullptr) const;
@@ -646,13 +663,13 @@ namespace picpac {
         bool haveLabel () const { return _have_label; }
         cv::Scalar label () const { return _label; }
         virtual std::shared_ptr<Shape> clone () const = 0;
-        static std::shared_ptr<Shape> create (json11::Json const &geo, cv::Mat const &image, ImageLoader::Config const &config);
+        static std::shared_ptr<Shape> create (json11::Json const &geo, cv::Size, ImageLoader::Config const &config);
     };
 
     struct Annotation {
         vector<std::shared_ptr<Shape>> shapes;
         Annotation () {}
-        Annotation (string const &txt, cv::Mat const &image, ImageLoader::Config const &config);
+        Annotation (string const &txt, cv::Size, ImageLoader::Config const &config);
         void dump (string *) const;
         void draw (cv::Mat *m, cv::Scalar v, int thickness = -1, vector<cv::Scalar> const *palette=nullptr, bool show_number = false) const;
         void bbox (cv::Rect_<float> *bb) const;
