@@ -5,7 +5,7 @@ CFLAGS += -g -O3
 CXXFLAGS += -fPIC -Ijson11 -ICatch/include -ISimple-Web-Server -ISimple-Web-Extra -Wall -Wno-sign-compare -std=c++1y -fopenmp -g -O3 -pthread -msse4.2 $(BUILD_INFO)
 #CXXFLAGS += -DSUPPORT_AUDIO_SPECTROGRAM=1
 LDFLAGS += -fopenmp -std=c++1y
-LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog 
+LDLIBS = libpicpac.a $(shell pkg-config --libs opencv) -lboost_timer -lboost_chrono -lboost_program_options -lboost_thread -lboost_filesystem -lboost_system -lglog -lgflags 
 
 SERVER_LIBS = \
           -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_core \

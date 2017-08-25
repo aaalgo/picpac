@@ -149,7 +149,7 @@ public:
             return;
         }
         cv::Mat image = decode_buffer(rec.field(0), -1);
-        Annotation anno(rec.field_string(1), image, loader_config);
+        Annotation anno(rec.field_string(1), image.size(), loader_config);
         if (anno.shapes.size() == 0) {
 #if 0
             if (bg) {
@@ -247,7 +247,7 @@ public:
         cv::Mat image = decode_buffer(rec.field(0), -1);
         Annotation anno;
         if ((rec.meta().width >= 2) && (rec.meta().fields[1].size > 0) && !config.image_annotation) {
-            Annotation annox(rec.field_string(1), image, loader_config);
+            Annotation annox(rec.field_string(1), image.size(), loader_config);
             anno.shapes.swap(annox.shapes);
         }
         cv::Mat anno_image;
