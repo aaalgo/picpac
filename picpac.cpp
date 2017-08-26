@@ -300,8 +300,12 @@ namespace picpac {
                 }
             }
         }
+        vector<float> group_reset{-1, config.mixin_group_reset};
         vector<float> group_delta{0, config.mixin_group_delta};
         for (auto &l: all) {
+            if (group_reset[l.file] >= 0) {
+                l.group = group_reset[l.file];
+            }
             l.group += group_delta[l.file];
         }
         sz_total = all.size();

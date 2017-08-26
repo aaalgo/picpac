@@ -371,6 +371,7 @@ namespace picpac {
             int split_fold;
             bool split_negate;
             string mixin;
+            float mixin_group_reset;
             float mixin_group_delta;
             unsigned mixin_max;
 
@@ -383,6 +384,7 @@ namespace picpac {
                 split(1),
                 split_fold(0),
                 split_negate(false),
+                mixin_group_reset(-1),
                 mixin_group_delta(0),
                 mixin_max(0)
             {
