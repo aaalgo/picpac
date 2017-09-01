@@ -31,7 +31,9 @@ public:
                 push_back(it->path());
             }
         }
-        CHECK(size() >= 10) << "Need at least 10 files to train: " << path;
+        if (size() < 10) {
+            LOG(WARNING) << "Need at least 10 files to train: " << path;
+        }
     }
 };
 
