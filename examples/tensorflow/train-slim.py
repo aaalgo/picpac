@@ -174,7 +174,7 @@ def run_training ():
                             numpy.resize(labels, (bs,))
                         feed_dict = {X: images,
                                      Y_: labels}
-                        _, loss_value, accuracy_value = sess.run([train_op, loss, accuracy], feed_dict=feed_dict)
+                        _, loss_value, accuracy_value = sess.run([loss, accuracy], feed_dict=feed_dict)
                         batch_sum2 += bs
                         loss_sum2 += loss_value * bs
                         accuracy_sum2 += accuracy_value * bs
