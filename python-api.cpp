@@ -113,8 +113,10 @@ public:
         images_dims.push_back(im0.cols);
         images_dims.push_back(im0.channels());
 
+        labels_dims.push_back(1);
         labels_dims.push_back(v.annotation.rows);
         labels_dims.push_back(v.annotation.cols);
+        labels_dims.push_back(1);
 
         object images = object(boost::python::handle<>(PyArray_SimpleNew(images_dims.size(), &images_dims[0], NPY_FLOAT)));
         CHECK(images.ptr());
