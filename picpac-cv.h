@@ -66,6 +66,7 @@ namespace json11 {
 
 namespace picpac {
     struct AnnoPoints {
+        cv::Size size;
         vector<cv::Point2f> points;
     };
 
@@ -274,12 +275,12 @@ namespace picpac {
         cv::Mat preload_image (const_buffer buffer, LoadState *state) const;
         void preload_annotation (const_buffer buffer, LoadState *state, AnnoPoints *) const;
         cv::Mat process_image (cv::Mat image, PerturbVector const &pv, LoadState const *state, bool is_anno) const;
-        void process_annotation (vector<cv::Point2f> *pts, PerturbVector const &p, LoadState const *state) const; 
+        void process_annotation (AnnoPoints *anno, PerturbVector const &p, LoadState const *state) const; 
 
         //cv::Mat load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
         //void load_annotation (AnnoPoints *anno, const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
 
-        void setup_labels (cv::Mat image, cv::Size sz,
+        void setup_labels (cv::Mat image,  cv::Size, 
                            AnnoPoints const &anno,
                            vector<float> *labels,
                            vector<float> *mask,

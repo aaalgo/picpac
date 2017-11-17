@@ -108,12 +108,12 @@ void translate_eos (EoS const &)
 
 }
 
-BOOST_PYTHON_MODULE(_picpac_ssd)
+BOOST_PYTHON_MODULE(picpac_ssd)
 {
     scope().attr("__doc__") = "PicPoc Python API";
     register_exception_translator<EoS>(&translate_eos);
-    class_<SSDImageStream::Config>("SSDImageStreamParams", init<>());
-    class_<SSDImageStream, boost::noncopyable>("SSDImageStream", no_init)
+    class_<SSDImageStream::Config>("ImageStreamParams", init<>());
+    class_<SSDImageStream, boost::noncopyable>("ImageStream", no_init)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
         .def("__iter__", raw_function(return_iterator))
         .def(init<string, SSDImageStream::Config const&>()) // C++ constructor not exposed

@@ -625,10 +625,12 @@ namespace picpac {
         return image;
     }
 
-    void ImageLoader::process_annotation (vector<cv::Point2f > *pts, PerturbVector const &p, LoadState const *state) const {
+    void ImageLoader::process_annotation (AnnoPoints *anno, PerturbVector const &p, LoadState const *state) const {
         //TODO: scale might break min and/or max restriction
-        cv::Size sz = state->size;
+        vector<cv::Point2f > *pts = &anno->points;
+        cv::Size sz = anno->size;
         if (state->crop) {
+            CHECK(0);
             for (auto &p: *pts) {
                 p.x -= state->crop_bb.x;
                 p.y -= state->crop_bb.y;
@@ -646,6 +648,7 @@ namespace picpac {
                                round(p.scale * sz.height));
                 float xs = 1.0 * newsz.width / sz.width;
                 float ys = 1.0 * newsz.height / sz.height;
+                std::cout << p.scale << " " << xs << " " << ys << std::endl;
                 for (auto &p: *pts) {
                     p.x *= xs;
                     p.y *= ys;
@@ -664,12 +667,11 @@ namespace picpac {
             }
             else if (p.hflip && !p.vflip) {
                 for (auto &p: *pts) {
-                    p.y = sz.height - p.y;
+                    p.x = sz.width - p.x;
                 }
             }
             else if (!p.hflip && p.vflip) {
                 for (auto &p: *pts) {
-                    p.x = sz.width - p.x;
                     p.y = sz.height - p.y;
                 }
             }
@@ -709,6 +711,7 @@ namespace picpac {
             }
             sz = roi.size();
         }
+        anno->size = sz;
     }
 
 #if 0
@@ -723,7 +726,8 @@ namespace picpac {
     }
 #endif
 
-    void ImageLoader::setup_labels (cv::Mat image, cv::Size sz,
+    void ImageLoader::setup_labels (cv::Mat image, 
+                                    cv::Size sz,
                                     AnnoPoints const &anno,
                                     vector<float> *labels,
                                     vector<float> *mask,
@@ -751,6 +755,7 @@ namespace picpac {
             truth.emplace_back(minx, miny, maxx-minx, maxy-miny);
         }
 #if 1
+        std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
         static int serial = 0;
         cv::Mat out;
         cv::resize(image, out, sz);
@@ -759,7 +764,7 @@ namespace picpac {
             cv::rectangle(out, ri, cv::Scalar(0, 0xff, 0));
         }
         cv::imwrite("test/" + lexical_cast<string>(serial++) + ".jpg", out);
-        if (serial == 100) exit(0);
+        if (serial >= 25) exit(0);
 
 #endif
 
@@ -825,10 +830,10 @@ namespace picpac {
         cv::Mat image = preload_image(r.field(0), &state);
         value->image = process_image(image, pv, &state, false);
 
-        CHECK(image.rows % config.downsize == 0);
-        CHECK(image.cols % config.downsize == 0);
-        cv::Size lsize(image.cols/config.downsize,
-                        image.rows/config.downsize);
+        CHECK(value->image.rows % config.downsize == 0);
+        CHECK(value->image.cols % config.downsize == 0);
+        cv::Size lsize(value->image.cols/config.downsize,
+                        value->image.rows/config.downsize);
         vector<float> labels(lsize.width * lsize.height * config.boxes.size(), 0);
         vector<float> mask(labels.size() * 4, 0);
         vector<float> shifts(mask.size(), 0);
@@ -836,9 +841,10 @@ namespace picpac {
         int matched = 0;
         if (annotate != ANNOTATE_NONE) {
             AnnoPoints anno;
+            anno.size = image.size();
             preload_annotation(r.field(1), &state, &anno);
-            process_annotation(&anno.points, pv, &state);
-            setup_labels(image, lsize, anno, &labels, &mask, &shifts, &matched);
+            process_annotation(&anno, pv, &state);
+            setup_labels(value->image, lsize, anno, &labels, &mask, &shifts, &matched);
         }
         value->label = matched > 0 ? 1 : 0;
         value->matched_boxes = matched;
