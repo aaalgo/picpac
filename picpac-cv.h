@@ -55,13 +55,9 @@
     PICPAC_CONFIG_UPDATE(C,mean_color1); \
     PICPAC_CONFIG_UPDATE(C,mean_color2); \
     PICPAC_CONFIG_UPDATE(C,mean_color3); \
-    PICPAC_CONFIG_UPDATE(C,onehot);\
-    PICPAC_CONFIG_UPDATE(C,batch);\
-    PICPAC_CONFIG_UPDATE(C,pad);\
     PICPAC_CONFIG_UPDATE(C,bgr2rgb);\
-    PICPAC_CONFIG_UPDATE(C,channel_first);\
     PICPAC_CONFIG_UPDATE(C,point_radius);\
-    PICPAC_CONFIG_UPDATE(C,multi_images);
+    PICPAC_CONFIG_UPDATE(C,downsize);
 
 
 namespace json11 {
@@ -69,6 +65,9 @@ namespace json11 {
 }
 
 namespace picpac {
+    struct AnnoPoints {
+        vector<cv::Point2f> points;
+    };
 
     class ImageLoader {
     public:
@@ -129,7 +128,16 @@ namespace picpac {
 
             float point_radius; // in pixels
 
-            int multi_images;   // for MultiImageLoader
+            // feature map size / input image size
+            int downsize;
+            // default boxes
+            vector<cv::Size_<float>> boxes;
+
+            float mean_color1;
+            float mean_color2;
+            float mean_color3;
+            bool bgr2rgb;
+
             Config ()
                 : channels(0),
                 min_size(-1),
@@ -160,15 +168,29 @@ namespace picpac {
                 pert_vflip(false),
                 pert_border(cv::BORDER_CONSTANT),
                 point_radius(3),
-                multi_images(1)
+                downsize(1),
+                mean_color1(0),
+                mean_color2(0),
+                mean_color3(0),
+                bgr2rgb(false)
             {
             }
         };
 
         struct Value {
             float label;
-            cv::Mat image;
-            cv::Mat annotation;
+            int matched_boxes;
+            cv::Mat image;          // image  
+            cv::Mat annotation;     // empty, to make code compile
+            //cv::Mat labels;         // label image, downsized
+            // mask
+            // ????
+            cv::Size label_size;
+            vector<float> labels;
+            vector<float> mask;
+            vector<float> shift;    // box parameters
+                                    // too many numbers cannot save in cv::Mat
+                                    // labels.rows * labels.cols * 4 * boxes
         };
 
         typedef Value CacheValue;
@@ -248,13 +270,21 @@ namespace picpac {
             LoadState (): crop(false) {
             }
         };
+
         cv::Mat preload_image (const_buffer buffer, LoadState *state) const;
-        cv::Mat preload_annotation (const_buffer buffer, LoadState *state) const;
+        void preload_annotation (const_buffer buffer, LoadState *state, AnnoPoints *) const;
         cv::Mat process_image (cv::Mat image, PerturbVector const &pv, LoadState const *state, bool is_anno) const;
+        void process_annotation (vector<cv::Point2f> *pts, PerturbVector const &p, LoadState const *state) const; 
 
-        cv::Mat load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
-        cv::Mat load_annotation (const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
+        //cv::Mat load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
+        //void load_annotation (AnnoPoints *anno, const_buffer buffer, PerturbVector const &pv, LoadState *state) const;
 
+        void setup_labels (cv::Mat image, cv::Size sz,
+                           AnnoPoints const &anno,
+                           vector<float> *labels,
+                           vector<float> *mask,
+                           vector<float> *shifts, int *) const;
+                          
         void load (RecordReader, PerturbVector const &, Value *,
                 CacheValue *c = nullptr, std::mutex *m = nullptr) const;
 
@@ -272,37 +302,6 @@ namespace picpac {
 
     typedef PrefetchStream<ImageLoader> ImageStream;
 
-    class MultiImageLoader: public ImageLoader {
-    public:
-        using ImageLoader::ImageLoader;
-
-        struct Value {
-            float label;
-            vector<cv::Mat> images;
-            cv::Mat annotation;
-        };
-
-        void load (RecordReader reader, PerturbVector const &pv, Value *value,
-                CacheValue *c = nullptr, std::mutex *m = nullptr) const {
-            CHECK(c == nullptr);
-            CHECK(m == nullptr);
-            Record r;
-            reader(&r); // disk access
-            value->label = r.meta().label;
-            LoadState state;
-            for (int i = 0; i < config.multi_images; ++i) {
-                cv::Mat image = preload_image(r.field(i), &state);
-                image = process_image(image, pv, &state, false);
-                value->images.push_back(image);
-            }
-            if (annotate != ANNOTATE_NONE) {
-                cv::Mat image = preload_annotation(r.field(config.multi_images), &state);
-                value->annotation = process_image(image, pv, &state, true);
-            }
-        }
-    };
-
-    typedef PrefetchStream<MultiImageLoader> MultiImageStream;
 
     namespace impl {
         template <typename Tfrom = uint8_t, typename Tto = float>
@@ -461,188 +460,6 @@ namespace picpac {
 
     // this is the main interface for most of the
     // deep learning libraries.
-    class BatchImageStream: public ImageStream {
-    public:
-        enum {
-            TASK_REGRESSION = 1,
-            TASK_CLASSIFICATION = 2,
-            TASK_PIXEL_REGRESSION = 3,
-            TASK_PIXEL_CLASSIFICATION = 4
-        };
-    private:
-        cv::Scalar label_mean;//(0,0,0,0);
-        cv::Scalar mean;
-        unsigned onehot;
-        unsigned batch;
-        bool pad;
-        bool bgr2rgb;
-        int task;
-        bool channel_first;
-
-    public:
-        struct Config: public ImageStream::Config {
-            float mean_color1;
-            float mean_color2;
-            float mean_color3;
-            unsigned onehot;
-            unsigned batch;
-            bool pad;
-            bool bgr2rgb;
-            bool channel_first;
-            Config ():
-                mean_color1(0),
-                mean_color2(0),
-                mean_color3(0),
-                onehot(0), batch(1), pad(false), bgr2rgb(false), channel_first(true) {
-            }
-        };
-
-        BatchImageStream (fs::path const &path, Config const &c)
-            : ImageStream(path, c),
-            label_mean(0,0,0,0),
-            mean(cv::Scalar(c.mean_color1, c.mean_color2, c.mean_color3)),
-            onehot(c.onehot),
-            batch(c.batch), pad(c.pad), bgr2rgb(c.bgr2rgb), channel_first(c.channel_first) {
-            ImageStream::Value &v(ImageStream::peek());
-            if (!v.annotation.data) {
-                if (onehot > 0) {
-                    task = TASK_CLASSIFICATION;
-                }
-                else {
-                    task = TASK_REGRESSION;
-                }
-            }
-            else {
-                if (onehot) {
-                    CHECK(v.annotation.channels() == 1);
-                    task = TASK_PIXEL_CLASSIFICATION;
-                }
-                else {
-                    task = TASK_PIXEL_REGRESSION;
-                    if (c.annotate == "auto") {
-                        label_mean = mean;
-                    }
-                }
-            }
-        }
-
-        template <typename T=unsigned>
-        void next_shape (vector<T> *images_shape,
-                         vector<T> *labels_shape) {
-            Value &next = ImageStream::peek();
-            images_shape->clear();
-            images_shape->push_back(batch);
-            if (channel_first) {
-                images_shape->push_back(next.image.channels());
-                images_shape->push_back(next.image.rows);
-                images_shape->push_back(next.image.cols);
-            }
-            else {
-                images_shape->push_back(next.image.rows);
-                images_shape->push_back(next.image.cols);
-                images_shape->push_back(next.image.channels());
-            }
-
-            labels_shape->clear();
-            labels_shape->push_back(batch);
-            switch (task) {
-                case TASK_REGRESSION:
-                    CHECK(!next.annotation.data);
-                    break;
-                case TASK_CLASSIFICATION:
-                    CHECK(!next.annotation.data);
-                    labels_shape->push_back(onehot); break;
-                case TASK_PIXEL_REGRESSION:
-                    CHECK(next.annotation.data);
-                    if (channel_first) {
-                        labels_shape->push_back(next.annotation.channels());
-                        labels_shape->push_back(next.annotation.rows);
-                        labels_shape->push_back(next.annotation.cols);
-                    }
-                    else {
-                        labels_shape->push_back(next.annotation.rows);
-                        labels_shape->push_back(next.annotation.cols);
-                        labels_shape->push_back(next.annotation.channels());
-                    }
-                    break;
-                case TASK_PIXEL_CLASSIFICATION:
-                    CHECK(next.annotation.data);
-                    CHECK(next.annotation.channels() == 1);
-                    if (channel_first) {
-                        labels_shape->push_back(onehot);
-                        labels_shape->push_back(next.annotation.rows);
-                        labels_shape->push_back(next.annotation.cols);
-                    }
-                    else {
-                        labels_shape->push_back(next.annotation.rows);
-                        labels_shape->push_back(next.annotation.cols);
-                        labels_shape->push_back(onehot);
-                    }
-                    break;
-                default: CHECK(0);
-            }
-        }
-
-        template <typename T1=float, typename T2=float>
-        void next_fill (T1 *images, T2 *labels, unsigned *npad = nullptr) {
-            vector<unsigned> ishape, lshape;
-            vector<unsigned> ishape2, lshape2;
-            unsigned loaded = 0;
-            try {
-                for (unsigned i = 0; i < batch; ++i) {
-                    if (i) {
-                        next_shape(&ishape2, &lshape2);
-                        CHECK(ishape == ishape2);
-                        CHECK(lshape == lshape2);
-                    }
-                    else {
-                        next_shape(&ishape, &lshape);
-                    }
-                    Value v(next());
-                    if (channel_first) {
-                        images = impl::split_copy<T1>(v.image, images, mean, bgr2rgb);
-                    }
-                    else {
-                        images = impl::copy<T1>(v.image, images, mean, bgr2rgb);
-                    }
-                    switch (task) {
-                        case TASK_REGRESSION:
-                            *labels = v.label;
-                            ++labels;
-                            break;
-                        case TASK_CLASSIFICATION:
-                            {
-                                unsigned c = unsigned(v.label);
-                                CHECK(c == v.label) << "float label for classification";
-                                CHECK(c <= MAX_CATEGORIES);
-                                std::fill(labels, labels + onehot, 0);
-                                labels[c] = 1;
-                                labels += onehot;
-                            }
-                            break;
-                        case TASK_PIXEL_REGRESSION:
-                            if (channel_first) {
-                                labels = impl::split_copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
-                            }
-                            else {
-                                labels = impl::copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
-                            }
-                            break;
-                        case TASK_PIXEL_CLASSIFICATION:
-                            labels = impl::onehot_encode<T2>(v.annotation, labels, onehot, channel_first);
-                            break;
-                        default: CHECK(0);
-                    }
-                    ++loaded;
-                }
-            }
-            catch (EoS const &) {
-            }
-            if ((pad && (loaded == 0)) || ((!pad) && (loaded < batch))) throw EoS();
-            if (npad) *npad = batch - loaded;
-        }
-    };
-
     cv::Mat decode_buffer (const_buffer, int mode = -1);
     void encode_raw (cv::Mat, string *);
     cv::Mat decode_raw (char const *, size_t);
@@ -685,6 +502,7 @@ namespace picpac {
         Shape (char const *t): _type(t), _have_label(false), _label(0,0,0) {}
         virtual ~Shape () {}
         virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
+        virtual void points (cv::Size, vector<cv::Point2f> *) const = 0;
         virtual void bbox (cv::Rect_<float> *) const = 0;
         virtual void zoom (cv::Rect_<float> const &) = 0;
         virtual void dump (json11::Json *) const = 0;
@@ -707,6 +525,7 @@ namespace picpac {
         Annotation (string const &txt, cv::Size, ImageLoader::Config const &config);
         void dump (string *) const;
         void draw (cv::Mat *m, cv::Scalar v, int thickness = -1, vector<cv::Scalar> const *palette=nullptr, bool show_number = false) const;
+        void points (cv::Size, AnnoPoints *) const;
         void bbox (cv::Rect_<float> *bb) const;
         void zoom (cv::Rect_<float> const &bb);
     };

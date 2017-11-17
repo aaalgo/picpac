@@ -91,6 +91,18 @@ namespace picpac {
             rect.width = geo["width"].number_value();
             rect.height = geo["height"].number_value();
         }
+
+        virtual void points (cv::Size sz, vector<cv::Point2f> *pts) const {
+            float x = sz.width * rect.x;
+            float y = sz.height * rect.y;
+            float width = sz.width * rect.width-1;
+            float height = sz.height * rect.height-1;
+            pts->emplace_back(x, y);
+            pts->emplace_back(x+width, y);
+            pts->emplace_back(x+width, y+height);
+            pts->emplace_back(x, y+height);
+        }
+
         virtual void dump (Json *json) const {
             Json::object obj{
                 {"type", type()},
@@ -128,6 +140,7 @@ namespace picpac {
         }
     };
 
+#if 0
     class Ellipse: public Box {
     protected:
         Ellipse (char const *t): Box(t) {}
@@ -244,6 +257,7 @@ namespace picpac {
             }
         }
     };
+#endif
 
     std::shared_ptr<Shape> Shape::create (Json const &geo, cv::Size size, ImageLoader::Config const &config) {
         string type = geo["type"].string_value();
@@ -251,6 +265,7 @@ namespace picpac {
         if (type == "rect") {
             shape = std::shared_ptr<Shape>(new Box(geo["geometry"]));
         }
+#if 0
         else if (type == "ellipse") {
             shape = std::shared_ptr<Shape>(new Ellipse(geo["geometry"]));
         }
@@ -260,6 +275,7 @@ namespace picpac {
         else if (type == "point") {
             shape = std::shared_ptr<Shape>(new Point(geo["geometry"], size, config));
         }
+#endif
         else {
             CHECK(0) << "unknown shape: " << type;
         }
@@ -302,6 +318,12 @@ namespace picpac {
         }
         Json json = Json::object {{"shapes", std::move(ss)}};
         *str = json.dump();
+    }
+
+    void Annotation::points (cv::Size sz, AnnoPoints *anno) const {
+        for (auto const &p: shapes) {
+            p->points(sz, &anno->points);
+        }
     }
 
     void Annotation::draw (cv::Mat *m, cv::Scalar v, int thickness, vector<cv::Scalar> const *palette, bool show_number) const {
@@ -462,129 +484,27 @@ namespace picpac {
         return image;
     }
 
-    cv::Mat ImageLoader::preload_annotation (const_buffer buffer, LoadState *state) const {
-        cv::Mat annotation;
+    void ImageLoader::preload_annotation (const_buffer buffer, LoadState *state, AnnoPoints *anno) const {
         if (annotate == ANNOTATE_IMAGE) {
-            if (boost::asio::buffer_size(buffer) == 0) {
-                annotation = cv::Mat(state->size, CV_8U, cv::Scalar(0));
-            }
-            else {
-                annotation = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(buffer), CV_8U,
-                            const_cast<void *>(boost::asio::buffer_cast<void const *>(buffer))),
-                            cv::IMREAD_UNCHANGED);
-                if (!annotation.data) {
-                    annotation = decode_raw(boost::asio::buffer_cast<char const *>(buffer),
-                                        boost::asio::buffer_size(buffer));
-                }
-                auto const *palette = &PALETTE_TABLEAU20;
-                if (anno_palette == ANNOTATE_PALETTE_NONE) {
-                    palette = nullptr;
-                }
-                else if (anno_palette == ANNOTATE_PALETTE_TABLEAU20A) {
-                    palette = &PALETTE_TABLEAU20A;
-                }
-                if (annotation.data && palette) {
-                    CHECK(annotation.type() == CV_8UC1);
-                    cv::Mat mat(annotation.rows,
-                                annotation.cols, CV_8UC3);
-                    // apply pallet
-                    for (int i = 0; i < mat.rows; ++i) {
-                        uint8_t const *from = annotation.ptr<uint8_t const>(i);
-                        uint8_t *to = mat.ptr<uint8_t>(i);
-                        for (int j = 0; j < mat.cols; ++j) {
-                            unsigned x = from[j];
-                            if (x >= palette->size()) x = 0;
-                            auto c = palette->at(x);
-                            to[0] = c[0];
-                            to[1] = c[1];
-                            to[2] = c[2];
-                            to += 3;
-                        }
-                    }
-                    annotation = mat;
-                }
-                if (annotation.size() != state->size) {
-                    cv::resize(annotation, annotation, state->size, 0, 0, cv::INTER_NEAREST);
-                }
-            }
-            CHECK(config.anno_min_ratio == 0) << "Not supported";
+            CHECK(0);
         }
         else if (annotate == ANNOTATE_JSON) {
-            cv::Mat anno;
             if (config.anno_copy) {
-                anno = state->copy_for_anno;
-                CHECK(anno.data);
-                state->copy_for_anno = cv::Mat();
-            }
-            else {
-                anno = cv::Mat(state->size, config.anno_type, cv::Scalar(0));
+                CHECK(0);
             }
             if (boost::asio::buffer_size(buffer) > 1) {
                 char const *ptr = boost::asio::buffer_cast<char const *>(buffer);
                 char const *ptr_end = ptr + boost::asio::buffer_size(buffer);
                 Annotation a(string(ptr, ptr_end), state->size, config);
-                cv::Scalar color(config.anno_color1,
-                             config.anno_color2,
-                             config.anno_color3);
-                auto const *palette = &PALETTE_TABLEAU20;
-                if (anno_palette == ANNOTATE_PALETTE_NONE) {
-                    palette = nullptr;
-                }
-                else if (anno_palette == ANNOTATE_PALETTE_TABLEAU20A) {
-                    palette = &PALETTE_TABLEAU20A;
-                }
-                
-                a.draw(&anno, color, config.anno_thickness, palette, config.anno_number);
 
-                // we might want to perturb the cropping
-                // this might not be the perfect location either
+                a.points(state->size, anno);
+
                 do {
                     if (!(config.anno_min_ratio > 0)) break;
-                    if (!(anno.total() > 0)) break;
-                    cv::Rect_<float> fbb;
-                    a.bbox(&fbb);
-                    if (!(fbb.area() > 0)) break;
-                    fbb.x *= anno.cols;
-                    fbb.width *= anno.cols;
-                    fbb.y *= anno.rows;
-                    fbb.height *= anno.rows;
-
-                    float min_roi_size = anno.total() * config.anno_min_ratio;
-                    float roi_size = fbb.area();
-                    if (roi_size >= min_roi_size) break;
-                    float rate = std::sqrt(roi_size / min_roi_size);
-                    int width = std::round(anno.cols * rate);
-                    int height = std::round(anno.rows * rate);
-                    cv::Rect bbox;
-                    bbox.x = std::round(fbb.x);
-                    bbox.y = std::round(fbb.y);
-                    bbox.width = std::round(fbb.width);
-                    bbox.height = std::round(fbb.height);
-                    int dx = (width - bbox.width)/2;
-                    int dy = (height - bbox.height)/2;
-                    bbox.x -= dx;
-                    bbox.y -= dy;
-                    bbox.width = width;
-                    bbox.height = height;
-                    if (bbox.x < 0) {
-                        bbox.x = 0;
-                    }
-                    if (bbox.y < 0) {
-                        bbox.y = 0;
-                    }
-                    if (bbox.x + bbox.width > anno.cols) {
-                        bbox.x = anno.cols - bbox.width;
-                    }
-                    if (bbox.y + bbox.height > anno.rows) {
-                        bbox.y = anno.rows - bbox.height;
-                    }
-                    state->crop = true;
-                    state->crop_bb = bbox;
+                    CHECK(0);
                 } while (false);
             }
-            annotation = anno;
         }
-        return annotation;
     }
 
 
@@ -705,367 +625,73 @@ namespace picpac {
         return image;
     }
 
-    cv::Mat ImageLoader::load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const {
-        cv::Mat image = preload_image(buffer, state);
-        return process_image(image, pv, state, false);
-    }
-
-    cv::Mat ImageLoader::load_annotation (const_buffer buffer, PerturbVector const &pv, LoadState *state) const {
-        cv::Mat image = preload_annotation(buffer, state);
-        return process_image(image, pv, state, true);
-    }
-
-    void ImageLoader::load (RecordReader rr, PerturbVector const &p, Value *out,
-           CacheValue *cache, std::mutex *mutex) const {
-        Value cached;
-        do {
-            if (cache) { // access cache
-                lock_guard lock(*mutex);
-                cached = *cache;
-            }
-            if (cached.image.data) break;
-            // cache miss, load the data
-            Record r;
-            rr(&r); // disk access
-            cached.label = r.meta().label;
-            //CHECK(r.size() >= (annotate ? 2 : 1));
-            cached.image = decode_buffer(r.field(0), config.decode_mode);
-            if ((config.channels > 0) && config.channels != cached.image.channels()) {
-                cv::Mat tmp;
-                if (cached.image.channels() == 3 && config.channels == 1) {
-                    cv::cvtColor(cached.image, tmp, CV_BGR2GRAY);
-                }
-                else if (cached.image.channels() == 4 && config.channels == 1) {
-                    cv::cvtColor(cached.image, tmp, CV_BGRA2GRAY);
-                }
-                else if (cached.image.channels() == 4 && config.channels == 3) {
-                    cv::cvtColor(cached.image, tmp, CV_BGRA2BGR);
-                }
-                else if (cached.image.channels() == 1 && config.channels == 3) {
-                    cv::cvtColor(cached.image, tmp, CV_GRAY2BGR);
-                }
-#ifdef SUPPORT_AUDIO_SPECTROGRAM
-                else if (cached.image.type() == CV_32FC2 && config.channels == 1) {
-                    spectrogram_to_gray(cached.image, &tmp);
-                }
-                else if (cached.image.type() == CV_32FC2 && config.channels == 3) {
-                    spectrogram_to_bgr(cached.image, &tmp);
-                }
-#endif
-                else CHECK(0) << "channel format not supported: from "
-                              << cached.image.channels()
-                              << " to " << config.channels;
-                cached.image = tmp;
-            }
-            if (config.resize_width > 0 && config.resize_height > 0) {
-                cv::resize(cached.image, cached.image, cv::Size(config.resize_width, config.resize_height), 0, 0);
-            }
-            else if (config.max_size > 0 || config.min_size > 0) {
-                cv::Mat tmp;
-                LimitSize(cached.image, config.min_size, config.max_size, &tmp);
-                cached.image = tmp;
-            }
-            if (annotate == ANNOTATE_IMAGE) {
-                if (r.size() < 2) {
-                    cached.annotation = cv::Mat(cached.image.size(), CV_8U, cv::Scalar(0));
-                }
-                else {
-                    auto anbuf = r.field(1);
-                    cached.annotation = cv::imdecode(cv::Mat(1, boost::asio::buffer_size(anbuf), CV_8U,
-                                const_cast<void *>(boost::asio::buffer_cast<void const *>(anbuf))),
-                                cv::IMREAD_UNCHANGED);
-                    if (!cached.annotation.data) {
-                        cached.annotation = decode_raw(boost::asio::buffer_cast<char const *>(anbuf),
-                                            boost::asio::buffer_size(anbuf));
-                    }
-                    auto const *palette = &PALETTE_TABLEAU20;
-                    if (anno_palette == ANNOTATE_PALETTE_NONE) {
-                        palette = nullptr;
-                    }
-                    else if (anno_palette == ANNOTATE_PALETTE_TABLEAU20A) {
-                        palette = &PALETTE_TABLEAU20A;
-                    }
-                    if (cached.annotation.data && palette) {
-                        CHECK(cached.annotation.type() == CV_8UC1);
-                        cv::Mat mat(cached.annotation.rows,
-                                    cached.annotation.cols, CV_8UC3);
-                        // apply pallet
-                        for (int i = 0; i < mat.rows; ++i) {
-                            uint8_t const *from = cached.annotation.ptr<uint8_t const>(i);
-                            uint8_t *to = mat.ptr<uint8_t>(i);
-                            for (int j = 0; j < mat.cols; ++j) {
-                                unsigned x = from[j];
-                                if (x >= palette->size()) x = 0;
-                                auto c = palette->at(x);
-                                to[0] = c[0];
-                                to[1] = c[1];
-                                to[2] = c[2];
-                                to += 3;
-                            }
-                        }
-                        cached.annotation = mat;
-                    }
-                    if (cached.annotation.size() != cached.image.size()) {
-                        cv::resize(cached.annotation, cached.annotation, cached.image.size(), 0, 0, cv::INTER_NEAREST);
-                    }
-                }
-                CHECK(config.anno_min_ratio == 0) << "Not supported";
-            }
-            else if (annotate == ANNOTATE_JSON) {
-                cv::Mat anno;
-                if (config.anno_copy) {
-                    anno = cached.image.clone();
-                }
-                else {
-                    anno = cv::Mat(cached.image.size(), config.anno_type, cv::Scalar(0));
-                }
-                if (r.size() > 1) {
-                    Annotation a(r.field_string(1), cached.image.size(), config);
-                    cv::Scalar color(config.anno_color1,
-                                 config.anno_color2,
-                                 config.anno_color3);
-					auto const *palette = &PALETTE_TABLEAU20;
-                    if (anno_palette == ANNOTATE_PALETTE_NONE) {
-                        palette = nullptr;
-                    }
-                    else if (anno_palette == ANNOTATE_PALETTE_TABLEAU20A) {
-                        palette = &PALETTE_TABLEAU20A;
-                    }
-					
-                    a.draw(&anno, color, config.anno_thickness, palette, config.anno_number);
-
-                    // we might want to perturb the cropping
-                    // this might not be the perfect location either
-                    do {
-                        if (!(config.anno_min_ratio > 0)) break;
-                        if (!(anno.total() > 0)) break;
-                        cv::Rect_<float> fbb;
-                        a.bbox(&fbb);
-                        if (!(fbb.area() > 0)) break;
-                        fbb.x *= anno.cols;
-                        fbb.width *= anno.cols;
-                        fbb.y *= anno.rows;
-                        fbb.height *= anno.rows;
-
-                        float min_roi_size = anno.total() * config.anno_min_ratio;
-                        float roi_size = fbb.area();
-                        if (roi_size >= min_roi_size) break;
-                        float rate = std::sqrt(roi_size / min_roi_size);
-                        int width = std::round(anno.cols * rate);
-                        int height = std::round(anno.rows * rate);
-                        cv::Rect bbox;
-                        bbox.x = std::round(fbb.x);
-                        bbox.y = std::round(fbb.y);
-                        bbox.width = std::round(fbb.width);
-                        bbox.height = std::round(fbb.height);
-                        int dx = (width - bbox.width)/2;
-                        int dy = (height - bbox.height)/2;
-                        bbox.x -= dx;
-                        bbox.y -= dy;
-                        bbox.width = width;
-                        bbox.height = height;
-                        if (bbox.x < 0) {
-                            bbox.x = 0;
-                        }
-                        if (bbox.y < 0) {
-                            bbox.y = 0;
-                        }
-                        if (bbox.x + bbox.width > anno.cols) {
-                            bbox.x = anno.cols - bbox.width;
-                        }
-                        if (bbox.y + bbox.height > anno.rows) {
-                            bbox.y = anno.rows - bbox.height;
-                        }
-                        cv::Mat im = cached.image(bbox);
-                        cv::Mat an = anno(bbox);
-                        cv::Mat rim, ran;
-                        cv::resize(im, rim, cached.image.size());
-                        cv::resize(an, ran, anno.size(), 0, 0, cv::INTER_NEAREST);
-                        cached.image = rim;
-                        anno = ran;
-                    } while (false);
-
-                }
-                cached.annotation = anno;
-            }
-
-
-            if (cache) {
-                // write to cache
-                lock_guard lock(*mutex);
-                *cache = cached;
-            }
-        } while (false);
-
-
-        if (!config.perturb) {
-            *out = cached;
-            if ((config.crop_width > 0) && (config.crop_height > 0)) {
-                CHECK(out->image.cols >= config.crop_width);
-                CHECK(out->image.rows >= config.crop_height);
-                // cropping
-                int marginx = out->image.cols - config.crop_width;
-                int marginy = out->image.rows - config.crop_height;
-                cv::Rect roi(marginx / 2,
-                             marginy / 2,
-                             config.crop_width,
-                             config.crop_height);
-                out->image = out->image(roi);
-                if (out->annotation.data) {
-                    out->annotation = out->annotation(roi);
-                }
-            }
-            if (config.round_div > 0) {
-                int width = out->image.cols;
-                int height = out->image.rows;
-                width = width / config.round_div * config.round_div + config.round_mod;
-                height = height / config.round_div * config.round_div + config.round_mod;
-                if (width > out->image.cols) {
-                    width -= config.round_div;
-                }
-                if (height > out->image.rows) {
-                    height -= config.round_div;
-                }
-                CHECK((width > 0) && (height > 0));
-                int marginx = out->image.cols - width;
-                int marginy = out->image.rows - height;
-                if (!config.perturb) {
-                    marginx /= 2;
-                    marginy /= 2;
-                }
-                else {
-                    marginx = p.shiftx % (marginx+1);
-                    marginy = p.shifty % (marginy+1);
-                }
-                cv::Rect roi(marginx, marginy, 
-                             width, height); 
-                out->image = out->image(roi);
-                if (out->annotation.data) {
-                    out->annotation = out->annotation(roi);
-                }
-            }
-            if (annotate == ANNOTATE_AUTO) {
-                out->annotation = out->image;
-            }
-            return;
-        }
-
-        //float color, angle, scale, flip = false;
-        //cv::Size sz = cached.image.size();
-        cv::Mat image = cached.image, anno = cached.annotation;
-        
+    void ImageLoader::process_annotation (vector<cv::Point2f > *pts, PerturbVector const &p, LoadState const *state) const {
         //TODO: scale might break min and/or max restriction
-        if (p.angle != 0) {
-            cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, p.scale);
-            {
-                cv::Mat tmp;
-                cv::warpAffine(image, tmp, rot, image.size(), cv::INTER_LINEAR, config.pert_border);
-                //cv::resize(tmp, tmp, cv::Size(), p.scale, p.scale);
-                image = tmp;
+        cv::Size sz = state->size;
+        if (state->crop) {
+            for (auto &p: *pts) {
+                p.x -= state->crop_bb.x;
+                p.y -= state->crop_bb.y;
             }
-
-            if (cached.annotation.data) {
-                //cv::resize(anno, anno, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
-                cv::Mat tmp;
-                cv::warpAffine(anno, tmp, rot, anno.size(), cv::INTER_NEAREST, config.pert_border); // cannot interpolate labels
-                anno = tmp;
-            }
-        }
-        else if (p.scale != 1) {
-            {
-                cv::Mat tmp;
-                cv::resize(image, tmp, cv::Size(), p.scale, p.scale);
-                image = tmp;
-            }
-            if (cached.annotation.data) {
-                cv::Mat tmp;
-                cv::resize(anno, tmp, cv::Size(), p.scale, p.scale, cv::INTER_NEAREST);
-                anno = tmp;
-            }
+            sz = state->crop_bb.size();
         }
 
-        /*
-        std::cout << p.color[0] << " " << p.color[1] << " " << p.color[2] << std::endl;
-        std::cout << colorspace << std::endl;
-        */
-        cv::Scalar pert_color = p.color;
-        if (image.channels() == 3) {
-            if (image.type() == CV_16UC3) {
-                image.convertTo(image, CV_32FC3);
+        if (config.perturb) {
+            if (p.angle != 0) {
+                cv::Mat rot = cv::getRotationMatrix2D(cv::Point(sz.width/2, sz.height/2), p.angle, p.scale);
+                cv::transform(*pts, *pts, rot);
             }
-            if (colorspace == COLOR_Lab) {
-                cv::cvtColor(image, image, CV_BGR2Lab);
+            else if (p.scale != 1) {
+                cv::Size newsz(round(p.scale * sz.width),
+                               round(p.scale * sz.height));
+                float xs = 1.0 * newsz.width / sz.width;
+                float ys = 1.0 * newsz.height / sz.height;
+                for (auto &p: *pts) {
+                    p.x *= xs;
+                    p.y *= ys;
+                }
+                sz = newsz;
             }
-            else if (colorspace  == COLOR_HSV) {
-                cv::cvtColor(image, image, CV_BGR2HSV);
+            /*
+            std::cout << p.color[0] << " " << p.color[1] << " " << p.color[2] << std::endl;
+            std::cout << colorspace << std::endl;
+            */
+            if (p.hflip && p.vflip) {
+                for (auto &p: *pts) {
+                    p.x = sz.width - p.x;
+                    p.y = sz.height - p.y;
+                }
             }
-            else if (colorspace == COLOR_SAME) {
-                pert_color[1] = pert_color[2] = pert_color[0];
+            else if (p.hflip && !p.vflip) {
+                for (auto &p: *pts) {
+                    p.y = sz.height - p.y;
+                }
+            }
+            else if (!p.hflip && p.vflip) {
+                for (auto &p: *pts) {
+                    p.x = sz.width - p.x;
+                    p.y = sz.height - p.y;
+                }
             }
         }
-        image += pert_color;
-        if (image.channels() == 3) {
-            if (colorspace == COLOR_Lab) {
-                cv::cvtColor(image, image, CV_Lab2BGR);
-            }
-            else if (colorspace  == COLOR_HSV) {
-                cv::cvtColor(image, image, CV_HSV2BGR);
-            }
+        if ((config.crop_width > 0) && (config.crop_height > 0)) {
+            CHECK(0);
         }
 
-        if (p.hflip && p.vflip) {
-            cv::flip(image, out->image, -1);
-            if (anno.data) {
-                cv::flip(anno, out->annotation, -1);
-            }
-        }
-        else if (p.hflip && !p.vflip) {
-            cv::flip(image, out->image, 1);
-            if (anno.data) {
-                cv::flip(anno, out->annotation, 1);
-            }
-        }
-        else if (!p.hflip && p.vflip) {
-            cv::flip(image, out->image, 0);
-            if (anno.data) {
-                cv::flip(anno, out->annotation, 0);
-            }
-        }
-        else {
-            out->image = image;
-            if (anno.data) {
-                out->annotation = anno;
-            }
-        }
-        if ((config.crop_width > 0) && (config.crop_height > 0)
-            && ((out->image.cols > config.crop_width)
-            || (out->image.rows > config.crop_height))) {
-            // cropping
-            int marginx = out->image.cols - config.crop_width;
-            int marginy = out->image.rows - config.crop_height;
-            cv::Rect roi(p.shiftx % marginx,
-                         p.shifty % marginy,
-                         config.crop_width,
-                         config.crop_height);
-            out->image = out->image(roi);
-            if (out->annotation.data) {
-                out->annotation = out->annotation(roi);
-            }
-        }
         if (config.round_div > 0) {
-            int width = out->image.cols;
-            int height = out->image.rows;
+            int width = sz.width;
+            int height = sz.height;
             width = width / config.round_div * config.round_div + config.round_mod;
             height = height / config.round_div * config.round_div + config.round_mod;
-            if (width > out->image.cols) {
+            if (width > sz.width) {
                 width -= config.round_div;
             }
-            if (height > out->image.rows) {
+            if (height > sz.height) {
                 height -= config.round_div;
             }
             CHECK((width > 0) && (height > 0));
-            int marginx = out->image.cols - width;
-            int marginy = out->image.rows - height;
+            int marginx = sz.width - width;
+            int marginy = sz.height - height;
             if (!config.perturb) {
                 marginx /= 2;
                 marginy /= 2;
@@ -1074,36 +700,152 @@ namespace picpac {
                 marginx = p.shiftx % (marginx+1);
                 marginy = p.shifty % (marginy+1);
             }
+
             cv::Rect roi(marginx, marginy, 
                          width, height); 
-            out->image = out->image(roi);
-            if (out->annotation.data) {
-                out->annotation = out->annotation(roi);
+            for (auto &p: *pts) {
+                p.x -= roi.x;
+                p.y -= roi.y;
             }
+            sz = roi.size();
         }
-#if 0
-        if (out->annotation.data) {
-            // replicate positive region
-            CHECK(out->annotation.type() == CV_8UC1);
-            cv::Rect roi;
-            cv::Rect target = roi;
-            bound(out->annotation, &roi, 0.98);
-            for (unsigned i = 0; i < 10; ++i) {
-                for (;;) {
-                    target.x = rand() % (out->image.cols - roi.width);
-                    target.y = rand() % (out->image.rows - roi.height);
-                    if ((target & roi).area() == 0) break;
-                }
-                out->image(target) = out->image(roi);
-                out->annotation(target) = out->annotation(roi);
-            }
+    }
 
-        }
+#if 0
+    cv::Mat ImageLoader::load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const {
+        cv::Mat image = preload_image(buffer, state);
+        return process_image(image, pv, state, false);
+    }
+
+    void ImageLoader::load_annotation (AnnoPoints *anno, const_buffer buffer, PerturbVector const &pv, LoadState *state) const {
+        preload_annotation(buffer, state, anno);
+        process_annotation(&anno->points, pv, state);
+    }
 #endif
-        if (annotate == ANNOTATE_AUTO) {
-            out->annotation = out->image;
+
+    void ImageLoader::setup_labels (cv::Mat image, cv::Size sz,
+                                    AnnoPoints const &anno,
+                                    vector<float> *labels,
+                                    vector<float> *mask,
+                                    vector<float> *shifts,
+                                    int *cnt) const {
+        vector<cv::Rect_<float>> truth;
+
+        for (unsigned i = 0;
+                      i < anno.points.size(); i += 4) {
+            CHECK(i + 4 <= anno.points.size());
+            float minx = anno.points[i].x;
+            float maxx = minx;
+            float miny = anno.points[i].y;
+            float maxy = miny;
+            for (unsigned j = 1; j < 4; ++j) {
+                minx = std::min(anno.points[i+j].x, minx);
+                maxx = std::max(anno.points[i+j].x, maxx);
+                miny = std::min(anno.points[i+j].y, miny);
+                maxy = std::max(anno.points[i+j].y, maxy);
+            }
+            minx /= config.downsize;
+            maxx /= config.downsize;
+            miny /= config.downsize;
+            maxy /= config.downsize;
+            truth.emplace_back(minx, miny, maxx-minx, maxy-miny);
         }
-        out->label = cached.label;
+#if 1
+        static int serial = 0;
+        cv::Mat out;
+        cv::resize(image, out, sz);
+        for (auto const &r: truth) {
+            cv::Rect ri(int(r.x), int(r.y), int(r.width), int(r.height));
+            cv::rectangle(out, ri, cv::Scalar(0, 0xff, 0));
+        }
+        cv::imwrite("test/" + lexical_cast<string>(serial++) + ".jpg", out);
+        if (serial == 100) exit(0);
+
+#endif
+
+        // boxes
+        vector<cv::Size_<float>> dsizes(config.boxes);
+        for (auto &b: dsizes) {
+            b.width /= config.downsize;
+            b.height /= config.downsize;
+        }
+
+        float *pm = &(*mask)[0];
+        float *ps = &(*shifts)[0];
+        float *pl = &(*labels)[0];
+        *cnt = 0;
+        for (int y = 0; y < sz.height; ++y) {
+            for (int x = 0; x < sz.width; ++x) {
+                for (auto const &sz: dsizes) {
+                    // for each default box
+                    cv::Rect_<float> dbox(x - sz.width/2,
+                                         y - sz.height/2,
+                                         sz.width,
+                                         sz.height);
+                    float dsize = dbox.area();
+                    float best = 0.5;
+                    for (auto &tbox: truth) {
+                        float tsize = tbox.area();
+                        cv::Rect_<float> sect = dbox & tbox;
+                        float ssize = sect.area();
+                        float rate = ssize/std::max(dsize, tsize);
+                        if (rate > best) {
+                            pl[x] = 1.0;
+                            best = rate;
+                            pm[0] = 1.0;
+                            pm[1] = 1.0;
+                            pm[2] = 1.0;
+                            pm[3] = 1.0;
+                            ps[0] = tbox.x + tbox.width/2 - x;
+                            ps[1] = tbox.y + tbox.height/2 - y;
+                            ps[2] = tbox.width - dbox.width;
+                            ps[3] = tbox.height - dbox.height;
+                        }
+                    }
+                    if (best > 0.5) {
+                        *cnt += 1;
+                        *pl = 1.0;
+                    }
+                    ++pl;
+                    pm += 4;
+                    ps += 4;
+                }
+            }
+        }
+    }
+
+    void ImageLoader::load (RecordReader rr, PerturbVector const &pv, Value *value,
+           CacheValue *cache, std::mutex *mutex) const {
+        CHECK(cache == nullptr);
+        CHECK(mutex == nullptr);
+        Record r;
+        rr(&r); // disk access
+        value->label = r.meta().label;
+        LoadState state;
+        cv::Mat image = preload_image(r.field(0), &state);
+        value->image = process_image(image, pv, &state, false);
+
+        CHECK(image.rows % config.downsize == 0);
+        CHECK(image.cols % config.downsize == 0);
+        cv::Size lsize(image.cols/config.downsize,
+                        image.rows/config.downsize);
+        vector<float> labels(lsize.width * lsize.height * config.boxes.size(), 0);
+        vector<float> mask(labels.size() * 4, 0);
+        vector<float> shifts(mask.size(), 0);
+
+        int matched = 0;
+        if (annotate != ANNOTATE_NONE) {
+            AnnoPoints anno;
+            preload_annotation(r.field(1), &state, &anno);
+            process_annotation(&anno.points, pv, &state);
+            setup_labels(image, lsize, anno, &labels, &mask, &shifts, &matched);
+        }
+        value->label = matched > 0 ? 1 : 0;
+        value->matched_boxes = matched;
+        value->label_size = lsize;
+        value->labels = labels;
+        value->mask.swap(mask);
+        value->shift.swap(shifts);
     }
 
     /*
