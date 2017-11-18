@@ -754,7 +754,7 @@ namespace picpac {
             maxy /= config.downsize;
             truth.emplace_back(minx, miny, maxx-minx, maxy-miny);
         }
-#if 1
+#if 0 
         std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
         static int serial = 0;
         cv::Mat out;
@@ -788,14 +788,14 @@ namespace picpac {
                                          sz.width,
                                          sz.height);
                     float dsize = dbox.area();
-                    float best = 0.5;
+                    float best = 0.05;
                     for (auto &tbox: truth) {
                         float tsize = tbox.area();
                         cv::Rect_<float> sect = dbox & tbox;
                         float ssize = sect.area();
                         float rate = ssize/std::max(dsize, tsize);
                         if (rate > best) {
-                            pl[x] = 1.0;
+                            pl[0] = 1.0;
                             best = rate;
                             pm[0] = 1.0;
                             pm[1] = 1.0;

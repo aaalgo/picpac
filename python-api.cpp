@@ -3,10 +3,11 @@
 #include <boost/python.hpp>
 #include <boost/python/make_constructor.hpp>
 #include <boost/python/raw_function.hpp>
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+//#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/ndarrayobject.h>
 #include "picpac.h"
 #include "picpac-cv.h"
+#include "Non-Maximum-Suppression/nms.h"
 using namespace boost::python;
 using namespace picpac;
 
@@ -55,7 +56,7 @@ public:
         std::copy(v.mask.begin(), v.mask.end(), mask_buf);
 
         cv::Scalar mean(ImageLoader::config.mean_color1, ImageLoader::config.mean_color2, ImageLoader::config.mean_color3);
-        impl::split_copy<float>(v.image, images_buf, mean, ImageLoader::config.bgr2rgb);
+        impl::copy<float>(v.image, images_buf, mean, ImageLoader::config.bgr2rgb);
 
         return make_tuple(v.matched_boxes, images, labels, shift, mask);
     }
@@ -106,6 +107,66 @@ void translate_eos (EoS const &)
     PyErr_SetNone(PyExc_StopIteration);
 }
 
+class SSDDetector {
+    int downsize;
+    float th;
+    vector<cv::Size_<float>> dsize;
+public:
+    SSDDetector (list boxes, int downsize_, float th_): downsize(downsize_), th(th_) {
+        for (int i = 0; i < len(boxes); ++i) {
+            tuple b = extract<tuple>(boxes[i]);
+            dsize.emplace_back(extract<float>(b[0])/downsize, extract<float>(b[1])/downsize);
+        }
+    }
+
+
+    list apply (PyObject *prob_, PyObject *shifts_) {
+        PyArrayObject *prob = (PyArrayObject *)prob_;
+        PyArrayObject *shifts = (PyArrayObject *)shifts_;
+        CHECK(PyArray_ISCONTIGUOUS(prob));
+        CHECK(PyArray_ISCONTIGUOUS(shifts));
+        CHECK(prob->nd == 4);
+        CHECK(shifts->nd == 4);
+        CHECK(prob->dimensions[0] == 1);
+        int rows = prob->dimensions[1];
+        int cols = prob->dimensions[2];
+        CHECK(prob->dimensions[3] == dsize.size());
+        CHECK(shifts->dimensions[0] == 1);
+        CHECK(shifts->dimensions[1] == rows);
+        CHECK(shifts->dimensions[2] == cols);
+        CHECK(shifts->dimensions[3] == dsize.size() * 4);
+        float *p = (float *)PyArray_DATA(prob);
+        float *s = (float *)PyArray_DATA(shifts);
+        vector<cv::Rect> rects;
+        vector<float> scores;
+        for (int y = 0; y < rows; ++y) {
+            for (int x = 0; x < cols; ++x) {
+                for (auto const &bb: dsize) {
+                    if (p[0] > th) {
+                        scores.emplace_back(p[0]);
+                        float w = bb.width + s[2];
+                        float h = bb.height + s[3];
+                        rects.emplace_back(int(round(x - w/2 + s[0])),
+                                   int(round(y - h/2 + s[1])),
+                                   int(round(w)),
+                                   int(round(h)));
+                    }
+                    ++p;
+                    s += 4;
+                }
+            }
+        }
+        vector<cv::Rect> res;
+        nms2(rects, scores, res, 0.3f);
+        list r;
+        
+        for (auto const &b: res) {
+            r.append(make_tuple(b.x, b.y, b.width, b.height));
+        }
+        return r;
+    }
+};
+
 }
 
 BOOST_PYTHON_MODULE(picpac_ssd)
@@ -121,6 +182,9 @@ BOOST_PYTHON_MODULE(picpac_ssd)
         .def("size", &SSDImageStream::size)
         .def("reset", &SSDImageStream::reset)
         .def("categories", &SSDImageStream::categories)
+    ;
+    class_<SSDDetector, boost::noncopyable>("Detector", init<list, int,float>() )
+        .def("apply", &SSDDetector::apply)
     ;
 #undef NUMPY_IMPORT_ARRAY_RETVAL
 #define NUMPY_IMPORT_ARRAY_RETVAL

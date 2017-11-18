@@ -16,3 +16,6 @@
 [submodule "Simple-Web-Extra"]
 	path = Simple-Web-Extra
 	url = https://github.com/aaalgo/Simple-Web-Extra
+[submodule "Non-Maximum-Suppression"]
+	path = Non-Maximum-Suppression
+	url = https://github.com/Nuzhny007/Non-Maximum-Suppression.git
