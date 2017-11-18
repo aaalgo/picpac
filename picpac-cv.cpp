@@ -788,7 +788,7 @@ namespace picpac {
                                          sz.width,
                                          sz.height);
                     float dsize = dbox.area();
-                    float best = 0.05;
+                    float best = config.ssd_th;
                     for (auto &tbox: truth) {
                         float tsize = tbox.area();
                         cv::Rect_<float> sect = dbox & tbox;

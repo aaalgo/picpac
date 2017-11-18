@@ -57,6 +57,7 @@
     PICPAC_CONFIG_UPDATE(C,mean_color3); \
     PICPAC_CONFIG_UPDATE(C,bgr2rgb);\
     PICPAC_CONFIG_UPDATE(C,point_radius);\
+    PICPAC_CONFIG_UPDATE(C,ssd_th);\
     PICPAC_CONFIG_UPDATE(C,downsize);
 
 
@@ -130,6 +131,7 @@ namespace picpac {
             float point_radius; // in pixels
 
             // feature map size / input image size
+            float ssd_th;
             int downsize;
             // default boxes
             vector<cv::Size_<float>> boxes;
@@ -169,6 +171,7 @@ namespace picpac {
                 pert_vflip(false),
                 pert_border(cv::BORDER_CONSTANT),
                 point_radius(3),
+                ssd_th(0.5),
                 downsize(1),
                 mean_color1(0),
                 mean_color2(0),
