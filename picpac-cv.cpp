@@ -794,7 +794,9 @@ namespace picpac {
                         cv::Rect_<float> sect = dbox & tbox;
                         float ssize = sect.area();
                         float rate = ssize/std::max(dsize, tsize);
+                        bool mm = false;
                         if (rate > best) {
+                            mm = true;
                             pl[0] = 1.0;
                             best = rate;
                             pm[0] = 1.0;
@@ -807,9 +809,8 @@ namespace picpac {
                             ps[3] = tbox.height - dbox.height;
                         }
                     }
-                    if (best > 0.5) {
+                    if (mm) {
                         *cnt += 1;
-                        *pl = 1.0;
                     }
                     ++pl;
                     pm += 4;
@@ -839,7 +840,7 @@ namespace picpac {
         vector<float> shifts(mask.size(), 0);
 
         int matched = 0;
-        if (annotate != ANNOTATE_NONE) {
+        if (annotate != ANNOTATE_NONE && r.meta().width > 1) {
             AnnoPoints anno;
             anno.size = image.size();
             preload_annotation(r.field(1), &state, &anno);

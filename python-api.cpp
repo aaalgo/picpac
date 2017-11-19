@@ -130,7 +130,7 @@ public:
         CHECK(prob->dimensions[0] == 1);
         int rows = prob->dimensions[1];
         int cols = prob->dimensions[2];
-        CHECK(prob->dimensions[3] == dsize.size());
+        CHECK(prob->dimensions[3] == dsize.size() * 2);
         CHECK(shifts->dimensions[0] == 1);
         CHECK(shifts->dimensions[1] == rows);
         CHECK(shifts->dimensions[2] == cols);
@@ -142,7 +142,7 @@ public:
         for (int y = 0; y < rows; ++y) {
             for (int x = 0; x < cols; ++x) {
                 for (auto const &bb: dsize) {
-                    if (p[0] > th) {
+                    if (p[1] > th) {
                         scores.emplace_back(p[0]);
                         float w = bb.width + s[2];
                         float h = bb.height + s[3];
@@ -151,7 +151,7 @@ public:
                                    int(round(w)),
                                    int(round(h)));
                     }
-                    ++p;
+                    p += 2;
                     s += 4;
                 }
             }
