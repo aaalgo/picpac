@@ -726,6 +726,23 @@ namespace picpac {
     }
 #endif
 
+    float static jaccard (cv::Rect_<float> r1,
+                          cv::Rect_<float> r2) {
+        cv::Rect_<float> sect = r1 & r2;
+        float rs = sect.area();
+        return rs / (r1.area() + r2.area() - rs);
+    }
+
+    struct TruthBox {
+        cv::Rect_<float> box;
+
+        float score;
+        float *mask;
+        float *shifts;
+        float *label;
+        float sh[4];
+    };
+
     void ImageLoader::setup_labels (cv::Mat image, 
                                     cv::Size sz,
                                     AnnoPoints const &anno,
@@ -733,10 +750,9 @@ namespace picpac {
                                     vector<float> *mask,
                                     vector<float> *shifts,
                                     int *cnt) const {
-        vector<cv::Rect_<float>> truth;
+        vector<TruthBox> truths;
 
-        for (unsigned i = 0;
-                      i < anno.points.size(); i += 4) {
+        for (unsigned i = 0; i < anno.points.size(); i += 4) {
             CHECK(i + 4 <= anno.points.size());
             float minx = anno.points[i].x;
             float maxx = minx;
@@ -752,7 +768,13 @@ namespace picpac {
             maxx /= config.downsize;
             miny /= config.downsize;
             maxy /= config.downsize;
-            truth.emplace_back(minx, miny, maxx-minx, maxy-miny);
+            TruthBox b;
+            b.box = cv::Rect_<float>(minx, miny, maxx-minx, maxy-miny);
+            b.score = 0;
+            b.mask = nullptr;
+            b.shifts = nullptr;
+            b.label = nullptr;
+            truths.push_back(b);
         }
 #if 0 
         std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
@@ -767,7 +789,6 @@ namespace picpac {
         if (serial >= 25) exit(0);
 
 #endif
-
         // boxes
         vector<cv::Size_<float>> dsizes(config.boxes);
         for (auto &b: dsizes) {
@@ -787,36 +808,59 @@ namespace picpac {
                                          y - sz.height/2,
                                          sz.width,
                                          sz.height);
-                    float dsize = dbox.area();
                     float best = config.ssd_th;
-                    for (auto &tbox: truth) {
-                        float tsize = tbox.area();
-                        cv::Rect_<float> sect = dbox & tbox;
-                        float ssize = sect.area();
-                        float rate = ssize/std::max(dsize, tsize);
-                        bool mm = false;
-                        if (rate > best) {
-                            mm = true;
+                    bool used = false;
+                    for (auto &truth: truths) {
+                        float score = jaccard(truth.box, dbox);
+                        if (score > truth.score) {
+                            truth.score = score;
+                            truth.mask = pm;
+                            truth.shifts = ps;
+                            truth.label = pl;
+                            truth.sh[0] = truth.box.x + truth.box.width/2 - x;
+                            truth.sh[1] = truth.box.y + truth.box.height/2 - y;
+                            truth.sh[2] = truth.box.width - dbox.width;
+                            truth.sh[3] = truth.box.height - dbox.height;
+                        }
+                        if (score > best) {
+                            best = score;
+                            used = true;
                             pl[0] = 1.0;
-                            best = rate;
                             pm[0] = 1.0;
                             pm[1] = 1.0;
                             pm[2] = 1.0;
                             pm[3] = 1.0;
-                            ps[0] = tbox.x + tbox.width/2 - x;
-                            ps[1] = tbox.y + tbox.height/2 - y;
-                            ps[2] = tbox.width - dbox.width;
-                            ps[3] = tbox.height - dbox.height;
+                            ps[0] = truth.box.x + truth.box.width/2 - x;
+                            ps[1] = truth.box.y + truth.box.height/2 - y;
+                            ps[2] = truth.box.width - dbox.width;
+                            ps[3] = truth.box.height - dbox.height;
                         }
                     }
-                    if (mm) {
-                        *cnt += 1;
+                    if (used) {
+                        ++*cnt;
                     }
                     ++pl;
                     pm += 4;
                     ps += 4;
                 }
             }
+        }
+        for (auto &truth: truths) {
+            CHECK(truth.label);
+            if (truth.label == nullptr) continue;   // not found
+            if (truth.label[0] == 0) {
+                ++*cnt;
+            }
+            // otherwise still set 
+            truth.label[0] = 1;
+            truth.mask[0] = 1;
+            truth.mask[1] = 1;
+            truth.mask[2] = 1;
+            truth.mask[3] = 1;
+            truth.shifts[0] = truth.sh[0];
+            truth.shifts[1] = truth.sh[1];
+            truth.shifts[2] = truth.sh[2];
+            truth.shifts[3] = truth.sh[3];
         }
     }
 
