@@ -156,9 +156,11 @@ public:
                 }
             }
         }
+        //vector<cv::Rect> res(rects);
         vector<cv::Rect> res;
         nms2(rects, scores, res, 0.3f);
         list r;
+
         
         for (auto const &b: res) {
             r.append(make_tuple(b.x, b.y, b.width, b.height));

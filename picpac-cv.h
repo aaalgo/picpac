@@ -68,6 +68,7 @@ namespace json11 {
 namespace picpac {
     struct AnnoPoints {
         cv::Size size;
+        vector<float> labels;
         vector<cv::Point2f> points;
     };
 

@@ -10,6 +10,7 @@ reader = picpac.Reader(sys.argv[1])
 nc = int(sys.argv[2])
 
 sizes = []
+sss = []
 for _, _, _, fields in reader:
     if len(fields) == 0:
         continue
@@ -26,8 +27,12 @@ for _, _, _, fields in reader:
         _, _, width, height = geo['x'], geo['y'], geo['width'], geo['height']
         width *= W
         height *= H
+        sss.append([width * height, width, height])
         sizes.append([width, height])
+        print W, H
         pass
+for _, w, h in sorted(sss, key=lambda x: x[0]):
+    print w, h
 array = np.array(sizes, dtype=np.float32)
 print array.shape
 kmeans = KMeans(n_clusters=nc, random_state=1).fit(array)

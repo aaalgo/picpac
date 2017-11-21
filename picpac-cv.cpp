@@ -323,6 +323,11 @@ namespace picpac {
     void Annotation::points (cv::Size sz, AnnoPoints *anno) const {
         for (auto const &p: shapes) {
             p->points(sz, &anno->points);
+            float l = 1.0;
+            if (p->haveLabel()) {
+                l = p->label()[0];
+            }
+            anno->labels.push_back(l);
         }
     }
 
@@ -734,6 +739,7 @@ namespace picpac {
     }
 
     struct TruthBox {
+        float value;
         cv::Rect_<float> box;
 
         float score;
@@ -752,7 +758,7 @@ namespace picpac {
                                     int *cnt) const {
         vector<TruthBox> truths;
 
-        for (unsigned i = 0; i < anno.points.size(); i += 4) {
+        for (unsigned i = 0, i2 = 0; i < anno.points.size(); i += 4, i2 += 1) {
             CHECK(i + 4 <= anno.points.size());
             float minx = anno.points[i].x;
             float maxx = minx;
@@ -769,6 +775,7 @@ namespace picpac {
             miny /= config.downsize;
             maxy /= config.downsize;
             TruthBox b;
+            b.value = anno.labels[i2];
             b.box = cv::Rect_<float>(minx, miny, maxx-minx, maxy-miny);
             b.score = 0;
             b.mask = nullptr;
@@ -776,19 +783,19 @@ namespace picpac {
             b.label = nullptr;
             truths.push_back(b);
         }
-#if 0 
+#if 0
         std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
         static int serial = 0;
         cv::Mat out;
         cv::resize(image, out, sz);
-        for (auto const &r: truth) {
-            cv::Rect ri(int(r.x), int(r.y), int(r.width), int(r.height));
+        for (auto const &r: truths) {
+            cv::Rect ri(int(r.box.x), int(r.box.y), int(r.box.width), int(r.box.height));
             cv::rectangle(out, ri, cv::Scalar(0, 0xff, 0));
         }
         cv::imwrite("test/" + lexical_cast<string>(serial++) + ".jpg", out);
         if (serial >= 25) exit(0);
-
 #endif
+
         // boxes
         vector<cv::Size_<float>> dsizes(config.boxes);
         for (auto &b: dsizes) {
@@ -800,6 +807,7 @@ namespace picpac {
         float *ps = &(*shifts)[0];
         float *pl = &(*labels)[0];
         *cnt = 0;
+        //std::cerr << sz.height << 'x' << sz.width << std::endl;
         for (int y = 0; y < sz.height; ++y) {
             for (int x = 0; x < sz.width; ++x) {
                 for (auto const &sz: dsizes) {
@@ -825,7 +833,7 @@ namespace picpac {
                         if (score > best) {
                             best = score;
                             used = true;
-                            pl[0] = 1.0;
+                            pl[0] = truth.value;
                             pm[0] = 1.0;
                             pm[1] = 1.0;
                             pm[2] = 1.0;
@@ -846,13 +854,21 @@ namespace picpac {
             }
         }
         for (auto &truth: truths) {
+            /*
+            if (truth.label == 0) {
+                std::cerr << "MISS: " << truth.box.x << ',' << truth.box.y << ' ' << truth.box.height << 'x' << truth.box.width << std::endl;
+            }
+            */
+            /*
+            std::cout << truth.score << std::endl;
             CHECK(truth.label);
+            */
             if (truth.label == nullptr) continue;   // not found
             if (truth.label[0] == 0) {
                 ++*cnt;
             }
             // otherwise still set 
-            truth.label[0] = 1;
+            truth.label[0] = truth.value;
             truth.mask[0] = 1;
             truth.mask[1] = 1;
             truth.mask[2] = 1;
