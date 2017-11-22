@@ -92,7 +92,7 @@ namespace picpac {
             rect.height = geo["height"].number_value();
         }
 
-        virtual void points (cv::Size sz, vector<cv::Point2f> *pts) const {
+        virtual int __points (cv::Size sz, vector<cv::Point2f> *pts) const {
             float x = sz.width * rect.x;
             float y = sz.height * rect.y;
             float width = sz.width * rect.width-1;
@@ -214,12 +214,12 @@ namespace picpac {
             return std::shared_ptr<Poly>(new Poly(*this));
         }
 
-        virtual void points (cv::Size sz, vector<cv::Point2f> *pts) const {
-            for (unsigned i = 0; i < ps.size(); ++i) {
+        virtual int __points (cv::Size sz, vector<cv::Point2f> *pts) const {
+            for (unsigned i = 0; i < points.size(); ++i) {
                 auto const &from = points[i];
                 pts->emplace_back(from.x * sz.width, from.y * sz.height);
             }
-            return ps.size() 
+            return points.size();
         }
 
         virtual void draw (cv::Mat *m, cv::Scalar v, int thickness) const {
@@ -279,9 +279,11 @@ namespace picpac {
         else if (type == "ellipse") {
             shape = std::shared_ptr<Shape>(new Ellipse(geo["geometry"]));
         }
+#endif
         else if (type == "polygon") {
             shape = std::shared_ptr<Shape>(new Poly(geo["geometry"]));
         }
+#if 0
         else if (type == "point") {
             shape = std::shared_ptr<Shape>(new Point(geo["geometry"], size, config));
         }
@@ -332,8 +334,8 @@ namespace picpac {
 
     void Annotation::points (cv::Size sz, AnnoPoints *anno) const {
         for (auto const &p: shapes) {
-            int c = p->points(sz, &anno->points);
-            anno->sz.push_bakc(c);
+            int c = p->__points(sz, &anno->points);
+            anno->sz.push_back(c);
             float l = 1.0;
             if (p->haveLabel()) {
                 l = p->label()[0];
@@ -751,6 +753,7 @@ namespace picpac {
                 cv::Scalar color(config.anno_color1,
                              config.anno_color2,
                              config.anno_color3);
+                /*
                 auto const *palette = &PALETTE_TABLEAU20;
                 if (anno_palette == ANNOTATE_PALETTE_NONE) {
                     palette = nullptr;
@@ -758,8 +761,9 @@ namespace picpac {
                 else if (anno_palette == ANNOTATE_PALETTE_TABLEAU20A) {
                     palette = &PALETTE_TABLEAU20A;
                 }
+                */
                 
-                a.draw(&anno, color, config.anno_thickness, palette, config.anno_number);
+                a.draw(&anno, color, config.anno_thickness, nullptr, config.anno_number);
 
                 // we might want to perturb the cropping
                 // this might not be the perfect location either
@@ -846,12 +850,46 @@ namespace picpac {
                      vector<float> *dirs_mask,
                      cv::Mat const &p_map,
                      vector<vector<cv::Point_<float>>> const &polys,
-                     float x, float y) {
+                     float fx, float fy) {
+        int rows = p_map.rows;
+        int cols = p_map.cols;
+        int x(round(fx));
+        int y(round(fy));
+        int l = p_map.ptr<uint8_t const>(y)[x];
+        std::cerr << x << ' ' << y << ' ' << l << std::endl;
+        if (l == 0) return;
+        --l;
+        CHECK(l < polys.size());
+        auto const &poly = polys[l];
+        int off = (y * cols + x) * 2;
+        dirs_mask->at(off) = 1.0;
+        dirs_mask->at(off+1) = 1.0;
+        // determine direction
+        cv::Point_<float> F(fx, fy);
+        float best = std::numeric_limits<float>::max();
+        dirs->at(off) = .70710678118654752440;
+        dirs->at(off+1) = .70710678118654752440;
+        for (int i = 1; i < poly.size(); ++i) {
+            cv::Point_<float> p1 = poly[i-1], p2 = poly[i];
+            cv::Point_<float> v1 = F - p1;
+            cv::Point_<float> v2 = p2 - p1;
+            cv::Point_<float> x = p1 + (v1.dot(v2)/(v2.dot(v2) + 0.1)) * v2;
+            cv::Point_<float> v3 = x - p1;
+            if (v2.dot(v3) < 0) continue;
+            cv::Point_<float> dir = x - F;
+            float l = std::sqrt(dir.dot(dir));
+            if (l < best) {
+                best = l;
+                l += 0.1;
+                dirs->at(off) = dir.x/l;
+                dirs->at(off+1) = dir.y/l;
+            }
+        }
     }
 
     void ImageLoader::setup_labels (cv::Mat image, 
                                     cv::Size sz,
-                                    AnnoPoints const &anno,
+                                    AnnoPoints const&anno,
                                     cv::Mat p_map,
                                     vector<float> *labels,
                                     vector<float> *mask,
@@ -860,10 +898,6 @@ namespace picpac {
                                     vector<float> *dirs,
                                     int *cnt) const {
         vector<TruthBox> truths;
-        for (auto &p: anno.points) {
-            p.x /= config.downsize;
-            p.y /= config.downsize;
-        }
 
         for (unsigned i = 0, i2 = 0; i2 < anno.boxes; i += 4, i2 += 1) {
             CHECK(anno.sz[i2] == 4);
@@ -887,9 +921,9 @@ namespace picpac {
             b.label = nullptr;
             truths.push_back(b);
         }
-        vector<vector<Point_<float>>> polys;
+        vector<vector<cv::Point_<float>>> polys;
         unsigned off = anno.boxes * 4;
-        for (int i = anno.boxes; i < anno.labels; ++i) {
+        for (int i = anno.boxes; i < anno.labels.size(); ++i) {
             int cc = anno.sz[i];
             // polygon has cc points
             polys.emplace_back();
@@ -897,24 +931,11 @@ namespace picpac {
             auto &v = polys.back();
             unsigned off0 = off;
             for (int j = 0; j < cc; ++j) {
-                v.push_back(anno.points[off++])
+                v.push_back(anno.points[off++]);
             }
             v.push_back(anno.points[off0]);
         }
         CHECK(off == anno.points.size());
-#if 0
-        std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
-        static int serial = 0;
-        cv::Mat out;
-        cv::resize(image, out, sz);
-        for (auto const &r: truths) {
-            cv::Rect ri(int(r.box.x), int(r.box.y), int(r.box.width), int(r.box.height));
-            cv::rectangle(out, ri, cv::Scalar(0, 0xff, 0));
-        }
-        cv::imwrite("test/" + lexical_cast<string>(serial++) + ".jpg", out);
-        if (serial >= 25) exit(0);
-#endif
-
         // boxes
         vector<cv::Size_<float>> dsizes(config.boxes);
         for (auto &b: dsizes) {
@@ -1011,6 +1032,43 @@ namespace picpac {
                        truth.box.x + truth.box.width / 2,
                        truth.box.y + truth.box.height);
         }
+        std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
+#if 1
+        static int serial = 0;
+        cv::Mat out;
+        cv::resize(image, out, sz);
+        for (auto const &r: truths) {
+            cv::Rect ri(int(r.box.x), int(r.box.y), int(r.box.width), int(r.box.height));
+            cv::rectangle(out, ri, cv::Scalar(0, 0xff, 0));
+        }
+        off = 0;
+        for (int y = 0; y < sz.height; ++y) {
+            for (int x = 0; x < sz.width; ++x) {
+                if (dirs_mask->at(off) > 0) {
+                    float dx = dirs->at(off);
+                    float dy = dirs->at(off+1);
+                    int x2 = int(round(x + dx * 20));
+                    int y2 = int(round(y + dy * 20));
+                    cv::line(out, cv::Point(x, y), cv::Point(x2, y2), cv::Scalar(0, 0, 0xff));
+                    
+                }
+                off += 2;
+            }
+        }
+        for (auto const &v: polys) {
+            if (v.empty()) continue;
+            vector<cv::Point> lines;
+            for (unsigned i = 1; i < v.size(); ++i) {
+                lines.emplace_back(round(v[i].x), round(v[i].y));
+            }
+            cv::Point const *pps = &lines[0];
+            int const nps = lines.size();
+            cv::polylines(out, &pps, &nps, 1, true, cv::Scalar(0xff, 0, 0));
+        }
+        cv::imwrite("test/" + lexical_cast<string>(serial++) + ".jpg", out);
+        if (serial >= 25) exit(0);
+#endif
+
     }
 
     void ImageLoader::load (RecordReader rr, PerturbVector const &pv, Value *value,
@@ -1039,7 +1097,6 @@ namespace picpac {
             AnnoPoints anno;
             anno.size = image.size();
             preload_annotation(r.field(1), &state, &anno);
-            process_annotation(&anno, pv, &state);
             anno.boxes = anno.labels.size();
             cv::Mat p_map(lsize, config.anno_type, cv::Scalar(0));
             if (r.meta().width > 2) {
@@ -1047,7 +1104,12 @@ namespace picpac {
                 cv::Mat map = preload_annotation_map(r.field(2), &state);
                 map = process_image(map, pv, &state, true);
                 cv::resize(map, p_map, lsize, cv::INTER_NEAREST);
-                process_annotation((&anno, pv, &state);
+                //process_annotation(&anno, pv, &state);
+            }
+            process_annotation(&anno, pv, &state);
+            for (auto &p: anno.points) {
+                p.x /= config.downsize;
+                p.y /= config.downsize;
             }
             setup_labels(value->image, lsize, anno, p_map, &labels, &mask, &shifts, &dirs_mask, &dirs, &matched);
         }

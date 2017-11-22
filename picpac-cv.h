@@ -516,7 +516,7 @@ namespace picpac {
         Shape (char const *t): _type(t), _have_label(false), _label(0,0,0) {}
         virtual ~Shape () {}
         virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
-        virtual int points (cv::Size, vector<cv::Point2f> *) const = 0;
+        virtual int __points (cv::Size, vector<cv::Point2f> *) const = 0;
         virtual void bbox (cv::Rect_<float> *) const = 0;
         virtual void zoom (cv::Rect_<float> const &) = 0;
         virtual void dump (json11::Json *) const = 0;
@@ -540,6 +540,7 @@ namespace picpac {
         void number_shapes () {
             int cc = 1;
             for (auto &p: shapes) {
+                CHECK(cc < 256);
                 p->setLabel(cv::Scalar(cc));
                 ++cc;
             }
