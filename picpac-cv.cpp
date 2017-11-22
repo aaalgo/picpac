@@ -101,6 +101,7 @@ namespace picpac {
             pts->emplace_back(x+width, y);
             pts->emplace_back(x+width, y+height);
             pts->emplace_back(x, y+height);
+            return 4;
         }
 
         virtual void dump (Json *json) const {
@@ -188,6 +189,7 @@ namespace picpac {
         }
     };
 
+#endif
     class Poly: public Shape {
         vector<cv::Point2f> points;
     public:
@@ -211,6 +213,15 @@ namespace picpac {
         virtual std::shared_ptr<Shape> clone () const {
             return std::shared_ptr<Poly>(new Poly(*this));
         }
+
+        virtual void points (cv::Size sz, vector<cv::Point2f> *pts) const {
+            for (unsigned i = 0; i < ps.size(); ++i) {
+                auto const &from = points[i];
+                pts->emplace_back(from.x * sz.width, from.y * sz.height);
+            }
+            return ps.size() 
+        }
+
         virtual void draw (cv::Mat *m, cv::Scalar v, int thickness) const {
             vector<cv::Point> ps(points.size());
             for (unsigned i = 0; i < ps.size(); ++i) {
@@ -257,7 +268,6 @@ namespace picpac {
             }
         }
     };
-#endif
 
     std::shared_ptr<Shape> Shape::create (Json const &geo, cv::Size size, ImageLoader::Config const &config) {
         string type = geo["type"].string_value();
@@ -322,7 +332,8 @@ namespace picpac {
 
     void Annotation::points (cv::Size sz, AnnoPoints *anno) const {
         for (auto const &p: shapes) {
-            p->points(sz, &anno->points);
+            int c = p->points(sz, &anno->points);
+            anno->sz.push_bakc(c);
             float l = 1.0;
             if (p->haveLabel()) {
                 l = p->label()[0];
@@ -719,6 +730,88 @@ namespace picpac {
         anno->size = sz;
     }
 
+    cv::Mat ImageLoader::preload_annotation_map (const_buffer buffer, LoadState *state) const {
+        cv::Mat annotation;
+        if (annotate == ANNOTATE_IMAGE) {
+            CHECK(0);
+        }
+        else if (annotate == ANNOTATE_JSON) {
+            cv::Mat anno;
+            if (config.anno_copy) {
+                CHECK(0);
+            }
+            else {
+                anno = cv::Mat(state->size, config.anno_type, cv::Scalar(0));
+            }
+            if (boost::asio::buffer_size(buffer) > 1) {
+                char const *ptr = boost::asio::buffer_cast<char const *>(buffer);
+                char const *ptr_end = ptr + boost::asio::buffer_size(buffer);
+                Annotation a(string(ptr, ptr_end), state->size, config);
+                a.number_shapes();
+                cv::Scalar color(config.anno_color1,
+                             config.anno_color2,
+                             config.anno_color3);
+                auto const *palette = &PALETTE_TABLEAU20;
+                if (anno_palette == ANNOTATE_PALETTE_NONE) {
+                    palette = nullptr;
+                }
+                else if (anno_palette == ANNOTATE_PALETTE_TABLEAU20A) {
+                    palette = &PALETTE_TABLEAU20A;
+                }
+                
+                a.draw(&anno, color, config.anno_thickness, palette, config.anno_number);
+
+                // we might want to perturb the cropping
+                // this might not be the perfect location either
+                do {
+                    if (!(config.anno_min_ratio > 0)) break;
+                    if (!(anno.total() > 0)) break;
+                    cv::Rect_<float> fbb;
+                    a.bbox(&fbb);
+                    if (!(fbb.area() > 0)) break;
+                    fbb.x *= anno.cols;
+                    fbb.width *= anno.cols;
+                    fbb.y *= anno.rows;
+                    fbb.height *= anno.rows;
+
+                    float min_roi_size = anno.total() * config.anno_min_ratio;
+                    float roi_size = fbb.area();
+                    if (roi_size >= min_roi_size) break;
+                    float rate = std::sqrt(roi_size / min_roi_size);
+                    int width = std::round(anno.cols * rate);
+                    int height = std::round(anno.rows * rate);
+                    cv::Rect bbox;
+                    bbox.x = std::round(fbb.x);
+                    bbox.y = std::round(fbb.y);
+                    bbox.width = std::round(fbb.width);
+                    bbox.height = std::round(fbb.height);
+                    int dx = (width - bbox.width)/2;
+                    int dy = (height - bbox.height)/2;
+                    bbox.x -= dx;
+                    bbox.y -= dy;
+                    bbox.width = width;
+                    bbox.height = height;
+                    if (bbox.x < 0) {
+                        bbox.x = 0;
+                    }
+                    if (bbox.y < 0) {
+                        bbox.y = 0;
+                    }
+                    if (bbox.x + bbox.width > anno.cols) {
+                        bbox.x = anno.cols - bbox.width;
+                    }
+                    if (bbox.y + bbox.height > anno.rows) {
+                        bbox.y = anno.rows - bbox.height;
+                    }
+                    state->crop = true;
+                    state->crop_bb = bbox;
+                } while (false);
+            }
+            annotation = anno;
+        }
+        return annotation;
+    }
+
 #if 0
     cv::Mat ImageLoader::load_image (const_buffer buffer, PerturbVector const &pv, LoadState *state) const {
         cv::Mat image = preload_image(buffer, state);
@@ -749,16 +842,31 @@ namespace picpac {
         float sh[4];
     };
 
+    void setup_dirs (vector<float> *dirs,
+                     vector<float> *dirs_mask,
+                     cv::Mat const &p_map,
+                     vector<vector<cv::Point_<float>>> const &polys,
+                     float x, float y) {
+    }
+
     void ImageLoader::setup_labels (cv::Mat image, 
                                     cv::Size sz,
                                     AnnoPoints const &anno,
+                                    cv::Mat p_map,
                                     vector<float> *labels,
                                     vector<float> *mask,
                                     vector<float> *shifts,
+                                    vector<float> *dirs_mask,
+                                    vector<float> *dirs,
                                     int *cnt) const {
         vector<TruthBox> truths;
+        for (auto &p: anno.points) {
+            p.x /= config.downsize;
+            p.y /= config.downsize;
+        }
 
-        for (unsigned i = 0, i2 = 0; i < anno.points.size(); i += 4, i2 += 1) {
+        for (unsigned i = 0, i2 = 0; i2 < anno.boxes; i += 4, i2 += 1) {
+            CHECK(anno.sz[i2] == 4);
             CHECK(i + 4 <= anno.points.size());
             float minx = anno.points[i].x;
             float maxx = minx;
@@ -770,10 +878,6 @@ namespace picpac {
                 miny = std::min(anno.points[i+j].y, miny);
                 maxy = std::max(anno.points[i+j].y, maxy);
             }
-            minx /= config.downsize;
-            maxx /= config.downsize;
-            miny /= config.downsize;
-            maxy /= config.downsize;
             TruthBox b;
             b.value = anno.labels[i2];
             b.box = cv::Rect_<float>(minx, miny, maxx-minx, maxy-miny);
@@ -783,6 +887,21 @@ namespace picpac {
             b.label = nullptr;
             truths.push_back(b);
         }
+        vector<vector<Point_<float>>> polys;
+        unsigned off = anno.boxes * 4;
+        for (int i = anno.boxes; i < anno.labels; ++i) {
+            int cc = anno.sz[i];
+            // polygon has cc points
+            polys.emplace_back();
+            if (cc == 0) continue;
+            auto &v = polys.back();
+            unsigned off0 = off;
+            for (int j = 0; j < cc; ++j) {
+                v.push_back(anno.points[off++])
+            }
+            v.push_back(anno.points[off0]);
+        }
+        CHECK(off == anno.points.size());
 #if 0
         std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
         static int serial = 0;
@@ -810,6 +929,9 @@ namespace picpac {
         //std::cerr << sz.height << 'x' << sz.width << std::endl;
         for (int y = 0; y < sz.height; ++y) {
             for (int x = 0; x < sz.width; ++x) {
+                // determine direction
+                // lookup p_map
+                // 
                 for (auto const &sz: dsizes) {
                     // for each default box
                     cv::Rect_<float> dbox(x - sz.width/2,
@@ -829,6 +951,12 @@ namespace picpac {
                             truth.sh[1] = truth.box.y + truth.box.height/2 - y;
                             truth.sh[2] = truth.box.width - dbox.width;
                             truth.sh[3] = truth.box.height - dbox.height;
+                            // setup dirs
+                            setup_dirs(dirs, dirs_mask,
+                                       p_map, polys,
+                                       // x, y
+                                       truth.box.x + truth.box.width / 2,
+                                       truth.box.y + truth.box.height);
                         }
                         if (score > best) {
                             best = score;
@@ -877,6 +1005,11 @@ namespace picpac {
             truth.shifts[1] = truth.sh[1];
             truth.shifts[2] = truth.sh[2];
             truth.shifts[3] = truth.sh[3];
+            setup_dirs(dirs, dirs_mask,
+                       p_map, polys,
+                       // x, y
+                       truth.box.x + truth.box.width / 2,
+                       truth.box.y + truth.box.height);
         }
     }
 
@@ -898,6 +1031,8 @@ namespace picpac {
         vector<float> labels(lsize.width * lsize.height * config.boxes.size(), 0);
         vector<float> mask(labels.size() * 4, 0);
         vector<float> shifts(mask.size(), 0);
+        vector<float> dirs_mask(lsize.width * lsize.height * 2, 0);
+        vector<float> dirs(dirs_mask.size(), 0);
 
         int matched = 0;
         if (annotate != ANNOTATE_NONE && r.meta().width > 1) {
@@ -905,7 +1040,16 @@ namespace picpac {
             anno.size = image.size();
             preload_annotation(r.field(1), &state, &anno);
             process_annotation(&anno, pv, &state);
-            setup_labels(value->image, lsize, anno, &labels, &mask, &shifts, &matched);
+            anno.boxes = anno.labels.size();
+            cv::Mat p_map(lsize, config.anno_type, cv::Scalar(0));
+            if (r.meta().width > 2) {
+                preload_annotation(r.field(2), &state, &anno);
+                cv::Mat map = preload_annotation_map(r.field(2), &state);
+                map = process_image(map, pv, &state, true);
+                cv::resize(map, p_map, lsize, cv::INTER_NEAREST);
+                process_annotation((&anno, pv, &state);
+            }
+            setup_labels(value->image, lsize, anno, p_map, &labels, &mask, &shifts, &dirs_mask, &dirs, &matched);
         }
         value->label = matched > 0 ? 1 : 0;
         value->matched_boxes = matched;
@@ -913,6 +1057,8 @@ namespace picpac {
         value->labels = labels;
         value->mask.swap(mask);
         value->shift.swap(shifts);
+        value->dirs_mask.swap(dirs_mask);
+        value->dirs.swap(dirs);
     }
 
     /*

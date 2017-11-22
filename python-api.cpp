@@ -55,10 +55,25 @@ public:
         float *mask_buf = get_ndarray_data<float>(mask);
         std::copy(v.mask.begin(), v.mask.end(), mask_buf);
 
+        // dirs
+        npy_intp dirs_dims[] = {1, v.label_size.height, v.label_size.width, 2};
+        object dirs = object(boost::python::handle<>(PyArray_SimpleNew(4, &dirs_dims[0], NPY_FLOAT)));
+        CHECK(dirs.ptr());
+        float *dirs_buf = get_ndarray_data<float>(dirs);
+        std::copy(v.dirs.begin(), v.dirs.end(), dirs_buf);
+
+        object dirs_mask = object(boost::python::handle<>(PyArray_SimpleNew(4, &dirs_dims[0], NPY_FLOAT)));
+        CHECK(dirs_mask.ptr());
+        float *dirs_mask_buf = get_ndarray_data<float>(dirs_mask);
+        std::copy(v.dirs_mask.begin(), v.dirs_mask.end(), dirs_mask_buf);
+
+
         cv::Scalar mean(ImageLoader::config.mean_color1, ImageLoader::config.mean_color2, ImageLoader::config.mean_color3);
         impl::copy<float>(v.image, images_buf, mean, ImageLoader::config.bgr2rgb);
 
-        return make_tuple(v.matched_boxes, images, labels, shift, mask);
+
+
+        return make_tuple(v.matched_boxes, images, labels, shift, mask, dirs, dirs_mask);
     }
 };
 
@@ -171,7 +186,7 @@ public:
 
 }
 
-BOOST_PYTHON_MODULE(picpac_ssd)
+BOOST_PYTHON_MODULE(picpac_ssd_dir)
 {
     scope().attr("__doc__") = "PicPoc Python API";
     register_exception_translator<EoS>(&translate_eos);
