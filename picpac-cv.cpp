@@ -838,6 +838,7 @@ namespace picpac {
     struct TruthBox {
         float value;
         cv::Rect_<float> box;
+        int cmp;
 
         float score;
         float *mask;
@@ -855,20 +856,25 @@ namespace picpac {
         int cols = p_map.cols;
         int x(round(fx));
         int y(round(fy));
+        if (x < 0 || y < 0) return;
+        if (x >= p_map.cols || y >= p_map.rows) return;
+        CHECK(p_map.type() == CV_8UC1);
         int l = p_map.ptr<uint8_t const>(y)[x];
-        std::cerr << x << ' ' << y << ' ' << l << std::endl;
+        //std::cerr << x << ' ' << y << ' ' << l << std::endl;
         if (l == 0) return;
         --l;
         CHECK(l < polys.size());
         auto const &poly = polys[l];
-        int off = (y * cols + x) * 2;
-        dirs_mask->at(off) = 1.0;
-        dirs_mask->at(off+1) = 1.0;
         // determine direction
         cv::Point_<float> F(fx, fy);
         float best = std::numeric_limits<float>::max();
-        dirs->at(off) = .70710678118654752440;
-        dirs->at(off+1) = .70710678118654752440;
+        /*
+        dirs->at(off) = 0.5
+        dirs->at(off+1) = 0.5
+        dirs->at(off+2) = 0.5
+        dirs->at(off+3) = 0.5
+        */
+        float dx = 0, dy = 0;
         for (int i = 1; i < poly.size(); ++i) {
             cv::Point_<float> p1 = poly[i-1], p2 = poly[i];
             cv::Point_<float> v1 = F - p1;
@@ -880,10 +886,17 @@ namespace picpac {
             float l = std::sqrt(dir.dot(dir));
             if (l < best) {
                 best = l;
-                l += 0.1;
-                dirs->at(off) = dir.x/l;
-                dirs->at(off+1) = dir.y/l;
+                dx = dir.x/l;
+                dy = dir.y/l;
             }
+        }
+        if (best > 1) {
+            int off = (y * cols + x);
+            dirs_mask->at(off) = 1;
+            off *= 2;
+            float prob = (dx + 1) / 2;
+            dirs->at(off) = 1.0 - prob;
+            dirs->at(off+1) = prob;
         }
     }
 
@@ -899,6 +912,7 @@ namespace picpac {
                                     int *cnt) const {
         vector<TruthBox> truths;
 
+        cv::Rect_<float> full(0, 0, sz.width, sz.height);
         for (unsigned i = 0, i2 = 0; i2 < anno.boxes; i += 4, i2 += 1) {
             CHECK(anno.sz[i2] == 4);
             CHECK(i + 4 <= anno.points.size());
@@ -915,10 +929,12 @@ namespace picpac {
             TruthBox b;
             b.value = anno.labels[i2];
             b.box = cv::Rect_<float>(minx, miny, maxx-minx, maxy-miny);
+            if (jaccard(b.box, full) == 0) continue;
             b.score = 0;
             b.mask = nullptr;
             b.shifts = nullptr;
             b.label = nullptr;
+            b.cmp = 0;
             truths.push_back(b);
         }
         vector<vector<cv::Point_<float>>> polys;
@@ -953,16 +969,17 @@ namespace picpac {
                 // determine direction
                 // lookup p_map
                 // 
-                for (auto const &sz: dsizes) {
+                for (auto const &dsz: dsizes) {
                     // for each default box
-                    cv::Rect_<float> dbox(x - sz.width/2,
-                                         y - sz.height/2,
-                                         sz.width,
-                                         sz.height);
+                    cv::Rect_<float> dbox(x - dsz.width/2,
+                                         y - dsz.height/2,
+                                         dsz.width,
+                                         dsz.height);
                     float best = config.ssd_th;
                     bool used = false;
                     for (auto &truth: truths) {
                         float score = jaccard(truth.box, dbox);
+                        ++truth.cmp;
                         if (score > truth.score) {
                             truth.score = score;
                             truth.mask = pm;
@@ -1012,10 +1029,18 @@ namespace picpac {
             std::cout << truth.score << std::endl;
             CHECK(truth.label);
             */
-            if (truth.label == nullptr) continue;   // not found
+            if (truth.label == nullptr) {
+                LOG(WARNING) << "MISSING " << truth.box.height << "x" << truth.box.width << " " << truth.cmp << " " << sz.height << " " << sz.width;
+                continue;   // not found
+            }
             if (truth.label[0] == 0) {
                 ++*cnt;
             }
+            /*
+            if (truth.score < config.ssd_th) {
+                std::cerr << truth.score << ' ' << truth.box.width << ' ' << truth.box.height << std::endl;
+            }
+            */
             // otherwise still set 
             truth.label[0] = truth.value;
             truth.mask[0] = 1;
@@ -1032,8 +1057,8 @@ namespace picpac {
                        truth.box.x + truth.box.width / 2,
                        truth.box.y + truth.box.height);
         }
+#if 0
         std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
-#if 1
         static int serial = 0;
         cv::Mat out;
         cv::resize(image, out, sz);
@@ -1089,8 +1114,8 @@ namespace picpac {
         vector<float> labels(lsize.width * lsize.height * config.boxes.size(), 0);
         vector<float> mask(labels.size() * 4, 0);
         vector<float> shifts(mask.size(), 0);
-        vector<float> dirs_mask(lsize.width * lsize.height * 2, 0);
-        vector<float> dirs(dirs_mask.size(), 0);
+        vector<float> dirs_mask(lsize.width * lsize.height, 0);
+        vector<float> dirs(dirs_mask.size()*2, 0);
 
         int matched = 0;
         if (annotate != ANNOTATE_NONE && r.meta().width > 1) {

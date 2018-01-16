@@ -62,7 +62,7 @@ public:
         float *dirs_buf = get_ndarray_data<float>(dirs);
         std::copy(v.dirs.begin(), v.dirs.end(), dirs_buf);
 
-        object dirs_mask = object(boost::python::handle<>(PyArray_SimpleNew(4, &dirs_dims[0], NPY_FLOAT)));
+        object dirs_mask = object(boost::python::handle<>(PyArray_SimpleNew(3, &dirs_dims[0], NPY_FLOAT)));
         CHECK(dirs_mask.ptr());
         float *dirs_mask_buf = get_ndarray_data<float>(dirs_mask);
         std::copy(v.dirs_mask.begin(), v.dirs_mask.end(), dirs_mask_buf);
@@ -125,19 +125,35 @@ void translate_eos (EoS const &)
 class SSDDetector {
     int downsize;
     float th;
+    float nms_th;
     vector<cv::Size_<float>> dsize;
 public:
-    SSDDetector (list boxes, int downsize_, float th_): downsize(downsize_), th(th_) {
+    SSDDetector (list boxes, int downsize_, float th_, float nms_th_): downsize(downsize_), th(th_), nms_th(nms_th_) {
         for (int i = 0; i < len(boxes); ++i) {
             tuple b = extract<tuple>(boxes[i]);
             dsize.emplace_back(extract<float>(b[0])/downsize, extract<float>(b[1])/downsize);
         }
     }
 
+    static float rect_score (float th, cv::Mat roi) {
+        float sum = 0;
+        for (int y = 0; y < roi.rows; ++y){
+            float const *p = roi.ptr<float const>(y);
+            for (int x = 0; x < roi.cols; ++x) {
+                sum += p[x];
+                if (p[x] < th) {
+                    sum -= th - p[x];
+                }
+            }
+        }
+        return sum;
+    }
 
-    list apply (PyObject *prob_, PyObject *shifts_) {
+
+    list apply (PyObject *prob_, PyObject *shifts_, PyObject *weights_) {
         PyArrayObject *prob = (PyArrayObject *)prob_;
         PyArrayObject *shifts = (PyArrayObject *)shifts_;
+        PyArrayObject *weights = (PyArrayObject *)weights_;
         CHECK(PyArray_ISCONTIGUOUS(prob));
         CHECK(PyArray_ISCONTIGUOUS(shifts));
         CHECK(prob->nd == 4);
@@ -150,30 +166,54 @@ public:
         CHECK(shifts->dimensions[1] == rows);
         CHECK(shifts->dimensions[2] == cols);
         CHECK(shifts->dimensions[3] == dsize.size() * 4);
+
+        CHECK(weights->nd == 2);
+        CHECK(weights->dimensions[0] == rows);
+        CHECK(weights->dimensions[1] == cols);
+
         float *p = (float *)PyArray_DATA(prob);
         float *s = (float *)PyArray_DATA(shifts);
+        cv::Mat W(rows, cols, CV_32F, PyArray_DATA(weights));
         vector<cv::Rect> rects;
         vector<float> scores;
         for (int y = 0; y < rows; ++y) {
             for (int x = 0; x < cols; ++x) {
                 for (auto const &bb: dsize) {
                     if (p[1] > th) {
-                        scores.emplace_back(p[0]);
                         float w = bb.width + s[2];
                         float h = bb.height + s[3];
-                        rects.emplace_back(int(round(x - w/2 + s[0])),
-                                   int(round(y - h/2 + s[1])),
-                                   int(round(w)),
-                                   int(round(h)));
+                        int x0 = int(round(x - w/2 + s[0]));
+                        int y0 = int(round(y - h/2 + s[1]));
+                        int w0 = int(round(w));
+                        int h0 = int(round(h));
+                        if (x0 < 0) {
+                            w0 += x0;
+                            x0 = 0;
+                        }
+                        if (y0 < 0) {
+                            h0 += y0;
+                            y0 = 0;
+                        }
+                        if (x0 + w0 > cols) {
+                            w0 -= x0 + w0 - cols;
+                        }
+                        if (y0 + h0 > rows) {
+                            h0 -= y0 + h0 - rows;
+                        }
+                        rects.emplace_back(x0, y0, w0, h0);
+                        scores.emplace_back(rect_score(th, W(rects.back())));
                     }
                     p += 2;
                     s += 4;
                 }
             }
         }
-        //vector<cv::Rect> res(rects);
+#if 0
+        vector<cv::Rect> res(rects);
+#else
         vector<cv::Rect> res;
-        nms2(rects, scores, res, 0.3f);
+        nms2(rects, scores, res, nms_th);
+#endif
         list r;
 
         
@@ -200,7 +240,7 @@ BOOST_PYTHON_MODULE(picpac_ssd_dir)
         .def("reset", &SSDImageStream::reset)
         .def("categories", &SSDImageStream::categories)
     ;
-    class_<SSDDetector, boost::noncopyable>("Detector", init<list, int,float>() )
+    class_<SSDDetector, boost::noncopyable>("Detector", init<list, int,float, float>() )
         .def("apply", &SSDDetector::apply)
     ;
 #undef NUMPY_IMPORT_ARRAY_RETVAL
