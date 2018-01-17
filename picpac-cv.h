@@ -198,8 +198,6 @@ namespace picpac {
             vector<float> shift;    // box parameters
                                     // too many numbers cannot save in cv::Mat
                                     // labels.rows * labels.cols * 4 * boxes
-            vector<float> dirs_mask;
-            vector<float> dirs;
         };
 
         typedef Value CacheValue;
@@ -295,8 +293,6 @@ namespace picpac {
                            vector<float> *labels,
                            vector<float> *mask,
                            vector<float> *shifts,
-                           vector<float> *dirs_mask,
-                           vector<float> *dirs,
                            int *) const;
                           
         void load (RecordReader, PerturbVector const &, Value *,

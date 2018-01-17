@@ -1,6 +1,6 @@
 from distutils.core import setup, Extension
 
-picpac = Extension('picpac_ssd_dir',
+picpac = Extension('picpac_ssd',
         language = 'c++',
         extra_compile_args = ['-O3', '-std=c++1y'], 
         include_dirs = ['/usr/local/include', 'json11'],
@@ -9,7 +9,7 @@ picpac = Extension('picpac_ssd_dir',
         sources = ['python-api.cpp', 'picpac.cpp', 'picpac-cv.cpp', 'json11/json11.cpp'],
         depends = ['json11/json11.hpp', 'picpac.h', 'picpac-cv.h'])
 
-setup (name = 'picpac_ssd_dir',
+setup (name = 'picpac_ssd',
        version = '0.2.2',
        url = 'https://github.com/aaalgo/picpac',
        author = 'Wei Dong',

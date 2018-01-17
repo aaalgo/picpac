@@ -847,59 +847,6 @@ namespace picpac {
         float sh[4];
     };
 
-    void setup_dirs (vector<float> *dirs,
-                     vector<float> *dirs_mask,
-                     cv::Mat const &p_map,
-                     vector<vector<cv::Point_<float>>> const &polys,
-                     float fx, float fy) {
-        int rows = p_map.rows;
-        int cols = p_map.cols;
-        int x(round(fx));
-        int y(round(fy));
-        if (x < 0 || y < 0) return;
-        if (x >= p_map.cols || y >= p_map.rows) return;
-        CHECK(p_map.type() == CV_8UC1);
-        int l = p_map.ptr<uint8_t const>(y)[x];
-        //std::cerr << x << ' ' << y << ' ' << l << std::endl;
-        if (l == 0) return;
-        --l;
-        CHECK(l < polys.size());
-        auto const &poly = polys[l];
-        // determine direction
-        cv::Point_<float> F(fx, fy);
-        float best = std::numeric_limits<float>::max();
-        /*
-        dirs->at(off) = 0.5
-        dirs->at(off+1) = 0.5
-        dirs->at(off+2) = 0.5
-        dirs->at(off+3) = 0.5
-        */
-        float dx = 0, dy = 0;
-        for (int i = 1; i < poly.size(); ++i) {
-            cv::Point_<float> p1 = poly[i-1], p2 = poly[i];
-            cv::Point_<float> v1 = F - p1;
-            cv::Point_<float> v2 = p2 - p1;
-            cv::Point_<float> x = p1 + (v1.dot(v2)/(v2.dot(v2) + 0.1)) * v2;
-            cv::Point_<float> v3 = x - p1;
-            if (v2.dot(v3) < 0) continue;
-            cv::Point_<float> dir = x - F;
-            float l = std::sqrt(dir.dot(dir));
-            if (l < best) {
-                best = l;
-                dx = dir.x/l;
-                dy = dir.y/l;
-            }
-        }
-        if (best > 1) {
-            int off = (y * cols + x);
-            dirs_mask->at(off) = 1;
-            off *= 2;
-            float prob = (dx + 1) / 2;
-            dirs->at(off) = 1.0 - prob;
-            dirs->at(off+1) = prob;
-        }
-    }
-
     void ImageLoader::setup_labels (cv::Mat image, 
                                     cv::Size sz,
                                     AnnoPoints const&anno,
@@ -907,8 +854,6 @@ namespace picpac {
                                     vector<float> *labels,
                                     vector<float> *mask,
                                     vector<float> *shifts,
-                                    vector<float> *dirs_mask,
-                                    vector<float> *dirs,
                                     int *cnt) const {
         vector<TruthBox> truths;
 
@@ -989,12 +934,6 @@ namespace picpac {
                             truth.sh[1] = truth.box.y + truth.box.height/2 - y;
                             truth.sh[2] = truth.box.width - dbox.width;
                             truth.sh[3] = truth.box.height - dbox.height;
-                            // setup dirs
-                            setup_dirs(dirs, dirs_mask,
-                                       p_map, polys,
-                                       // x, y
-                                       truth.box.x + truth.box.width / 2,
-                                       truth.box.y + truth.box.height);
                         }
                         if (score > best) {
                             best = score;
@@ -1051,11 +990,6 @@ namespace picpac {
             truth.shifts[1] = truth.sh[1];
             truth.shifts[2] = truth.sh[2];
             truth.shifts[3] = truth.sh[3];
-            setup_dirs(dirs, dirs_mask,
-                       p_map, polys,
-                       // x, y
-                       truth.box.x + truth.box.width / 2,
-                       truth.box.y + truth.box.height);
         }
 #if 0
         std::cout << image.rows << 'x' << image.cols << " => " << sz.height << 'x' << sz.width << std::endl;
@@ -1114,8 +1048,6 @@ namespace picpac {
         vector<float> labels(lsize.width * lsize.height * config.boxes.size(), 0);
         vector<float> mask(labels.size() * 4, 0);
         vector<float> shifts(mask.size(), 0);
-        vector<float> dirs_mask(lsize.width * lsize.height, 0);
-        vector<float> dirs(dirs_mask.size()*2, 0);
 
         int matched = 0;
         if (annotate != ANNOTATE_NONE && r.meta().width > 1) {
@@ -1136,7 +1068,7 @@ namespace picpac {
                 p.x /= config.downsize;
                 p.y /= config.downsize;
             }
-            setup_labels(value->image, lsize, anno, p_map, &labels, &mask, &shifts, &dirs_mask, &dirs, &matched);
+            setup_labels(value->image, lsize, anno, p_map, &labels, &mask, &shifts, &matched);
         }
         value->label = matched > 0 ? 1 : 0;
         value->matched_boxes = matched;
@@ -1144,8 +1076,6 @@ namespace picpac {
         value->labels = labels;
         value->mask.swap(mask);
         value->shift.swap(shifts);
-        value->dirs_mask.swap(dirs_mask);
-        value->dirs.swap(dirs);
     }
 
     /*
