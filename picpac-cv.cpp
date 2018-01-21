@@ -970,9 +970,6 @@ namespace picpac {
             CHECK(truth.label);
             */
             if (truth.label == nullptr) {
-<<<<<<< HEAD
-                LOG(WARNING) << "MISSING " << truth.box.height << "x" << truth.box.width << " " << truth.cmp << " " << sz.height << " " << sz.width;
-=======
                 cv::Rect_<float> box = truth.box; // * config.downsize;
                 box.x *= config.downsize;
                 box.y *= config.downsize;
@@ -981,7 +978,6 @@ namespace picpac {
                 //std::cerr << "MISS: " << box.x << ',' << box.y << ' ' << box.width << 'x' << box.height << std::endl;
 
 
->>>>>>> f8abd15741707cd7fdc2849fcc94c972409dccb5
                 continue;   // not found
             }
             if (truth.label[0] == 0) {
