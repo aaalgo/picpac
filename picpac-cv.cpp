@@ -870,7 +870,8 @@ namespace picpac {
                 box.y *= config.downsize;
                 box.width *= config.downsize;
                 box.height *= config.downsize;
-                std::cerr << "MISS: " << box.x << ',' << box.y << ' ' << box.width << 'x' << box.height << std::endl;
+                //std::cerr << "MISS: " << box.x << ',' << box.y << ' ' << box.width << 'x' << box.height << std::endl;
+
 
                 continue;   // not found
             }
