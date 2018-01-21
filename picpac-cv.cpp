@@ -536,7 +536,7 @@ namespace picpac {
 
         if (config.perturb) {
             if (p.angle != 0) {
-                cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, p.scale);
+                cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, 1.0);
                 {
                     cv::Mat tmp;
                     cv::warpAffine(image, tmp, rot, image.size(), CV_INTER, config.pert_border);
@@ -544,7 +544,7 @@ namespace picpac {
                     image = tmp;
                 }
             }
-            else if (p.scale != 1) {
+            if (p.scale != 1) {
                 {
                     cv::Mat tmp;
                     cv::resize(image, tmp, cv::Size(), p.scale, p.scale, CV_INTER);
@@ -658,15 +658,15 @@ namespace picpac {
 
         if (config.perturb) {
             if (p.angle != 0) {
-                cv::Mat rot = cv::getRotationMatrix2D(cv::Point(sz.width/2, sz.height/2), p.angle, p.scale);
+                cv::Mat rot = cv::getRotationMatrix2D(cv::Point(sz.width/2, sz.height/2), p.angle, 1.0);
                 cv::transform(*pts, *pts, rot);
             }
-            else if (p.scale != 1) {
+            if (p.scale != 1) {
                 cv::Size newsz(round(p.scale * sz.width),
                                round(p.scale * sz.height));
                 float xs = 1.0 * newsz.width / sz.width;
                 float ys = 1.0 * newsz.height / sz.height;
-                std::cout << p.scale << " " << xs << " " << ys << std::endl;
+                //std::cout << p.scale << " " << xs << " " << ys << std::endl;
                 for (auto &p: *pts) {
                     p.x *= xs;
                     p.y *= ys;
@@ -916,8 +916,8 @@ namespace picpac {
                 // 
                 for (auto const &dsz: dsizes) {
                     // for each default box
-                    cv::Rect_<float> dbox(x - dsz.width/2,
-                                         y - dsz.height/2,
+                    cv::Rect_<float> dbox(x - dsz.width/2.0,
+                                         y - dsz.height/2.0,
                                          dsz.width,
                                          dsz.height);
                     float best = config.ssd_th;
@@ -935,6 +935,7 @@ namespace picpac {
                             truth.sh[2] = truth.box.width - dbox.width;
                             truth.sh[3] = truth.box.height - dbox.height;
                         }
+                        // find best groundtruth box for this location
                         if (score > best) {
                             best = score;
                             used = true;
@@ -969,7 +970,18 @@ namespace picpac {
             CHECK(truth.label);
             */
             if (truth.label == nullptr) {
+<<<<<<< HEAD
                 LOG(WARNING) << "MISSING " << truth.box.height << "x" << truth.box.width << " " << truth.cmp << " " << sz.height << " " << sz.width;
+=======
+                cv::Rect_<float> box = truth.box; // * config.downsize;
+                box.x *= config.downsize;
+                box.y *= config.downsize;
+                box.width *= config.downsize;
+                box.height *= config.downsize;
+                //std::cerr << "MISS: " << box.x << ',' << box.y << ' ' << box.width << 'x' << box.height << std::endl;
+
+
+>>>>>>> f8abd15741707cd7fdc2849fcc94c972409dccb5
                 continue;   // not found
             }
             if (truth.label[0] == 0) {

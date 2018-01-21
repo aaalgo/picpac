@@ -161,12 +161,45 @@ public:
         float *p = (float *)PyArray_DATA(prob);
         float *s = (float *)PyArray_DATA(shifts);
         cv::Mat W(rows, cols, CV_32F, PyArray_DATA(weights));
+
+
         vector<cv::Rect> rects;
         vector<float> scores;
+        /*
+        auto dsize1 = dsize;
+        dsize1.pop_back();
+        */
+        vector<int> cnts(dsize.size(), 0);
         for (int y = 0; y < rows; ++y) {
             for (int x = 0; x < cols; ++x) {
-                for (auto const &bb: dsize) {
+                for (int k = 0; k < dsize.size(); ++k) {
                     if (p[1] > th) {
+                        cnts[k] += 1;
+                    }
+                    p += 2;
+                    s += 4;
+                }
+            }
+        }
+        int best = 0;
+        for (int k = 1; k < dsize.size(); ++k) {
+            if (cnts[k] > cnts[best]) {
+                best = k;
+            }
+        }
+
+        vector<bool> pick(dsize.size(), false);
+        pick[best] = true;
+        /*
+        if (best > 0) pick[best-1] = true;
+        if (best + 1 < pick.size()) pick[best+1]= true;
+        */
+
+        for (int y = 0; y < rows; ++y) {
+            for (int x = 0; x < cols; ++x) {
+                for (int k = 0; k < dsize.size(); ++k) {
+                    auto const &bb = dsize[k];
+                    if ((p[1] > th) && pick[k]) {
                         float w = bb.width + s[2];
                         float h = bb.height + s[3];
                         int x0 = int(round(x - w/2 + s[0]));
