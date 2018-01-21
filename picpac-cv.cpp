@@ -956,7 +956,7 @@ namespace picpac {
         
         //TODO: scale might break min and/or max restriction
         if (p.angle != 0) {
-            cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, p.scale);
+            cv::Mat rot = cv::getRotationMatrix2D(cv::Point(image.cols/2, image.rows/2), p.angle, 1.0);
             {
                 cv::Mat tmp;
                 cv::warpAffine(image, tmp, rot, image.size(), cv::INTER_LINEAR, config.pert_border);
@@ -971,7 +971,7 @@ namespace picpac {
                 anno = tmp;
             }
         }
-        else if (p.scale != 1) {
+        if (p.scale != 1) {
             {
                 cv::Mat tmp;
                 cv::resize(image, tmp, cv::Size(), p.scale, p.scale);
