@@ -653,7 +653,7 @@ namespace picpac {
                                round(p.scale * sz.height));
                 float xs = 1.0 * newsz.width / sz.width;
                 float ys = 1.0 * newsz.height / sz.height;
-                std::cout << p.scale << " " << xs << " " << ys << std::endl;
+                //std::cout << p.scale << " " << xs << " " << ys << std::endl;
                 for (auto &p: *pts) {
                     p.x *= xs;
                     p.y *= ys;
@@ -812,8 +812,8 @@ namespace picpac {
             for (int x = 0; x < sz.width; ++x) {
                 for (auto const &sz: dsizes) {
                     // for each default box
-                    cv::Rect_<float> dbox(x - sz.width/2,
-                                         y - sz.height/2,
+                    cv::Rect_<float> dbox(x - sz.width/2.0,
+                                         y - sz.height/2.0,
                                          sz.width,
                                          sz.height);
                     float best = config.ssd_th;
@@ -830,6 +830,7 @@ namespace picpac {
                             truth.sh[2] = truth.box.width - dbox.width;
                             truth.sh[3] = truth.box.height - dbox.height;
                         }
+                        // find best groundtruth box for this location
                         if (score > best) {
                             best = score;
                             used = true;
@@ -863,7 +864,16 @@ namespace picpac {
             std::cout << truth.score << std::endl;
             CHECK(truth.label);
             */
-            if (truth.label == nullptr) continue;   // not found
+            if (truth.label == nullptr) {
+                cv::Rect_<float> box = truth.box; // * config.downsize;
+                box.x *= config.downsize;
+                box.y *= config.downsize;
+                box.width *= config.downsize;
+                box.height *= config.downsize;
+                std::cerr << "MISS: " << box.x << ',' << box.y << ' ' << box.width << 'x' << box.height << std::endl;
+
+                continue;   // not found
+            }
             if (truth.label[0] == 0) {
                 ++*cnt;
             }
