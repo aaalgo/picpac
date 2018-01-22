@@ -858,19 +858,24 @@ namespace picpac {
         vector<TruthBox> truths;
 
         cv::Rect_<float> full(0, 0, sz.width, sz.height);
-        for (unsigned i = 0, i2 = 0; i2 < anno.boxes; i += 4, i2 += 1) {
-            CHECK(anno.sz[i2] == 4);
-            CHECK(i + 4 <= anno.points.size());
-            float minx = anno.points[i].x;
+        unsigned o = 0;
+        for (unsigned i2 = 0; i2 < anno.sz.size(); ++i2) {
+            unsigned sz = anno.sz[i2];
+
+            CHECK(sz >= 3);
+            CHECK(o + sz <= anno.points.size());
+            float minx = anno.points[o].x;
             float maxx = minx;
-            float miny = anno.points[i].y;
+            float miny = anno.points[o].y;
             float maxy = miny;
-            for (unsigned j = 1; j < 4; ++j) {
-                minx = std::min(anno.points[i+j].x, minx);
-                maxx = std::max(anno.points[i+j].x, maxx);
-                miny = std::min(anno.points[i+j].y, miny);
-                maxy = std::max(anno.points[i+j].y, maxy);
+            for (unsigned j = 1; j < sz; ++j) {
+                minx = std::min(anno.points[o+j].x, minx);
+                maxx = std::max(anno.points[o+j].x, maxx);
+                miny = std::min(anno.points[o+j].y, miny);
+                maxy = std::max(anno.points[o+j].y, maxy);
             }
+            o += sz;
+
             TruthBox b;
             b.value = anno.labels[i2];
             b.box = cv::Rect_<float>(minx, miny, maxx-minx, maxy-miny);
@@ -882,6 +887,8 @@ namespace picpac {
             b.cmp = 0;
             truths.push_back(b);
         }
+        CHECK(o == anno.points.size());
+#if 0
         vector<vector<cv::Point_<float>>> polys;
         unsigned off = anno.boxes * 4;
         for (int i = anno.boxes; i < anno.labels.size(); ++i) {
@@ -896,7 +903,7 @@ namespace picpac {
             }
             v.push_back(anno.points[off0]);
         }
-        CHECK(off == anno.points.size());
+#endif 
         // boxes
         vector<cv::Size_<float>> dsizes(config.boxes);
         for (auto &b: dsizes) {
@@ -1062,7 +1069,7 @@ namespace picpac {
             AnnoPoints anno;
             anno.size = image.size();
             preload_annotation(r.field(1), &state, &anno);
-            anno.boxes = anno.labels.size();
+            //anno.boxes = anno.labels.size();
             cv::Mat p_map(lsize, config.anno_type, cv::Scalar(0));
             if (r.meta().width > 2) {
                 preload_annotation(r.field(2), &state, &anno);

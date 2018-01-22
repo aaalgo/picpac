@@ -69,7 +69,7 @@ namespace picpac {
     struct AnnoPoints {
         cv::Size size;
         vector<float> labels;
-        int boxes;
+        //int boxes;
         vector<int> sz;
         vector<cv::Point2f> points;
     };
