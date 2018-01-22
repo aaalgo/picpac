@@ -69,6 +69,8 @@ namespace picpac {
     struct AnnoPoints {
         cv::Size size;
         vector<float> labels;
+        int boxes;
+        vector<int> sz;
         vector<cv::Point2f> points;
     };
 
@@ -278,6 +280,7 @@ namespace picpac {
 
         cv::Mat preload_image (const_buffer buffer, LoadState *state) const;
         void preload_annotation (const_buffer buffer, LoadState *state, AnnoPoints *) const;
+        cv::Mat preload_annotation_map (const_buffer buffer, LoadState *state) const;
         cv::Mat process_image (cv::Mat image, PerturbVector const &pv, LoadState const *state, bool is_anno) const;
         void process_annotation (AnnoPoints *anno, PerturbVector const &p, LoadState const *state) const; 
 
@@ -286,9 +289,11 @@ namespace picpac {
 
         void setup_labels (cv::Mat image,  cv::Size, 
                            AnnoPoints const &anno,
+                           cv::Mat p_map,
                            vector<float> *labels,
                            vector<float> *mask,
-                           vector<float> *shifts, int *) const;
+                           vector<float> *shifts,
+                           int *) const;
                           
         void load (RecordReader, PerturbVector const &, Value *,
                 CacheValue *c = nullptr, std::mutex *m = nullptr) const;
@@ -507,7 +512,7 @@ namespace picpac {
         Shape (char const *t): _type(t), _have_label(false), _label(0,0,0) {}
         virtual ~Shape () {}
         virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
-        virtual void points (cv::Size, vector<cv::Point2f> *) const = 0;
+        virtual int __points (cv::Size, vector<cv::Point2f> *) const = 0;
         virtual void bbox (cv::Rect_<float> *) const = 0;
         virtual void zoom (cv::Rect_<float> const &) = 0;
         virtual void dump (json11::Json *) const = 0;
@@ -528,6 +533,14 @@ namespace picpac {
         vector<std::shared_ptr<Shape>> shapes;
         Annotation () {}
         Annotation (string const &txt, cv::Size, ImageLoader::Config const &config);
+        void number_shapes () {
+            int cc = 1;
+            for (auto &p: shapes) {
+                CHECK(cc < 256);
+                p->setLabel(cv::Scalar(cc));
+                ++cc;
+            }
+        }
         void dump (string *) const;
         void draw (cv::Mat *m, cv::Scalar v, int thickness = -1, vector<cv::Scalar> const *palette=nullptr, bool show_number = false) const;
         void points (cv::Size, AnnoPoints *) const;
