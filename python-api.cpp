@@ -68,7 +68,7 @@ object create_image_stream (tuple args, dict kwargs) {
     PICPAC_CONFIG_UPDATE_ALL(config);
 #undef PICPAC_CONFIG_UPDATE
     if (kwargs.has_key("channel_first")) {
-        LOG(ERROR) << "channel_first is depreciated, use order";
+        LOG(ERROR) << "channel_first is depreciated, use order=\"NHWC\"";
         CHECK(false);
     }
     return self.attr("__init__")(path, config);

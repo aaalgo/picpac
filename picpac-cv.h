@@ -91,9 +91,9 @@ namespace picpac {
             
         };
         enum {
-            ORDER_NHWC = 0,
-            ORDER_NCHW = 1,
-            ORDER_DEFAULT = ORDER_NHWC
+            ORDER_NHWC = 1,
+            ORDER_NCHW = 2,
+            ORDER_DEFAULT = ORDER_NCHW
         };
         struct Config {
             int channels;   // -1: unchanged
@@ -239,6 +239,7 @@ namespace picpac {
             else {
                 order = ORDER_DEFAULT;
             }
+            std::cerr << "ORDER: " << config.order << " " << order << std::endl;
         }
 
         template <typename RNG>
@@ -496,7 +497,6 @@ namespace picpac {
         bool pad;
         bool bgr2rgb;
         int task;
-        int order;
     public:
         struct Config: public ImageStream::Config {
             float mean_color1;
@@ -506,12 +506,11 @@ namespace picpac {
             unsigned batch;
             bool pad;
             bool bgr2rgb;
-            string order;
             Config ():
                 mean_color1(0),
                 mean_color2(0),
                 mean_color3(0),
-                onehot(0), batch(1), pad(false), bgr2rgb(false), order("NHWC") {
+                onehot(0), batch(1), pad(false), bgr2rgb(false) {
             }
         };
 
