@@ -59,7 +59,7 @@
     PICPAC_CONFIG_UPDATE(C,batch);\
     PICPAC_CONFIG_UPDATE(C,pad);\
     PICPAC_CONFIG_UPDATE(C,bgr2rgb);\
-    PICPAC_CONFIG_UPDATE(C,channel_first);\
+    PICPAC_CONFIG_UPDATE(C,order);\
     PICPAC_CONFIG_UPDATE(C,point_radius);\
     PICPAC_CONFIG_UPDATE(C,multi_images);
 
@@ -90,6 +90,11 @@ namespace picpac {
             COLOR_SAME = 3
             
         };
+        enum {
+            ORDER_NHWC = 0,
+            ORDER_NCHW = 1,
+            ORDER_DEFAULT = ORDER_NHWC
+        };
         struct Config {
             int channels;   // -1: unchanged
             int min_size;
@@ -116,6 +121,7 @@ namespace picpac {
             bool perturb;
             // perturbation output retains input image size
             string pert_colorspace;
+            string order;
             float pert_color1;
             float pert_color2;
             float pert_color3;
@@ -221,6 +227,18 @@ namespace picpac {
             else {
                 colorspace = COLOR_DEFAULT;
             }
+            if ((config.crop_width > 0) || (config.crop_height > 0)) {
+                CHECK((config.crop_width > 0) && (config.crop_height > 0));
+            }
+            if (config.order == "NHWC") {
+                order = ORDER_NHWC;
+            }
+            else if (config.order == "NCHW") {
+                order = ORDER_NCHW;
+            }
+            else {
+                order = ORDER_DEFAULT;
+            }
         }
 
         template <typename RNG>
@@ -263,6 +281,7 @@ namespace picpac {
         int annotate;
         int anno_palette;
         int colorspace;
+        int order;
         std::uniform_int_distribution<int> delta_color1; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color2; //(min_R, max_R);
         std::uniform_int_distribution<int> delta_color3; //(min_R, max_R);
@@ -477,8 +496,7 @@ namespace picpac {
         bool pad;
         bool bgr2rgb;
         int task;
-        bool channel_first;
-
+        int order;
     public:
         struct Config: public ImageStream::Config {
             float mean_color1;
@@ -488,12 +506,12 @@ namespace picpac {
             unsigned batch;
             bool pad;
             bool bgr2rgb;
-            bool channel_first;
+            string order;
             Config ():
                 mean_color1(0),
                 mean_color2(0),
                 mean_color3(0),
-                onehot(0), batch(1), pad(false), bgr2rgb(false), channel_first(true) {
+                onehot(0), batch(1), pad(false), bgr2rgb(false), order("NHWC") {
             }
         };
 
@@ -502,7 +520,7 @@ namespace picpac {
             label_mean(0,0,0,0),
             mean(cv::Scalar(c.mean_color1, c.mean_color2, c.mean_color3)),
             onehot(c.onehot),
-            batch(c.batch), pad(c.pad), bgr2rgb(c.bgr2rgb), channel_first(c.channel_first) {
+            batch(c.batch), pad(c.pad), bgr2rgb(c.bgr2rgb) {
             ImageStream::Value &v(ImageStream::peek());
             if (!v.annotation.data) {
                 if (onehot > 0) {
@@ -532,16 +550,17 @@ namespace picpac {
             Value &next = ImageStream::peek();
             images_shape->clear();
             images_shape->push_back(batch);
-            if (channel_first) {
+            if (order == ORDER_NCHW) {
                 images_shape->push_back(next.image.channels());
                 images_shape->push_back(next.image.rows);
                 images_shape->push_back(next.image.cols);
             }
-            else {
+            else if (order == ORDER_NHWC) {
                 images_shape->push_back(next.image.rows);
                 images_shape->push_back(next.image.cols);
                 images_shape->push_back(next.image.channels());
             }
+            else CHECK(0);
 
             labels_shape->clear();
             labels_shape->push_back(batch);
@@ -554,7 +573,7 @@ namespace picpac {
                     labels_shape->push_back(onehot); break;
                 case TASK_PIXEL_REGRESSION:
                     CHECK(next.annotation.data);
-                    if (channel_first) {
+                    if (order == ORDER_NCHW) {
                         labels_shape->push_back(next.annotation.channels());
                         labels_shape->push_back(next.annotation.rows);
                         labels_shape->push_back(next.annotation.cols);
@@ -568,7 +587,7 @@ namespace picpac {
                 case TASK_PIXEL_CLASSIFICATION:
                     CHECK(next.annotation.data);
                     CHECK(next.annotation.channels() == 1);
-                    if (channel_first) {
+                    if (order == ORDER_NCHW) {
                         labels_shape->push_back(onehot);
                         labels_shape->push_back(next.annotation.rows);
                         labels_shape->push_back(next.annotation.cols);
@@ -599,7 +618,7 @@ namespace picpac {
                         next_shape(&ishape, &lshape);
                     }
                     Value v(next());
-                    if (channel_first) {
+                    if (order == ORDER_NCHW) {
                         images = impl::split_copy<T1>(v.image, images, mean, bgr2rgb);
                     }
                     else {
@@ -621,7 +640,7 @@ namespace picpac {
                             }
                             break;
                         case TASK_PIXEL_REGRESSION:
-                            if (channel_first) {
+                            if (order == ORDER_NCHW) {
                                 labels = impl::split_copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
                             }
                             else {
@@ -629,7 +648,7 @@ namespace picpac {
                             }
                             break;
                         case TASK_PIXEL_CLASSIFICATION:
-                            labels = impl::onehot_encode<T2>(v.annotation, labels, onehot, channel_first);
+                            labels = impl::onehot_encode<T2>(v.annotation, labels, onehot, order == ORDER_NCHW);
                             break;
                         default: CHECK(0);
                     }

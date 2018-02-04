@@ -715,6 +715,42 @@ namespace picpac {
         return process_image(image, pv, state, true);
     }
 
+    static void adjust_crop_pad_range (int &from_x, int &from_width,
+                                int &to_x, int &to_width, bool perturb, int shiftx) {
+        if (from_width < to_width) {
+            int margin = to_width - from_width;
+            if (perturb) {
+                to_x = shiftx % margin;
+            }
+            else {
+                to_x = margin / 2;
+            }
+            to_width = from_width;
+        }
+        else if (from_width > to_width) {
+            int margin = from_width - to_width;
+            if (perturb) {
+                from_x = shiftx % margin;
+            }
+            else {
+                from_x = margin / 2;
+            }
+            from_width = to_width;
+        }
+    }
+
+    static cv::Mat crop_pad (cv::Mat image, cv::Size size, bool perturb, int shiftx, int shifty) {
+        int from_x = 0, from_width = image.cols;
+        int from_y = 0, from_height = image.rows;
+        int to_x = 0, to_width = size.width;
+        int to_y = 0, to_height = size.height;
+        adjust_crop_pad_range(from_x, from_width, to_x, to_width, perturb, shiftx);
+        adjust_crop_pad_range(from_y, from_height, to_y, to_height, perturb, shifty);
+        cv::Mat to(size, image.type(), cv::Scalar(0,0,0));
+        image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
+        return to;
+    }
+
     void ImageLoader::load (RecordReader rr, PerturbVector const &p, Value *out,
            CacheValue *cache, std::mutex *mutex) const {
         Value cached;
@@ -900,7 +936,9 @@ namespace picpac {
 
         if (!config.perturb) {
             *out = cached;
+
             if ((config.crop_width > 0) && (config.crop_height > 0)) {
+                /*
                 CHECK(out->image.cols >= config.crop_width);
                 CHECK(out->image.rows >= config.crop_height);
                 // cropping
@@ -910,9 +948,10 @@ namespace picpac {
                              marginy / 2,
                              config.crop_width,
                              config.crop_height);
-                out->image = out->image(roi);
+                */
+                out->image = crop_pad(out->image, cv::Size(config.crop_width, config.crop_height), false , 0, 0);
                 if (out->annotation.data) {
-                    out->annotation = out->annotation(roi);
+                    out->annotation = crop_pad(out->annotation, cv::Size(config.crop_width, config.crop_height), false , 0, 0);
                 }
             }
             if (config.round_div > 0) {
@@ -1037,19 +1076,11 @@ namespace picpac {
                 out->annotation = anno;
             }
         }
-        if ((config.crop_width > 0) && (config.crop_height > 0)
-            && ((out->image.cols > config.crop_width)
-            || (out->image.rows > config.crop_height))) {
+        if ((config.crop_width > 0) && (config.crop_height > 0)) {
             // cropping
-            int marginx = out->image.cols - config.crop_width;
-            int marginy = out->image.rows - config.crop_height;
-            cv::Rect roi(p.shiftx % marginx,
-                         p.shifty % marginy,
-                         config.crop_width,
-                         config.crop_height);
-            out->image = out->image(roi);
+            out->image = crop_pad(out->image, cv::Size(config.crop_width, config.crop_height), true, p.shiftx, p.shifty);
             if (out->annotation.data) {
-                out->annotation = out->annotation(roi);
+                out->annotation = crop_pad(out->annotation, cv::Size(config.crop_width, config.crop_height), true, p.shiftx, p.shifty);
             }
         }
         if (config.round_div > 0) {

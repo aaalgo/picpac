@@ -67,6 +67,10 @@ object create_image_stream (tuple args, dict kwargs) {
     C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P)) 
     PICPAC_CONFIG_UPDATE_ALL(config);
 #undef PICPAC_CONFIG_UPDATE
+    if (kwargs.has_key("channel_first")) {
+        LOG(ERROR) << "channel_first is depreciated, use order";
+        CHECK(false);
+    }
     return self.attr("__init__")(path, config);
 };
 
@@ -86,12 +90,12 @@ public:
         unsigned batch;
         bool pad;
         bool bgr2rgb;
-        bool channel_first;
+        string order;
         Config ():
             mean_color1(0),
             mean_color2(0),
             mean_color3(0),
-            onehot(0), batch(1), pad(false), bgr2rgb(false), channel_first(true) {
+            onehot(0), batch(1), pad(false), bgr2rgb(false) {
         }
     };
     Config config;
