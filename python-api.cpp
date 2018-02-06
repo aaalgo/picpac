@@ -18,6 +18,12 @@ T *get_ndarray_data (object &o) {
     return reinterpret_cast<T*>(PyArray_DATA(nd));
 }
 
+template <typename T>
+T *get_ndarray_data (PyObject *o) {
+    PyArrayObject *nd = reinterpret_cast<PyArrayObject *>(o);
+    return reinterpret_cast<T*>(PyArray_DATA(nd));
+}
+
 size_t get_ndarray_nbytes (object &o) {
     PyArrayObject *nd = reinterpret_cast<PyArrayObject *>(o.ptr());
     return size_t(PyArray_NBYTES(nd));
@@ -32,15 +38,31 @@ public:
         vector<npy_intp> images_dims;
         vector<npy_intp> labels_dims;
         next_shape(&images_dims, &labels_dims);
-        object images = object(boost::python::handle<>(PyArray_SimpleNew(images_dims.size(), &images_dims[0], NPY_FLOAT)));
-        CHECK(images.ptr());
+        PyObject *images = PyArray_SimpleNew(images_dims.size(), &images_dims[0], NPY_FLOAT);
+        //object images = object(boost::python::handle<>(
+        //CHECK(images.ptr());
+        CHECK(images);
         float *images_buf = get_ndarray_data<float>(images);
-        object labels = object(boost::python::handle<>(PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT)));
-        CHECK(labels.ptr());
+        PyObject *labels = PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT);
+        CHECK(labels);
+        //object labels = object(boost::python::handle<>(PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT)));
+        //CHECK(labels.ptr());
         float *labels_buf = get_ndarray_data<float>(labels);
         unsigned padding;
         next_fill(images_buf, labels_buf, &padding);
-        return make_tuple(images, labels, padding);
+        if (padding > 0 & !pad) {
+            images_dims[0] -= padding;
+            labels_dims[0] -= padding;
+            PyArray_Dims d1, d2;
+            d1.ptr = &images_dims[0]; d1.len = images_dims.size();
+            d2.ptr = &labels_dims[0]; d2.len = labels_dims.size();
+            images = PyArray_Resize(reinterpret_cast<PyArrayObject *>(images), &d1, 1, NPY_CORDER);
+            labels = PyArray_Resize(reinterpret_cast<PyArrayObject *>(labels), &d2, 1, NPY_CORDER);
+            padding = 0;
+        }
+        return make_tuple(object(boost::python::handle<>(images)),
+                          object(boost::python::handle<>(labels)),
+                          padding);
     }
 };
 

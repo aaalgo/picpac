@@ -489,7 +489,7 @@ namespace picpac {
             TASK_PIXEL_REGRESSION = 3,
             TASK_PIXEL_CLASSIFICATION = 4
         };
-    private:
+    protected:
         cv::Scalar label_mean;//(0,0,0,0);
         cv::Scalar mean;
         unsigned onehot;
@@ -656,7 +656,8 @@ namespace picpac {
             }
             catch (EoS const &) {
             }
-            if ((pad && (loaded == 0)) || ((!pad) && (loaded < batch))) throw EoS();
+            //if ((pad && (loaded == 0)) || ((!pad) && (loaded < batch))) throw EoS();
+            if (loaded == 0) throw EoS();
             if (npad) *npad = batch - loaded;
         }
     };
