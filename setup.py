@@ -1,11 +1,21 @@
+import sys
 import cv2
+import subprocess as sp
 from distutils.core import setup, Extension
 
 libraries = []
-if cv2.__version__[0] == '3':
+cv2libs = sp.check_output('pkg-config --libs opencv', shell=True).decode('ascii')
+if 'opencv_imgcodecs' in cv2libs:
     libraries.append('opencv_imgcodecs')
     pass
-libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core', 'boost_filesystem', 'boost_system', 'boost_python', 'glog'])
+
+if sys.version_info[0] < 3:
+    boost_python = 'boost_python'
+else:
+    boost_python = 'boost_python-py35'
+    pass
+
+libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core', 'boost_filesystem', 'boost_system', boost_python, 'glog'])
 
 picpac = Extension('_picpac',
         language = 'c++',

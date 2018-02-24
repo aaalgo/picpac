@@ -352,8 +352,16 @@ void translate_eos (EoS const &)
 
 }
 
+
+auto init_numpy()
+{
+    import_array();
+    //return 0;
+}
+
 BOOST_PYTHON_MODULE(_picpac)
 {
+	init_numpy();
     scope().attr("__doc__") = "PicPoc Python API";
     register_exception_translator<EoS>(&translate_eos);
     class_<NumpyBatchImageStream::Config>("ImageStreamParams", init<>());
@@ -393,8 +401,7 @@ BOOST_PYTHON_MODULE(_picpac)
     ;
     def("encode_raw", ::encode_raw_ndarray);
     def("write_raw", ::write_raw_ndarray);
-#undef NUMPY_IMPORT_ARRAY_RETVAL
-#define NUMPY_IMPORT_ARRAY_RETVAL
-    import_array();
+//#undef NUMPY_IMPORT_ARRAY_RETVAL
+//#define NUMPY_IMPORT_ARRAY_RETVAL
 }
 
