@@ -29,6 +29,8 @@ namespace picpac {
 
     namespace fs = boost::filesystem;
 
+    typedef std::default_random_engine random_engine;
+
     /// Static coded maximal number of fields per record
     static constexpr unsigned MAX_FIELDS = 6;
     /// Static coded segment header size
@@ -68,11 +70,9 @@ namespace picpac {
 
     enum FieldType {  // Record field type
         FIELD_NONE = 0,
-        /*
-        FIELD_FILE = 1,
-        FIELD_TEXT = 2,
-        FIELD_OTHER = 3 
-        */
+        FIELD_IMAGE = 1,
+        FIELD_ANNOTATION_IMAGE = 2,
+        FIELD_ANNOTATION_JSON = 3,
         CHECK_FIELD_SIZE
     };
     static_assert(CHECK_FIELD_SIZE - 1 <= numeric_limits<uint8_t>::max(), "Too many field types");

@@ -1,0 +1,632 @@
+#pragma once
+#include <random>
+#include <boost/core/noncopyable.hpp>
+#include <opencv2/opencv.hpp>
+#include <glog/logging.h>
+#include "picpac.h"
+#include "3rdparty/json.hpp"
+
+namespace picpac {
+
+	using json = nlohmann::json;
+
+    struct RenderOptions {
+        int thickness;
+        int line_type;
+        int shift;
+        int point_radius;
+        bool showNumbers;
+
+        RenderOptions ()
+            : thickness(CV_FILLED),
+            line_type(8),
+            shift(0),
+            point_radius(5),
+            showNumbers(false) {
+        }
+    };
+
+    // One annotation shape, box or polygon.
+    // Each shape must be controled by a series of control points
+    // geometric transformation of shape can be achieved by applying transformations
+    // to control points (with a callback function)
+    class Shape {
+    protected:
+        char const *type;   // text name
+        cv::Scalar color;
+        vector<cv::Point2f> controls;
+    public:
+        Shape (char const *t): type(t), color(1.0, 1.0, 1.0, 1.0) {}
+        virtual ~Shape () {}
+        virtual std::unique_ptr<Shape> clone () const = 0;
+        virtual void transform (std::function<void(vector<cv::Point2f> *)> f) {
+            // some shape might need pre-post processing
+            f(&controls);
+        }
+        virtual void render (cv::Mat *, RenderOptions const &) const = 0;
+        static std::unique_ptr<Shape> create (json const &, cv::Size);
+    };
+
+    struct Annotation: private boost::noncopyable {
+        cv::Size size;
+        vector<std::unique_ptr<Shape>> shapes;
+
+        Annotation () {}
+        Annotation (char const *begin, char const *end, cv::Size);
+        bool empty () const { return shapes.empty(); }
+
+        void transform (std::function<void(vector<cv::Point2f> *)> f) {
+            for (auto &s: shapes) {
+                s->transform(f);
+            }
+        }
+
+        void render (cv::Mat *m, RenderOptions const &opt) const {
+            for (auto &s: shapes) {
+                s->render(m, opt);
+            }
+        }
+
+        void copy (Annotation const &anno) {
+            size = anno.size;
+            shapes.clear();
+            for (auto &p: anno.shapes) {
+                shapes.emplace_back(p->clone());
+            }
+        }
+
+        void swap (Annotation &anno) {
+            std::swap(size, anno.size);
+            shapes.swap(anno.shapes);
+        }
+    };
+
+    // image with annotation
+    //
+    struct AnnotatedImage {
+        cv::Mat image;
+        Annotation annotation;
+
+        AnnotatedImage () {}
+
+        AnnotatedImage (char const *begin, char const *end, cv::Size sz):
+            annotation(begin, end, sz) {
+        }
+
+        AnnotatedImage (cv::Mat v): image(v) {
+        }
+
+        AnnotatedImage (AnnotatedImage &&ai) {
+            cv::swap(image, ai.image);
+            annotation.swap(ai.annotation);
+        }
+
+        void operator = (AnnotatedImage &&ai) {
+            cv::swap(image, ai.image);
+            annotation.swap(ai.annotation);
+        }
+    private:
+        AnnotatedImage (AnnotatedImage &) = delete;
+        void operator = (AnnotatedImage &) = delete;
+    };
+
+    struct Sample: private boost::noncopyable {
+        float label;
+        vector<AnnotatedImage> images;
+
+        void swap (Sample &v) {
+            std::swap(label, v.label);
+            images.swap(v.images);
+        }
+
+        void copy (Sample const &v) {
+            label = v.label;
+            images.clear();
+            images.resize(v.images.size());
+            for (unsigned i = 0; i < images.size(); ++i) {
+                auto const &vi = v.images[i];
+                if (vi.image.data) {
+                    images[i].image = v.images[i].image.clone();
+                } if (!vi.annotation.empty()) {
+                    images[i].annotation.copy(vi.annotation);
+                }
+            }
+        }
+    };
+
+    class Transform {
+    public:
+        static std::unique_ptr<Transform> create (json const &);
+        virtual size_t pv_size () const = 0;   // size of pert vector
+        virtual size_t pv_sample (random_engine &rng, void *pv) const = 0;
+        virtual size_t apply (Sample *s, void *pv) const {
+            size_t sz = pv_size();
+            for (auto &v: s->images) {
+                size_t s = apply_one(&v, pv);
+                CHECK(s == sz);
+            }
+            return sz;
+        }
+        virtual size_t apply_one (AnnotatedImage *, void *) const {
+            CHECK(0) << "Not supported";
+        }
+    };
+
+    class Transforms: public Transform {
+        size_t total_pv_size;
+        vector<std::unique_ptr<Transform>> sub;
+    public:
+        Transforms (json const &spec): total_pv_size(0) {
+            for (auto it = spec.begin(); it != spec.end(); ++it) {
+                sub.emplace_back(Transform::create(*it));
+                total_pv_size += sub.back()->pv_size();
+            }
+        }
+        virtual size_t pv_size () const {
+            return total_pv_size;
+        }
+        virtual size_t pv_sample (random_engine &rng, void *pv) const {
+            char *p = reinterpret_cast<char *>(pv);
+            char *o = p;
+            for (unsigned i = 0; i < sub.size(); ++i) {
+                o += sub[i]->pv_sample(rng, o);
+            }
+            CHECK(total_pv_size == o-p);
+            return total_pv_size;
+        }
+        virtual size_t apply (Sample *s, void *pv) const {
+            char *p = reinterpret_cast<char *>(pv);
+            char *o = p;
+            for (unsigned i = 0; i < sub.size(); ++i) {
+                o += sub[i]->apply(s, o);
+            }
+            CHECK(total_pv_size == o-p);
+            return total_pv_size;
+        }
+    };
+
+
+    class ImageLoader {
+    public:
+        struct Config {
+            int channels;       // -1: unchanged
+            bool annotate;
+            json transforms;
+            Config ()
+                : channels(-1), // unchanged
+                annotate(false)
+            {
+                CHECK(channels == -1 || channels == 1 || channels == 3);
+            }
+        };
+
+        struct Value: private boost::noncopyable {
+            float label;
+            vector<AnnotatedImage> images;
+
+            void swap (Value &v) {
+                std::swap(label, v.label);
+                images.swap(v.images);
+            }
+
+            void copy (Value const &v) {
+                label = v.label;
+                images.clear();
+                images.resize(v.images.size());
+                for (unsigned i = 0; i < images.size(); ++i) {
+                    auto const &vi = v.images[i];
+                    if (vi.image.data) {
+                        images[i].image = v.images[i].image.clone();
+                    }
+                    if (!vi.annotation.empty()) {
+                        images[i].annotation.copy(vi.annotation);
+                    }
+                }
+            }
+        };
+
+        typedef Value CacheValue;
+
+        struct PerturbVector {
+            string buffer;
+        };
+
+
+        ImageLoader (Config const &c)
+            : config(c), transforms(c.transforms), pv_size(transforms.pv_size())
+        {
+        }
+
+        void sample (random_engine &e, PerturbVector *p) {
+            p->buffer.resize(pv_size);
+            transforms.pv_sample(e, &p->buffer[0]);
+        }
+
+        void load (RecordReader, PerturbVector const &, Value *,
+                CacheValue *c = nullptr, std::mutex *m = nullptr) const;
+
+    protected:
+        Config config;
+        Transforms transforms;
+        size_t pv_size;
+    };
+
+    typedef PrefetchStream<ImageLoader> ImageStream;
+
+#if 0
+
+    namespace impl {
+        template <typename Tfrom = uint8_t, typename Tto = float>
+        Tto *split_helper (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
+            Tto *ptr_b = buffer;
+            Tto *ptr_g = buffer;
+            Tto *ptr_r = buffer;
+            if (bgr2rgb) {
+                CHECK(image.channels() == 3);
+                ptr_g += image.total();
+                ptr_b += 2 * image.total();
+            }
+            else if (image.channels() == 2) {
+                ptr_g += image.total();     // g, r
+            }
+            else if (image.channels() == 3) {
+                ptr_g += image.total();     // b, g, r
+                ptr_r += 2 * image.total();
+            }
+            unsigned off = 0;
+            for (int i = 0; i < image.rows; ++i) {
+                Tfrom const *line = image.ptr<Tfrom const>(i);
+                for (int j = 0; j < image.cols; ++j) {
+                    ptr_b[off] = (*line++) - mean[0];
+                    if (image.channels() > 1) {
+                        ptr_g[off] = (*line++) - mean[1];
+                    }
+                    if (image.channels() > 2) {
+                        ptr_r[off] = (*line++) - mean[2];
+                    }
+                    ++off;
+                }
+            }
+            CHECK(off == image.total());
+            return buffer + image.channels() * image.total();
+        }
+
+        template <typename Tto = float>
+        Tto *split_copy (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
+            int depth = image.depth();
+            int ch = image.channels();
+            CHECK((ch >= 1) && (ch <= 3));
+            switch (depth) {
+                case CV_8U: return split_helper<uint8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_8S: return split_helper<int8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16U: return split_helper<uint16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16S: return split_helper<int16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32S: return split_helper<int32_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32F: return split_helper<float, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_64F: return split_helper<double, Tto>(image, buffer, mean, bgr2rgb);
+            }
+            CHECK(0) << "Mat type not supported.";
+            return nullptr;
+        }
+
+        template <typename Tfrom = uint8_t, typename Tto = float>
+        Tto *copy_helper (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
+            CHECK(!bgr2rgb);
+            unsigned off = 0;
+            for (int i = 0; i < image.rows; ++i) {
+                Tfrom const *line = image.ptr<Tfrom const>(i);
+                for (int j = 0; j < image.cols; ++j) {
+                    buffer[off++] = (*line++) - mean[0];
+                    if (image.channels() > 1) {
+                        buffer[off++] = (*line++) - mean[1];
+                    }
+                    if (image.channels() > 2) {
+                        buffer[off++] = (*line++) - mean[2];
+                    }
+                }
+            }
+            CHECK(off == image.total() * image.channels());
+            return buffer + image.channels() * image.total();
+        }
+
+        template <typename Tto = float>
+        Tto *copy (cv::Mat image, Tto *buffer, cv::Scalar mean, bool bgr2rgb) {
+            CHECK(!bgr2rgb) << "Not supported";
+            int depth = image.depth();
+            int ch = image.channels();
+            CHECK((ch >= 1) && (ch <= 3));
+            switch (depth) {
+                case CV_8U: return copy_helper<uint8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_8S: return copy_helper<int8_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16U: return copy_helper<uint16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_16S: return copy_helper<int16_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32S: return copy_helper<int32_t, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_32F: return copy_helper<float, Tto>(image, buffer, mean, bgr2rgb);
+                case CV_64F: return copy_helper<double, Tto>(image, buffer, mean, bgr2rgb);
+            }
+            CHECK(0) << "Mat type not supported.";
+            return nullptr;
+        }
+
+        
+        template <typename Tfrom, typename Tto = float>
+        Tto *onehot_helper (cv::Mat image, Tto *buffer, unsigned onehot, bool cf) {
+            size_t ch_size = image.total();
+            size_t total_size = ch_size * onehot;
+            Tto *buffer_end = buffer + total_size;
+            std::fill(buffer, buffer_end, 0);
+            int off = 0;
+            if (cf) { // channel comes first
+                for (int i = 0; i < image.rows; ++i) {
+                    Tfrom const *row = image.ptr<Tfrom const>(i);
+                    for (int j = 0; j < image.cols; ++j) {
+                        Tfrom v = row[j];
+                        unsigned c(v);
+                        CHECK(c == v);
+                        CHECK(c <= MAX_CATEGORIES);
+                        if (c < ch_size) {
+                            Tto *plane = buffer + c * ch_size;
+                            plane[off] = 1;
+                        }
+                        ++off;
+                    }
+                }
+            }
+            else { // channel comes last
+                Tto *o = buffer;
+                for (int i = 0; i < image.rows; ++i) {
+                    Tfrom const *row = image.ptr<Tfrom const>(i);
+                    for (int j = 0; j < image.cols; ++j) {
+                        Tfrom v = row[j];
+                        unsigned c(v);
+                        CHECK(c == v);
+                        CHECK(c <= MAX_CATEGORIES);
+                        if (c < ch_size) {
+                            o[c] = 1;
+                        }
+                        o += ch_size;
+                    }
+                }
+            }
+            return buffer_end;
+        }
+
+        template <typename Tto = float>
+        Tto *onehot_encode (cv::Mat image, Tto *buffer, unsigned onehot, bool cf) {
+            int depth = image.depth();
+            int ch = image.channels();
+            CHECK(ch == 1);
+            switch (depth) {
+                case CV_8U: return onehot_helper<uint8_t, Tto>(image, buffer, onehot, cf);
+                case CV_8S: return onehot_helper<int8_t, Tto>(image, buffer, onehot, cf);
+                case CV_16U: return onehot_helper<uint16_t, Tto>(image, buffer, onehot, cf);
+                case CV_16S: return onehot_helper<int16_t, Tto>(image, buffer, onehot, cf);
+                case CV_32S: return onehot_helper<int32_t, Tto>(image, buffer, onehot, cf);
+                case CV_32F: return onehot_helper<float, Tto>(image, buffer, onehot, cf);
+                case CV_64F: return onehot_helper<double, Tto>(image, buffer, onehot, cf);
+            }
+            CHECK(0) << "Mat type not supported.";
+            return nullptr;
+        }
+    }
+
+    // this is the main interface for most of the
+    // deep learning libraries.
+    class BatchImageStream: public ImageStream {
+    public:
+        enum {
+            TASK_REGRESSION = 1,
+            TASK_CLASSIFICATION = 2,
+            TASK_PIXEL_REGRESSION = 3,
+            TASK_PIXEL_CLASSIFICATION = 4
+        };
+    protected:
+        cv::Scalar label_mean;//(0,0,0,0);
+        cv::Scalar mean;
+        unsigned onehot;
+        unsigned batch;
+        bool pad;
+        bool bgr2rgb;
+        int task;
+    public:
+        struct Config: public ImageStream::Config {
+            float mean_color1;
+            float mean_color2;
+            float mean_color3;
+            unsigned onehot;
+            unsigned batch;
+            bool pad;
+            bool bgr2rgb;
+            Config ():
+                mean_color1(0),
+                mean_color2(0),
+                mean_color3(0),
+                onehot(0), batch(1), pad(false), bgr2rgb(false) {
+            }
+        };
+
+        BatchImageStream (fs::path const &path, Config const &c)
+            : ImageStream(path, c),
+            label_mean(0,0,0,0),
+            mean(cv::Scalar(c.mean_color1, c.mean_color2, c.mean_color3)),
+            onehot(c.onehot),
+            batch(c.batch), pad(c.pad), bgr2rgb(c.bgr2rgb) {
+            ImageStream::Value &v(ImageStream::peek());
+            if (!v.annotation.data) {
+                if (onehot > 0) {
+                    task = TASK_CLASSIFICATION;
+                }
+                else {
+                    task = TASK_REGRESSION;
+                }
+            }
+            else {
+                if (onehot) {
+                    CHECK(v.annotation.channels() == 1);
+                    task = TASK_PIXEL_CLASSIFICATION;
+                }
+                else {
+                    task = TASK_PIXEL_REGRESSION;
+                    if (c.annotate == "auto") {
+                        label_mean = mean;
+                    }
+                }
+            }
+        }
+
+        template <typename T=unsigned>
+        void next_shape (vector<T> *images_shape,
+                         vector<T> *labels_shape) {
+            Value &next = ImageStream::peek();
+            images_shape->clear();
+            images_shape->push_back(batch);
+            if (order == ORDER_NCHW) {
+                images_shape->push_back(next.image.channels());
+                images_shape->push_back(next.image.rows);
+                images_shape->push_back(next.image.cols);
+            }
+            else if (order == ORDER_NHWC) {
+                images_shape->push_back(next.image.rows);
+                images_shape->push_back(next.image.cols);
+                images_shape->push_back(next.image.channels());
+            }
+            else CHECK(0);
+
+            labels_shape->clear();
+            labels_shape->push_back(batch);
+            switch (task) {
+                case TASK_REGRESSION:
+                    CHECK(!next.annotation.data);
+                    break;
+                case TASK_CLASSIFICATION:
+                    CHECK(!next.annotation.data);
+                    labels_shape->push_back(onehot); break;
+                case TASK_PIXEL_REGRESSION:
+                    CHECK(next.annotation.data);
+                    if (order == ORDER_NCHW) {
+                        labels_shape->push_back(next.annotation.channels());
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                    }
+                    else {
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                        labels_shape->push_back(next.annotation.channels());
+                    }
+                    break;
+                case TASK_PIXEL_CLASSIFICATION:
+                    CHECK(next.annotation.data);
+                    CHECK(next.annotation.channels() == 1);
+                    if (order == ORDER_NCHW) {
+                        labels_shape->push_back(onehot);
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                    }
+                    else {
+                        labels_shape->push_back(next.annotation.rows);
+                        labels_shape->push_back(next.annotation.cols);
+                        labels_shape->push_back(onehot);
+                    }
+                    break;
+                default: CHECK(0);
+            }
+        }
+
+        template <typename T1=float, typename T2=float>
+        void next_fill (T1 *images, T2 *labels, unsigned *npad = nullptr) {
+            vector<unsigned> ishape, lshape;
+            vector<unsigned> ishape2, lshape2;
+            unsigned loaded = 0;
+            try {
+                for (unsigned i = 0; i < batch; ++i) {
+                    if (i) {
+                        next_shape(&ishape2, &lshape2);
+                        CHECK(ishape == ishape2);
+                        CHECK(lshape == lshape2);
+                    }
+                    else {
+                        next_shape(&ishape, &lshape);
+                    }
+                    Value v(next());
+                    if (order == ORDER_NCHW) {
+                        images = impl::split_copy<T1>(v.image, images, mean, bgr2rgb);
+                    }
+                    else {
+                        images = impl::copy<T1>(v.image, images, mean, bgr2rgb);
+                    }
+                    switch (task) {
+                        case TASK_REGRESSION:
+                            *labels = v.label;
+                            ++labels;
+                            break;
+                        case TASK_CLASSIFICATION:
+                            {
+                                unsigned c = unsigned(v.label);
+                                CHECK(c == v.label) << "float label for classification";
+                                CHECK(c <= MAX_CATEGORIES);
+                                std::fill(labels, labels + onehot, 0);
+                                labels[c] = 1;
+                                labels += onehot;
+                            }
+                            break;
+                        case TASK_PIXEL_REGRESSION:
+                            if (order == ORDER_NCHW) {
+                                labels = impl::split_copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
+                            }
+                            else {
+                                labels = impl::copy<T2>(v.annotation, labels, label_mean, bgr2rgb);
+                            }
+                            break;
+                        case TASK_PIXEL_CLASSIFICATION:
+                            labels = impl::onehot_encode<T2>(v.annotation, labels, onehot, order == ORDER_NCHW);
+                            break;
+                        default: CHECK(0);
+                    }
+                    ++loaded;
+                }
+            }
+            catch (EoS const &) {
+            }
+            //if ((pad && (loaded == 0)) || ((!pad) && (loaded < batch))) throw EoS();
+            if (loaded == 0) throw EoS();
+            if (npad) *npad = batch - loaded;
+        }
+    };
+#endif
+
+    cv::Mat decode_buffer (const_buffer, int mode = -1);
+    void encode_raw (cv::Mat, string *);
+    cv::Mat decode_raw (char const *, size_t);
+
+    class ImageEncoder {
+    protected:
+        string code;
+        vector<int> _params;
+    public:
+        ImageEncoder (string const &code_ =  string()): code(code_) {
+        }
+        vector<int> &params() { return _params; }
+        void encode (cv::Mat const &image, string *);
+    };
+
+    class ImageReader: public ImageEncoder {
+        int max;
+        int resize;
+        int mode;
+    public:
+        ImageReader (int max_ = 800, int resize_ = -1, int mode_ = cv::IMREAD_UNCHANGED, string const &code_ = string())
+            : ImageEncoder(code_), max(max_), resize(resize_), mode(mode_) {
+        }
+
+        void read (fs::path const &path, string *data);
+        void transcode (string const &input, string *data);
+    };
+
+    float LimitSize (cv::Mat input, int min_size, int max_size, cv::Mat *output);
+
+    static inline float LimitSize (cv::Mat input, int max_size, cv::Mat *output) {
+        return LimitSize(input, -1, max_size, output);
+    }
+
+}
+
