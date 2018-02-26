@@ -112,26 +112,37 @@ namespace picpac {
 
     struct Sample: private boost::noncopyable {
         float label;
-        vector<AnnotatedImage> images;
+        vector<AnnotatedImage> facets;
+
+        Sample () {}
 
         void swap (Sample &v) {
             std::swap(label, v.label);
-            images.swap(v.images);
+            facets.swap(v.facets);
         }
 
         void copy (Sample const &v) {
             label = v.label;
-            images.clear();
-            images.resize(v.images.size());
-            for (unsigned i = 0; i < images.size(); ++i) {
-                auto const &vi = v.images[i];
+            facets.clear();
+            facets.resize(v.facets.size());
+            for (unsigned i = 0; i < facets.size(); ++i) {
+                auto const &vi = v.facets[i];
                 if (vi.image.data) {
-                    images[i].image = v.images[i].image.clone();
+                    facets[i].image = v.facets[i].image.clone();
                 } if (!vi.annotation.empty()) {
-                    images[i].annotation.copy(vi.annotation);
+                    facets[i].annotation.copy(vi.annotation);
                 }
             }
         }
+
+        Sample (Sample &&s) {
+            swap(s);
+        }
+#if 0
+    private:
+        Sample (Sample &) = delete;
+        void operator = (Sample &) = delete;
+#endif
     };
 
     class Transform {
@@ -141,7 +152,7 @@ namespace picpac {
         virtual size_t pv_sample (random_engine &rng, void *pv) const = 0;
         virtual size_t apply (Sample *s, void *pv) const {
             size_t sz = pv_size();
-            for (auto &v: s->images) {
+            for (auto &v: s->facets) {
                 size_t s = apply_one(&v, pv);
                 CHECK(s == sz);
             }
@@ -149,11 +160,12 @@ namespace picpac {
         }
         virtual size_t apply_one (AnnotatedImage *, void *) const {
             CHECK(0) << "Not supported";
+            return 0;
         }
     };
 
     class Transforms: public Transform {
-        size_t total_pv_size;
+        int total_pv_size;
         vector<std::unique_ptr<Transform>> sub;
     public:
         Transforms (json const &spec): total_pv_size(0) {
@@ -200,32 +212,9 @@ namespace picpac {
             }
         };
 
-        struct Value: private boost::noncopyable {
-            float label;
-            vector<AnnotatedImage> images;
+        typedef Sample Value;
 
-            void swap (Value &v) {
-                std::swap(label, v.label);
-                images.swap(v.images);
-            }
-
-            void copy (Value const &v) {
-                label = v.label;
-                images.clear();
-                images.resize(v.images.size());
-                for (unsigned i = 0; i < images.size(); ++i) {
-                    auto const &vi = v.images[i];
-                    if (vi.image.data) {
-                        images[i].image = v.images[i].image.clone();
-                    }
-                    if (!vi.annotation.empty()) {
-                        images[i].annotation.copy(vi.annotation);
-                    }
-                }
-            }
-        };
-
-        typedef Value CacheValue;
+        typedef Sample CacheValue;
 
         struct PerturbVector {
             string buffer;

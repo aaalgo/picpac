@@ -175,6 +175,11 @@ namespace picpac {
             float label;
             cv::Mat image;
             cv::Mat annotation;
+            void swap (Value &v) {
+                std::swap(label, v.label);
+                cv::swap(image, v.image);
+                cv::swap(annotation, v.annotation);
+            }
         };
 
         typedef Value CacheValue;
@@ -300,6 +305,12 @@ namespace picpac {
             float label;
             vector<cv::Mat> images;
             cv::Mat annotation;
+
+            void swap (Value &v) {
+                std::swap(label, v.label);
+                images.swap(v.images);
+                cv::swap(annotation, v.annotation);
+            }
         };
 
         void load (RecordReader reader, PerturbVector const &pv, Value *value,

@@ -7,8 +7,10 @@ from distutils.core import setup, Extension
 
 libraries = []
 cv2libs = sp.check_output('pkg-config --libs opencv', shell=True).decode('ascii')
+cv_converter = 'pyboostcvconverter/src/pyboost_cv2_converter.cpp'
 if 'opencv_imgcodecs' in cv2libs:
     libraries.append('opencv_imgcodecs')
+    cv_converter = 'pyboostcvconverter/src/pyboost_cv3_converter.cpp'
     pass
 
 numpy_include = os.path.join(os.path.abspath(os.path.dirname(numpy.__file__)), 'core', 'include')
@@ -24,10 +26,10 @@ libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core', 'boost_file
 picpac = Extension('picpac',
         language = 'c++',
         extra_compile_args = ['-O3', '-std=c++1y'], 
-        include_dirs = ['/usr/local/include', 'json11', numpy_include],
+        include_dirs = ['/usr/local/include', 'pyboostcvconverter/include', numpy_include],
         libraries = libraries,
         library_dirs = ['/usr/local/lib'],
-        sources = ['python-api.cpp', 'picpac.cpp', 'picpac-cv.cpp', 'json11/json11.cpp'],
+        sources = ['python-api.cpp', 'picpac.cpp', 'picpac-image.cpp', cv_converter],
         depends = ['json11/json11.hpp', 'picpac.h', 'picpac-cv.h'])
 
 picpac_legacy = Extension('picpac_legacy',

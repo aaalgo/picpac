@@ -706,7 +706,7 @@ namespace picpac {
                 }
                 has_loaded.wait(lock);
             }
-            value_holder = std::move(next.value);
+            value_holder.swap(next.value);
             next.status = Task::EMPTY;
             --inqueue;
             next_loaded = (next_loaded + 1) % queue.size();

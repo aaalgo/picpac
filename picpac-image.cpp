@@ -17,7 +17,7 @@ namespace picpac {
                 lock_guard lock(*mutex);
                 cached.copy(*cache);
             }
-            if (cached.images.size() && cached.images[0].image.data) break;
+            if (cached.facets.size() && cached.facets[0].image.data) break;
             // cache miss, load the data
             Record r;
             rr(&r); // disk access
@@ -31,7 +31,7 @@ namespace picpac {
                 decode_mode = cv::IMREAD_COLOR;
             }
 
-            cached.images.emplace_back(decode_buffer(r.field(0), decode_mode));
+            cached.facets.emplace_back(decode_buffer(r.field(0), decode_mode));
 
             if (config.annotate) {
                 // load annotation
@@ -56,11 +56,11 @@ namespace picpac {
                     const_buffer buf = r.field(1);
                     const char* p = boost::asio::buffer_cast<const char*>(buf);
                     int sz = boost::asio::buffer_size(buf);
-                    cached.images.emplace_back(p, p + sz, cached.images.back().image.size());
+                    cached.facets.emplace_back(p, p + sz, cached.facets.back().image.size());
                 }
                 else if (tt == FIELD_ANNOTATION_IMAGE) {
                     const_buffer buf = r.field(1);
-                    cached.images.emplace_back(decode_buffer(buf, -1));
+                    cached.facets.emplace_back(decode_buffer(buf, -1));
                 }
             }
             if (cache) {

@@ -1,76 +1,43 @@
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+#define PY_ARRAY_UNIQUE_SYMBOL pbcvt_ARRAY_API
 #include <fstream>
 #include <boost/ref.hpp>
 #include <boost/python.hpp>
 #include <boost/python/make_constructor.hpp>
 #include <boost/python/raw_function.hpp>
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/ndarrayobject.h>
+#include <pyboostcvconverter/pyboostcvconverter.hpp>
 #include "picpac.h"
-#include "picpac-cv.h"
+#include "picpac-image.h"
 using namespace boost::python;
 using namespace picpac;
 
 namespace {
 
-template <typename T>
-T *get_ndarray_data (object &o) {
-    PyArrayObject *nd = reinterpret_cast<PyArrayObject *>(o.ptr());
-    return reinterpret_cast<T*>(PyArray_DATA(nd));
-}
-
-template <typename T>
-T *get_ndarray_data (PyObject *o) {
-    PyArrayObject *nd = reinterpret_cast<PyArrayObject *>(o);
-    return reinterpret_cast<T*>(PyArray_DATA(nd));
-}
-
-size_t get_ndarray_nbytes (object &o) {
-    PyArrayObject *nd = reinterpret_cast<PyArrayObject *>(o.ptr());
-    return size_t(PyArray_NBYTES(nd));
-}
-
-class NumpyBatchImageStream: public BatchImageStream {
+class PythonImageStream: public ImageStream {
 public:
-    NumpyBatchImageStream (std::string const &path, Config const &c)
-        : BatchImageStream(fs::path(path), c) {
+    PythonImageStream (std::string const &path, Config const &c)
+        : ImageStream(fs::path(path), c) {
     }
-    tuple next () {
-        vector<npy_intp> images_dims;
-        vector<npy_intp> labels_dims;
-        next_shape(&images_dims, &labels_dims);
-        PyObject *images = PyArray_SimpleNew(images_dims.size(), &images_dims[0], NPY_FLOAT);
-        //object images = object(boost::python::handle<>(
-        //CHECK(images.ptr());
-        CHECK(images);
-        float *images_buf = get_ndarray_data<float>(images);
-        PyObject *labels = PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT);
-        CHECK(labels);
-        //object labels = object(boost::python::handle<>(PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT)));
-        //CHECK(labels.ptr());
-        float *labels_buf = get_ndarray_data<float>(labels);
-        unsigned padding;
-        next_fill(images_buf, labels_buf, &padding);
-        if (padding > 0 & !pad) {
-            images_dims[0] -= padding;
-            labels_dims[0] -= padding;
-            PyArray_Dims d1, d2;
-            d1.ptr = &images_dims[0]; d1.len = images_dims.size();
-            d2.ptr = &labels_dims[0]; d2.len = labels_dims.size();
-            images = PyArray_Resize(reinterpret_cast<PyArrayObject *>(images), &d1, 1, NPY_CORDER);
-            labels = PyArray_Resize(reinterpret_cast<PyArrayObject *>(labels), &d2, 1, NPY_CORDER);
-            padding = 0;
+    list next () {
+        list l;
+        Value v(ImageStream::next());
+        l.append(v.label);
+        for (auto &im: v.facets) {
+            CHECK(im.annotation.empty());
+            l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
         }
-        return make_tuple(object(boost::python::handle<>(images)),
-                          object(boost::python::handle<>(labels)),
-                          padding);
+        return l;
     }
 };
 
-object create_image_stream (tuple args, dict kwargs) {
+object create_image_stream (object self, dict kwargs) {
+    /*
     object self = args[0];
     CHECK(len(args) > 1);
     string path = extract<string>(args[1]);
     NumpyBatchImageStream::Config config;
+    */
     /*
     bool train = extract<bool>(kwargs.get("train", true));
     unsigned K = extract<unsigned>(kwargs.get("K", 1));
@@ -85,6 +52,7 @@ object create_image_stream (tuple args, dict kwargs) {
         config.kfold(K, fold, train);
     }
     */
+    /*
 #define PICPAC_CONFIG_UPDATE(C, P) \
     C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P)) 
     PICPAC_CONFIG_UPDATE_ALL(config);
@@ -93,6 +61,10 @@ object create_image_stream (tuple args, dict kwargs) {
         LOG(ERROR) << "channel_first is depreciated, use order=\"NHWC\"";
         CHECK(false);
     }
+    */
+    string path;
+    PythonImageStream::Config config;
+
     return self.attr("__init__")(path, config);
 };
 
@@ -100,99 +72,6 @@ object return_iterator (tuple args, dict kwargs) {
     object self = args[0];
     self.attr("reset")();
     return self;
-};
-
-class NumpyMultiImageStream: public MultiImageStream {
-public:
-    struct Config: public MultiImageStream::Config {
-        float mean_color1;
-        float mean_color2;
-        float mean_color3;
-        unsigned onehot;
-        unsigned batch;
-        bool pad;
-        bool bgr2rgb;
-        string order;
-        Config ():
-            mean_color1(0),
-            mean_color2(0),
-            mean_color3(0),
-            onehot(0), batch(1), pad(false), bgr2rgb(false) {
-        }
-    };
-    Config config;
-    NumpyMultiImageStream (std::string const &path, Config const &c)
-        : MultiImageStream(fs::path(path), c), config(c) {
-    }
-    tuple next () {
-        CHECK(config.onehot == 0);
-        CHECK(config.batch == 1);
-        CHECK(config.pad == false);
-        Value v(MultiImageStream::next());
-        vector<npy_intp> images_dims;
-        vector<npy_intp> labels_dims;
-        CHECK(v.images.size() > 0);
-        cv::Mat const &im0 = v.images[0];
-        CHECK(im0.data);
-        images_dims.push_back(v.images.size());
-        images_dims.push_back(im0.rows);
-        images_dims.push_back(im0.cols);
-        images_dims.push_back(im0.channels());
-
-        labels_dims.push_back(1);
-        labels_dims.push_back(v.annotation.rows);
-        labels_dims.push_back(v.annotation.cols);
-        labels_dims.push_back(1);
-
-        object images = object(boost::python::handle<>(PyArray_SimpleNew(images_dims.size(), &images_dims[0], NPY_FLOAT)));
-        CHECK(images.ptr());
-        float *images_buf = get_ndarray_data<float>(images);
-        float *images_buf0 = images_buf;
-        // copy images
-        cv::Scalar mean0{config.mean_color1, config.mean_color2, config.mean_color3};
-        for (unsigned i = 0; i < v.images.size(); ++i) {
-            cv::Mat const &im = v.images[i];
-            CHECK(im.rows == im0.rows);
-            CHECK(im.cols == im0.cols);
-            CHECK(im.channels() == im0.channels());
-            images_buf = impl::copy<float>(im, images_buf, mean0, config.bgr2rgb);
-        }
-        CHECK((images_buf - images_buf0) * sizeof(float) == get_ndarray_nbytes(images));
-        object labels = object(boost::python::handle<>(PyArray_SimpleNew(labels_dims.size(), &labels_dims[0], NPY_FLOAT)));
-        CHECK(labels.ptr());
-        float *labels_buf = get_ndarray_data<float>(labels);
-        float *labels_buf0 = labels_buf;
-        labels_buf = impl::copy<float>(v.annotation, labels_buf, mean0, config.bgr2rgb);
-        CHECK((labels_buf - labels_buf0) * sizeof(float) == get_ndarray_nbytes(labels));
-        return make_tuple(v.label, images, labels);
-    }
-};
-
-object create_multi_image_stream (tuple args, dict kwargs) {
-    object self = args[0];
-    CHECK(len(args) > 1);
-    string path = extract<string>(args[1]);
-    NumpyMultiImageStream::Config config;
-    /*
-    bool train = extract<bool>(kwargs.get("train", true));
-    unsigned K = extract<unsigned>(kwargs.get("K", 1));
-    unsigned fold = extract<unsigned>(kwargs.get("fold", 0));
-    if (K <= 1) {
-        if (!train) {
-            config.loop = false;
-            config.reshuffle = false;
-        }
-    }
-    else {
-        config.kfold(K, fold, train);
-    }
-    */
-#define PICPAC_CONFIG_UPDATE(C, P) \
-    C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P)) 
-    PICPAC_CONFIG_UPDATE_ALL(config);
-#undef PICPAC_CONFIG_UPDATE
-    config.cache = 0;
-    return self.attr("__init__")(path, config);
 };
 
 class Writer: public FileWriter {
@@ -356,32 +235,25 @@ void translate_eos (EoS const &)
 auto init_numpy()
 {
     import_array();
-    //return 0;
 }
 
 BOOST_PYTHON_MODULE(_picpac)
 {
 	init_numpy();
+    to_python_converter<cv::Mat,
+                     pbcvt::matToNDArrayBoostConverter>();
+
     scope().attr("__doc__") = "PicPoc Python API";
     register_exception_translator<EoS>(&translate_eos);
-    class_<NumpyBatchImageStream::Config>("ImageStreamParams", init<>());
-    class_<NumpyBatchImageStream, boost::noncopyable>("ImageStream", no_init)
+    class_<PythonImageStream::Config>("ImageStreamParams", init<>());
+    class_<PythonImageStream, boost::noncopyable>("ImageStream", no_init)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
         .def("__iter__", raw_function(return_iterator))
-        .def(init<string, NumpyBatchImageStream::Config const&>()) // C++ constructor not exposed
-        .def("next", &NumpyBatchImageStream::next)
-        .def("size", &NumpyBatchImageStream::size)
-        .def("reset", &NumpyBatchImageStream::reset)
-        .def("categories", &NumpyBatchImageStream::categories)
-    ;
-    class_<NumpyMultiImageStream::Config>("MultiImageStreamParams", init<>());
-    class_<NumpyMultiImageStream, boost::noncopyable>("MultiImageStream", no_init)
-        .def("__init__", raw_function(create_multi_image_stream), "exposed ctor")
-        .def("__iter__", raw_function(return_iterator))
-        .def(init<string, NumpyMultiImageStream::Config const&>()) // C++ constructor not exposed
-        .def("next", &NumpyMultiImageStream::next)
-        .def("size", &NumpyMultiImageStream::size)
-        .def("reset", &NumpyMultiImageStream::reset)
+        .def(init<string, PythonImageStream::Config const&>()) // C++ constructor not exposed
+        .def("next", &PythonImageStream::next)
+        .def("size", &PythonImageStream::size)
+        .def("reset", &PythonImageStream::reset)
+        //.def("categories", &PythonImageStream::categories)
     ;
     class_<Reader>("Reader", init<string>())
         .def("__iter__", raw_function(return_iterator))
