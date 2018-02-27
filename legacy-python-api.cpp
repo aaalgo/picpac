@@ -359,7 +359,7 @@ auto init_numpy()
     //return 0;
 }
 
-BOOST_PYTHON_MODULE(picpac_legacy)
+BOOST_PYTHON_MODULE(_picpac)
 {
 	init_numpy();
     scope().attr("__doc__") = "PicPoc Python API";

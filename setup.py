@@ -32,7 +32,7 @@ picpac = Extension('picpac',
         sources = ['python-api.cpp', 'picpac.cpp', 'picpac-image.cpp', 'shapes.cpp', 'transforms.cpp', cv_converter],
         depends = ['json11/json11.hpp', 'picpac.h', 'picpac-cv.h'])
 
-picpac_legacy = Extension('picpac_legacy',
+picpac_legacy = Extension('_picpac',
         language = 'c++',
         extra_compile_args = ['-O3', '-std=c++1y'], 
         include_dirs = ['/usr/local/include', 'json11', numpy_include],
@@ -49,7 +49,7 @@ setup (name = 'picpac',
        license = 'BSD',
        description = 'This is a demo package',
        ext_modules = [picpac, picpac_legacy],
-       py_modules = ['picpac.mxnet', 'picpac.neon'],
+       py_modules = ['picpac_legacy.mxnet', 'picpac_legacy.neon'],
        requires = ["cv2"],
        )
 
