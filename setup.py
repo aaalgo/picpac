@@ -1,6 +1,5 @@
 import sys
 import os
-import cv2
 import subprocess as sp
 import numpy
 from distutils.core import setup, Extension

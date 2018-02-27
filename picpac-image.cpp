@@ -33,8 +33,18 @@ namespace picpac {
             else if (config.channels == 3) {
                 decode_mode = cv::IMREAD_COLOR;
             }
+            cv::Mat image = decode_buffer(r.field(0), decode_mode);
+            int channels = config.channels;
+            if (channels < 0) channels = image.channels();
+            int type = CV_MAKETYPE(config.dtype, channels);
 
-            cached.facets.emplace_back(decode_buffer(r.field(0), decode_mode));
+            if (image.type() != type) {
+                cv::Mat tmp;
+                image.convertTo(tmp, type);
+                image = tmp;
+            }
+
+            cached.facets.emplace_back(image);
 
             if (config.annotate) {
                 // load annotation

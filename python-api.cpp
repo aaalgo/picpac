@@ -13,11 +13,47 @@ using namespace boost::python;
 using namespace picpac;
 namespace {
 
-class PythonImageStream: public ImageStream {
+class PyImageStream: public ImageStream {
 public:
-    PythonImageStream (std::string const &path, Config const &c)
-        : ImageStream(fs::path(path), c) {
+    struct Config: public ImageStream::Config {
+        Config (dict const &kwargs) {
+            boost::python::object simplejson = boost::python::import("simplejson");
+
+            //dict sampler = kwargs.get("sampler");
+#define UPDATE_CONFIG(V, D) \
+            V = extract<decltype(V)>(D.get(#V, V)) 
+            //UPDATE_CONFIG(seed, sampler);
+            UPDATE_CONFIG(loop, kwargs);
+            UPDATE_CONFIG(shuffle, kwargs);
+            UPDATE_CONFIG(reshuffle, kwargs);
+            UPDATE_CONFIG(stratify, kwargs);
+#if 0
+            split, split_fold, split_negate
+            mixin, mixin_group_reset, mixin_group_delta, mixin_max
+#endif
+
+
+            UPDATE_CONFIG(mixin, kwargs);
+
+            //dict loader = kwargs.get("loader");
+            UPDATE_CONFIG(cache, kwargs);
+            UPDATE_CONFIG(preload, kwargs);
+            UPDATE_CONFIG(threads, kwargs);
+            UPDATE_CONFIG(channels, kwargs);
+            UPDATE_CONFIG(annotate, kwargs);
+#undef UPDATE_CONFIG
+            // check dtype
+            string dt = extract<string>(kwargs.get("dtype", "uint8"));
+            dtype = dtype_np2cv(dt);
+            object trans = kwargs.get("transforms", list());
+            transforms = extract<string>(simplejson.attr("dumps")(trans));
+        }
+    };
+
+    PyImageStream (dict conf) //{std::string const &path, Config const &c)
+        : ImageStream(fs::path(extract<string>(conf.get("db"))), Config(conf)) {
     }
+
     list next () {
         list l;
         Value v(ImageStream::next());
@@ -30,20 +66,6 @@ public:
     }
 };
 
-object create_image_stream (tuple args, dict kwargs) {
-    object self = args[0];
-    boost::python::object simplejson = boost::python::import("simplejson");
-    PythonImageStream::Config config;
-    string path = extract<string>(kwargs.get("db"));
-#define PICPAC_CONFIG_UPDATE(C, P) \
-    C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P)) 
-    PICPAC_CONFIG_UPDATE_ALL(config);
-#undef PICPAC_CONFIG_UPDATE
-    object transforms = kwargs.get("transforms", list());
-    config.transforms = extract<string>(simplejson.attr("dumps")(transforms));
-    return self.attr("__init__")(path, config);
-};
-
 object return_iterator (tuple args, dict kwargs) {
     object self = args[0];
     self.attr("reset")();
@@ -53,7 +75,8 @@ object return_iterator (tuple args, dict kwargs) {
 class Writer: public FileWriter {
     int nextid;
 public:
-    Writer (string const &path, bool overwrite): FileWriter(fs::path(path), FileWriter::COMPACT | (overwrite ? FileWriter::OVERWRITE : 0)), nextid(0) {
+    int const FLAG_OVERWRITE = OVERWRITE;
+    Writer (string const &path, int flags): FileWriter(fs::path(path), flags), nextid(0) {
     }
 
     void setNextId (int v) {
@@ -229,18 +252,15 @@ BOOST_PYTHON_MODULE(picpac)
 
     pbcvt::matFromNDArrayBoostConverter();
     register_exception_translator<EoS>(&translate_eos);
-    class_<PythonImageStream::Config>("ImageStreamParams", init<>());
-    class_<PythonImageStream, boost::noncopyable>("ImageStream", no_init)
-        .def("__init__", raw_function(create_image_stream), "exposed ctor")
+    class_<PyImageStream, boost::noncopyable>("ImageStream", init<dict>())
         .def("__iter__", raw_function(return_iterator))
-        .def(init<string, PythonImageStream::Config const&>()) // C++ constructor not exposed
 #if (PY_VERSION_HEX >= 0x03000000)
-        .def("__next__", &PythonImageStream::next)
+        .def("__next__", &PyImageStream::next)
 #endif
-        .def("next", &PythonImageStream::next)
-        .def("size", &PythonImageStream::size)
-        .def("reset", &PythonImageStream::reset)
-        //.def("categories", &PythonImageStream::categories)
+        .def("next", &PyImageStream::next)
+        .def("size", &PyImageStream::size)
+        .def("reset", &PyImageStream::reset)
+        //.def("categories", &PyImageStream::categories)
     ;
     class_<Reader>("Reader", init<string>())
         .def("__iter__", raw_function(return_iterator))
@@ -253,6 +273,7 @@ BOOST_PYTHON_MODULE(picpac)
         .def("reset", &Reader::reset)
     ;
     class_<Writer>("Writer", init<string, bool>())
+        .def_readonly("OVERWRITE", &Writer::FLAG_OVERWRITE)
         .def("append", append1)
         .def("append", append2)
         .def("append", append3)

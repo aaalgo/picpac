@@ -29,6 +29,21 @@
 
 namespace picpac {
 
+    static inline int dtype_np2cv (string const &dt) {
+        if (dt == "uint8") {
+            return CV_8U;
+        }
+        else if (dt == "float32") {
+            return CV_32F;
+        }
+        else if (dt == "int32") {
+            return CV_32S;
+        }
+        else CHECK(false) << "dtype not supported.";
+        return 0;
+    }
+
+
 	using json = nlohmann::json;
 
     struct RenderOptions {
@@ -77,9 +92,10 @@ namespace picpac {
         cv::Size size;
         vector<std::unique_ptr<Shape>> shapes;
 
-        Annotation () {}
+        Annotation (): size(0,0) {}
         Annotation (char const *begin, char const *end, cv::Size);
-        bool empty () const { return shapes.empty(); }
+        bool empty () const { return size.width == 0;}
+        void clear () { size = cv::Size(0, 0); shapes.clear(); }
 
         void transform (std::function<void(vector<cv::Point2f> *)> f) {
             for (auto &s: shapes) {
@@ -138,6 +154,22 @@ namespace picpac {
             cv::swap(image, ai.image);
             annotation.swap(ai.annotation);
         }
+
+        cv::Size check_size () const {
+            cv::Size image_sz(0,0);
+            if (image.data) {
+                image_sz = image.size();
+            }
+            cv::Size anno_sz = annotation.size;
+            if (image_sz.width > 0 && anno_sz.width == 0) return image_sz;
+            if (image_sz.width == 0 && anno_sz.width > 0) return anno_sz;
+            if (image_sz.width > 0 && anno_sz.width > 0) {
+                CHECK(image_sz == anno_sz);
+                return image_sz;
+            }
+            CHECK(0);
+            return image_sz;
+        }
     private:
         Facet (Facet &) = delete;
         void operator = (Facet &) = delete;
@@ -194,6 +226,7 @@ namespace picpac {
             }
             return sz;
         }
+
         virtual size_t apply_one (Facet *, void const *) const {
             return 0;
         }
@@ -237,10 +270,12 @@ namespace picpac {
     public:
         struct Config {
             int channels;       // -1: unchanged
+            int dtype;
             bool annotate;
             string transforms;
             Config ()
                 : channels(-1), // unchanged
+                dtype(CV_8U),
                 annotate(false),
                 transforms("[]")
 
