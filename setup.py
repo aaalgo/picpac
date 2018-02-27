@@ -29,7 +29,7 @@ picpac = Extension('picpac',
         include_dirs = ['/usr/local/include', 'pyboostcvconverter/include', numpy_include],
         libraries = libraries,
         library_dirs = ['/usr/local/lib'],
-        sources = ['python-api.cpp', 'picpac.cpp', 'picpac-image.cpp', cv_converter],
+        sources = ['python-api.cpp', 'picpac.cpp', 'picpac-image.cpp', 'shapes.cpp', 'transforms.cpp', cv_converter],
         depends = ['json11/json11.hpp', 'picpac.h', 'picpac-cv.h'])
 
 picpac_legacy = Extension('picpac_legacy',

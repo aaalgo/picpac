@@ -16,3 +16,6 @@
 [submodule "Simple-Web-Extra"]
 	path = Simple-Web-Extra
 	url = https://github.com/aaalgo/Simple-Web-Extra
+[submodule "pyboostcvconverter"]
+	path = pyboostcvconverter
+	url = https://github.com/Algomorph/pyboostcvconverter

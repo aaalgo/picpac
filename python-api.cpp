@@ -32,39 +32,15 @@ public:
 };
 
 object create_image_stream (object self, dict kwargs) {
-    /*
-    object self = args[0];
-    CHECK(len(args) > 1);
-    string path = extract<string>(args[1]);
-    NumpyBatchImageStream::Config config;
-    */
-    /*
-    bool train = extract<bool>(kwargs.get("train", true));
-    unsigned K = extract<unsigned>(kwargs.get("K", 1));
-    unsigned fold = extract<unsigned>(kwargs.get("fold", 0));
-    if (K <= 1) {
-        if (!train) {
-            config.loop = false;
-            config.reshuffle = false;
-        }
-    }
-    else {
-        config.kfold(K, fold, train);
-    }
-    */
-    /*
+    boost::python::object simplejson = boost::python::import("simplejson");
+    PythonImageStream::Config config;
+    string path = extract<string>(kwargs.get("db"));
 #define PICPAC_CONFIG_UPDATE(C, P) \
     C.P = extract<decltype(C.P)>(kwargs.get(#P, C.P)) 
     PICPAC_CONFIG_UPDATE_ALL(config);
 #undef PICPAC_CONFIG_UPDATE
-    if (kwargs.has_key("channel_first")) {
-        LOG(ERROR) << "channel_first is depreciated, use order=\"NHWC\"";
-        CHECK(false);
-    }
-    */
-    string path;
-    PythonImageStream::Config config;
-
+    object transforms = kwargs.get("transforms", list());
+    config.transforms = extract<string>(simplejson.attr("dumps")(transforms));
     return self.attr("__init__")(path, config);
 };
 
@@ -77,7 +53,7 @@ object return_iterator (tuple args, dict kwargs) {
 class Writer: public FileWriter {
     int nextid;
 public:
-    Writer (string const &path): FileWriter(fs::path(path), FileWriter::COMPACT), nextid(0) {
+    Writer (string const &path, bool overwrite): FileWriter(fs::path(path), FileWriter::COMPACT | (overwrite ? FileWriter::OVERWRITE : 0)), nextid(0) {
     }
 
     void setNextId (int v) {
@@ -262,7 +238,7 @@ BOOST_PYTHON_MODULE(_picpac)
         .def("read", &Reader::read)
         .def("reset", &Reader::reset)
     ;
-    class_<Writer>("Writer", init<string>())
+    class_<Writer>("Writer", init<string, bool>())
         .def("append", append1)
         .def("append", append2)
         .def("append", append3)

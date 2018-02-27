@@ -6,6 +6,27 @@
 #include "picpac.h"
 #include "3rdparty/json.hpp"
 
+#define PICPAC_CONFIG picpac::ImageStream::Config
+
+#define PICPAC_CONFIG_UPDATE_ALL(C) \
+    PICPAC_CONFIG_UPDATE(C,seed);\
+    PICPAC_CONFIG_UPDATE(C,loop);\
+    PICPAC_CONFIG_UPDATE(C,shuffle);\
+    PICPAC_CONFIG_UPDATE(C,reshuffle);\
+    PICPAC_CONFIG_UPDATE(C,stratify);\
+    PICPAC_CONFIG_UPDATE(C,split);\
+    PICPAC_CONFIG_UPDATE(C,split_fold);\
+    PICPAC_CONFIG_UPDATE(C,split_negate);\
+    PICPAC_CONFIG_UPDATE(C,mixin);\
+    PICPAC_CONFIG_UPDATE(C,mixin_group_reset);\
+    PICPAC_CONFIG_UPDATE(C,mixin_group_delta);\
+    PICPAC_CONFIG_UPDATE(C,mixin_max);\
+    PICPAC_CONFIG_UPDATE(C,cache);\
+    PICPAC_CONFIG_UPDATE(C,preload);\
+    PICPAC_CONFIG_UPDATE(C,threads);\
+    PICPAC_CONFIG_UPDATE(C,channels);\
+    PICPAC_CONFIG_UPDATE(C,annotate);
+
 namespace picpac {
 
 	using json = nlohmann::json;
@@ -148,8 +169,12 @@ namespace picpac {
     class Transform {
     public:
         static std::unique_ptr<Transform> create (json const &);
-        virtual size_t pv_size () const = 0;   // size of pert vector
-        virtual size_t pv_sample (random_engine &rng, void *pv) const = 0;
+        virtual size_t pv_size () const {
+            return 0;
+        }
+        virtual size_t pv_sample (random_engine &rng, void *pv) const {
+            return 0;
+        }
         virtual size_t apply (Sample *s, void *pv) const {
             size_t sz = pv_size();
             for (auto &v: s->facets) {
@@ -159,7 +184,6 @@ namespace picpac {
             return sz;
         }
         virtual size_t apply_one (AnnotatedImage *, void *) const {
-            CHECK(0) << "Not supported";
             return 0;
         }
     };
@@ -203,10 +227,12 @@ namespace picpac {
         struct Config {
             int channels;       // -1: unchanged
             bool annotate;
-            json transforms;
+            string transforms;
             Config ()
                 : channels(-1), // unchanged
-                annotate(false)
+                annotate(false),
+                transforms("[]")
+
             {
                 CHECK(channels == -1 || channels == 1 || channels == 3);
             }
@@ -222,7 +248,7 @@ namespace picpac {
 
 
         ImageLoader (Config const &c)
-            : config(c), transforms(c.transforms), pv_size(transforms.pv_size())
+            : config(c), transforms(json::parse(c.transforms)), pv_size(transforms.pv_size())
         {
         }
 
