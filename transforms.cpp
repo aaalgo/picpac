@@ -65,17 +65,103 @@ namespace picpac {
     class AugFlip: public Transform {
         bool horizontal;
         bool vertical;
+        struct PerturbVector {
+            bool horizontal;
+            bool vertical;
+        };
     public:
         AugFlip (json const &spec) {
             horizontal = spec.value<bool>("horizontal", true);
             vertical = spec.value<bool>("vertical", true);
         }
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->horizontal = horizontal && (rng() % 2);
+            pv->vertical = vertical && (rng() % 2);
+            return sizeof(PerturbVector);
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            bool hflip = pv->horizontal;
+            bool vflip = pv->vertical;
+            if (facet->image.data) {
+                if (hflip && vflip) {
+                    cv::flip(facet->image, facet->image, -1);
+                }
+                else if (hflip && !vflip) {
+                    cv::flip(facet->image, facet->image, 1);
+                }
+                else if (!hflip && vflip) {
+                    cv::flip(facet->image, facet->image, 0);
+                }
+            }
+            if (facet->annotation.shapes.size()) {
+                cv::Size sz = facet->annotation.size;
+                if (hflip && vflip) {
+                    facet->annotation.transform([sz](vector<cv::Point2f> *f) {
+                        for (auto &pt: *f) {
+                            pt.x = sz.width - pt.x;
+                            pt.y = sz.height - pt.y;
+                        }
+                    });
+                }
+                else if (hflip && !vflip) {
+                    facet->annotation.transform([sz](vector<cv::Point2f> *f) {
+                        for (auto &pt: *f) {
+                            pt.x = sz.width - pt.x;
+                        }
+                    });
+                }
+                else if (!hflip && vflip) {
+                    facet->annotation.transform([sz](vector<cv::Point2f> *f) {
+                        for (auto &pt: *f) {
+                            pt.y = sz.height - pt.y;
+                        }
+                    });
+                }
+            }
+            return sizeof(PerturbVector);
+        }
     };
 
     class AugScale: public Transform {
+        std::uniform_real_distribution<float> linear_scale;
+        struct PerturbVector {
+            float scale;
+        };
     public:
-        AugScale (json const &spec) {
-            CHECK(false);
+        AugScale (json const &spec): linear_scale(spec.value("min", 1.0), spec.value("max", 1.0)) {
+        }
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->scale = const_cast<AugScale *>(this)->linear_scale(rng);
+            return sizeof(PerturbVector);
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            if (facet->image.data) {
+                cv::Size sz = facet->image.size();
+                sz.width = std::round(sz.width * pv->scale);
+                sz.height = std::round(sz.height * pv->scale);
+                cv::resize(facet->image, facet->image, sz);
+            }
+            if (facet->annotation.shapes.size()) {
+                cv::Size sz = facet->annotation.size;
+                sz.width = std::round(sz.width * pv->scale);
+                sz.height = std::round(sz.height * pv->scale);
+                float fx = 1.0 * sz.width / facet->annotation.size.width;
+                float fy = 1.0 * sz.height / facet->annotation.size.height;
+
+                facet->annotation.transform([fx, fy](vector<cv::Point2f> *f) {
+                        for (auto &pt: *f) {
+                            pt.x *= fx;
+                            pt.y *= fy;
+                        }
+                });
+            }
+            return sizeof(PerturbVector);
         }
     };
 
