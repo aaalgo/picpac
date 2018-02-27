@@ -2,9 +2,26 @@
 
 namespace picpac {
 
+    vector<cv::Scalar> PALETTE{
+             {180, 119, 31}, {232, 199, 174}, {14, 127, 255}, {120, 187, 255},
+			 {44, 160, 44}, {138, 223, 152}, {40, 39, 214}, {150, 152, 255},
+			 {189, 103, 148}, {213, 176, 197}, {75, 86, 140}, {148, 156, 196},
+			 {194, 119, 227}, {210, 182, 247}, {127, 127, 127}, {199, 199, 199},
+			 {34, 189, 188}, {141, 219, 219}, {207, 190, 23}, {229, 218, 158}};
+
     cv::Point round (cv::Point2f p) {
         return cv::Point(std::round(p.x), std::round(p.y));
     }
+
+    cv::Scalar Shape::render_color (RenderOptions const &opt) const {
+        if (opt.use_palette) {
+            return PALETTE[rand() % PALETTE.size()];
+        }
+        else {
+            return color;
+        }
+    }
+
 
     class Point: public Shape {
     public:
@@ -17,7 +34,7 @@ namespace picpac {
             return std::unique_ptr<Shape>(new Point(*this));
         }
         virtual void render (cv::Mat *m, RenderOptions const &opt) const {
-            cv::circle(*m, round(controls[0]), opt.point_radius, color, opt.thickness, opt.line_type, opt.shift);
+            cv::circle(*m, round(controls[0]), opt.point_radius, render_color(opt), opt.thickness, opt.line_type, opt.shift);
         }
     };
 
@@ -39,7 +56,7 @@ namespace picpac {
         }
 
         virtual void render (cv::Mat *m, RenderOptions const &opt) const {
-            cv::rectangle(*m, round(controls[0]), round(controls[1]), color, opt.thickness, opt.line_type, opt.shift);
+            cv::rectangle(*m, round(controls[0]), round(controls[1]), render_color(opt), opt.thickness, opt.line_type, opt.shift);
         }
 
 #if 0
@@ -98,7 +115,7 @@ namespace picpac {
     public:
         Polygon (json const &geo, cv::Size sz): Shape("polygon") {
             for (auto const &p: geo.at("points")) {
-                controls.emplace_back(p.at("x").get<float>(), p.at("y").get<float>());
+                controls.emplace_back(p.at("x").get<float>() * sz.width, p.at("y").get<float>() * sz.height);
             }
         }
 
@@ -115,10 +132,10 @@ namespace picpac {
             cv::Point const *pps = &ps[0];
             int const nps = ps.size();
             if (opt.thickness == CV_FILLED) {
-                cv::fillPoly(*m, &pps, &nps, 1, color, opt.line_type, opt.shift);
+                cv::fillPoly(*m, &pps, &nps, 1, render_color(opt), opt.line_type, opt.shift);
             }
             else {
-                cv::polylines(*m, &pps, &nps, 1, true, color, opt.thickness, opt.line_type, opt.shift);
+                cv::polylines(*m, &pps, &nps, 1, true, render_color(opt), opt.thickness, opt.line_type, opt.shift);
             }
         }
 

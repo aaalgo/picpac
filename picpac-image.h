@@ -36,14 +36,17 @@ namespace picpac {
         int line_type;
         int shift;
         int point_radius;
-        bool showNumbers;
+        bool show_numbers;
+        bool use_palette;
 
         RenderOptions ()
             : thickness(CV_FILLED),
             line_type(8),
             shift(0),
             point_radius(5),
-            showNumbers(false) {
+            show_numbers(false),
+            use_palette(false)
+        {
         }
     };
 
@@ -56,6 +59,8 @@ namespace picpac {
         char const *type;   // text name
         cv::Scalar color;
         vector<cv::Point2f> controls;
+
+        cv::Scalar render_color (RenderOptions const &) const;
     public:
         Shape (char const *t): type(t), color(1.0, 1.0, 1.0, 1.0) {}
         virtual ~Shape () {}
@@ -104,36 +109,43 @@ namespace picpac {
 
     // image with annotation
     //
-    struct AnnotatedImage {
+    struct Facet {
+        enum {
+            IMAGE = 1,
+            LABEL = 2
+        };
+        int type;
         cv::Mat image;
         Annotation annotation;
 
-        AnnotatedImage () {}
+        Facet (): type(IMAGE) {}
 
-        AnnotatedImage (char const *begin, char const *end, cv::Size sz):
+        Facet (char const *begin, char const *end, cv::Size sz): type(LABEL),
             annotation(begin, end, sz) {
         }
 
-        AnnotatedImage (cv::Mat v): image(v) {
+        Facet (cv::Mat v): type(IMAGE), image(v) {
         }
 
-        AnnotatedImage (AnnotatedImage &&ai) {
+        Facet (Facet &&ai) {
+            std::swap(type, ai.type);
             cv::swap(image, ai.image);
             annotation.swap(ai.annotation);
         }
 
-        void operator = (AnnotatedImage &&ai) {
+        void operator = (Facet &&ai) {
+            std::swap(type, ai.type);
             cv::swap(image, ai.image);
             annotation.swap(ai.annotation);
         }
     private:
-        AnnotatedImage (AnnotatedImage &) = delete;
-        void operator = (AnnotatedImage &) = delete;
+        Facet (Facet &) = delete;
+        void operator = (Facet &) = delete;
     };
 
     struct Sample: private boost::noncopyable {
         float label;
-        vector<AnnotatedImage> facets;
+        vector<Facet> facets;
 
         Sample () {}
 
@@ -150,9 +162,8 @@ namespace picpac {
                 auto const &vi = v.facets[i];
                 if (vi.image.data) {
                     facets[i].image = v.facets[i].image.clone();
-                } if (!vi.annotation.empty()) {
-                    facets[i].annotation.copy(vi.annotation);
-                }
+                } 
+                facets[i].annotation.copy(vi.annotation);
             }
         }
 
@@ -175,7 +186,7 @@ namespace picpac {
         virtual size_t pv_sample (random_engine &rng, void *pv) const {
             return 0;
         }
-        virtual size_t apply (Sample *s, void *pv) const {
+        virtual size_t apply (Sample *s, void const *pv) const {
             size_t sz = pv_size();
             for (auto &v: s->facets) {
                 size_t s = apply_one(&v, pv);
@@ -183,7 +194,7 @@ namespace picpac {
             }
             return sz;
         }
-        virtual size_t apply_one (AnnotatedImage *, void *) const {
+        virtual size_t apply_one (Facet *, void const *) const {
             return 0;
         }
     };
@@ -210,9 +221,9 @@ namespace picpac {
             CHECK(total_pv_size == o-p);
             return total_pv_size;
         }
-        virtual size_t apply (Sample *s, void *pv) const {
-            char *p = reinterpret_cast<char *>(pv);
-            char *o = p;
+        virtual size_t apply (Sample *s, void const *pv) const {
+            char const *p = reinterpret_cast<char const *>(pv);
+            char const *o = p;
             for (unsigned i = 0; i < sub.size(); ++i) {
                 o += sub[i]->apply(s, o);
             }
@@ -252,7 +263,7 @@ namespace picpac {
         {
         }
 
-        void sample (random_engine &e, PerturbVector *p) {
+        void sample (random_engine &e, PerturbVector *p) const {
             p->buffer.resize(pv_size);
             transforms.pv_sample(e, &p->buffer[0]);
         }

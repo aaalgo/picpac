@@ -3,13 +3,16 @@
 namespace picpac {
 
     Annotation::Annotation (char const *begin, char const *end, cv::Size sz): size(sz) {
-        json anno = json::parse(begin, end);
-        for (auto const &shape: anno.at("shapes")) {
-            shapes.emplace_back(Shape::create(shape, size));
+        //std::cerr << string(begin, end) << std::endl;
+        if (begin) {
+            json anno = json::parse(begin, end);
+            for (auto const &shape: anno.at("shapes")) {
+                shapes.emplace_back(Shape::create(shape, size));
+            }
         }
     }
 
-    void ImageLoader::load (RecordReader rr, PerturbVector const &p, Value *out,
+    void ImageLoader::load (RecordReader rr, PerturbVector const &pv, Value *out,
            CacheValue *cache, std::mutex *mutex) const {
         Value cached;
         do {
@@ -62,6 +65,10 @@ namespace picpac {
                     const_buffer buf = r.field(1);
                     cached.facets.emplace_back(decode_buffer(buf, -1));
                 }
+                else {
+                    cached.facets.emplace_back(nullptr, nullptr, cached.facets.back().image.size());
+                }
+                cached.facets.back().type = Facet::LABEL;
             }
             if (cache) {
                 // write to cache
@@ -70,6 +77,8 @@ namespace picpac {
             }
         } while (false);
         // apply transformation
+        transforms.apply(&cached, &pv.buffer[0]);
+
 
         out->swap(cached);
     }

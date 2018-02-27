@@ -1,17 +1,16 @@
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL pbcvt_ARRAY_API
 #include <fstream>
 #include <boost/ref.hpp>
 #include <boost/python.hpp>
 #include <boost/python/make_constructor.hpp>
 #include <boost/python/raw_function.hpp>
-#include <numpy/ndarrayobject.h>
+//#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+//#include <numpy/ndarrayobject.h>
 #include <pyboostcvconverter/pyboostcvconverter.hpp>
 #include "picpac.h"
 #include "picpac-image.h"
 using namespace boost::python;
 using namespace picpac;
-
 namespace {
 
 class PythonImageStream: public ImageStream {
@@ -31,7 +30,8 @@ public:
     }
 };
 
-object create_image_stream (object self, dict kwargs) {
+object create_image_stream (tuple args, dict kwargs) {
+    object self = args[0];
     boost::python::object simplejson = boost::python::import("simplejson");
     PythonImageStream::Config config;
     string path = extract<string>(kwargs.get("db"));
@@ -207,25 +207,36 @@ void translate_eos (EoS const &)
 
 }
 
+#if (PY_VERSION_HEX >= 0x03000000)
 
-auto init_numpy()
-{
-    import_array();
-}
+static void *init_numpy() {
+#else
+	static void init_numpy(){
+#endif
 
-BOOST_PYTHON_MODULE(_picpac)
+	import_array();
+	return NUMPY_IMPORT_ARRAY_RETVAL;
+}   
+
+
+
+BOOST_PYTHON_MODULE(picpac)
 {
 	init_numpy();
+    scope().attr("__doc__") = "PicPoc Python API";
     to_python_converter<cv::Mat,
                      pbcvt::matToNDArrayBoostConverter>();
 
-    scope().attr("__doc__") = "PicPoc Python API";
+    pbcvt::matFromNDArrayBoostConverter();
     register_exception_translator<EoS>(&translate_eos);
     class_<PythonImageStream::Config>("ImageStreamParams", init<>());
     class_<PythonImageStream, boost::noncopyable>("ImageStream", no_init)
         .def("__init__", raw_function(create_image_stream), "exposed ctor")
         .def("__iter__", raw_function(return_iterator))
         .def(init<string, PythonImageStream::Config const&>()) // C++ constructor not exposed
+#if (PY_VERSION_HEX >= 0x03000000)
+        .def("__next__", &PythonImageStream::next)
+#endif
         .def("next", &PythonImageStream::next)
         .def("size", &PythonImageStream::size)
         .def("reset", &PythonImageStream::reset)
@@ -233,6 +244,9 @@ BOOST_PYTHON_MODULE(_picpac)
     ;
     class_<Reader>("Reader", init<string>())
         .def("__iter__", raw_function(return_iterator))
+#if (PY_VERSION_HEX >= 0x03000000)
+        .def("__next__", &Reader::next)
+#endif
         .def("next", &Reader::next)
         .def("size", &Reader::size)
         .def("read", &Reader::read)

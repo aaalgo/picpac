@@ -356,7 +356,6 @@ void translate_eos (EoS const &)
 auto init_numpy()
 {
     import_array();
-    //return 0;
 }
 
 BOOST_PYTHON_MODULE(_picpac)
