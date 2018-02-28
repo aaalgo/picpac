@@ -397,8 +397,8 @@ namespace picpac {
         CircleRegression (json const &spec) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
-            upper_th = spec.value<float>("upper_th", 2);
-            lower_th = spec.value<float>("lower_th", 0.3);
+            upper_th = spec.value<float>("upper_th", 9);
+            lower_th = spec.value<float>("lower_th", 0.4);
         }
 
         virtual size_t apply (Sample *sample, void const *) const {
@@ -431,7 +431,9 @@ namespace picpac {
                 c.center = (ctrls[0] + ctrls[1]) / 2 / downsize;
                 c.radius =  cv::norm(ctrls[0] - ctrls[1]) / 2 / downsize;
 #endif
-                c.center = (ul + br) / 2 / downsize;
+                c.center = (ul + br);
+                c.center.x /=  2 * downsize;
+                c.center.y /=  2 * downsize;
                 c.radius =  cv::norm(br - ul) / 2 / downsize;
 
                 c.score = numeric_limits<float>::max();
@@ -450,10 +452,10 @@ namespace picpac {
 
             cv::Mat label(sz, CV_8UC1, cv::Scalar(0));
             // only effective for near and far points
-            cv::Mat label_mask(sz, CV_32F, cv::Scalar(0));
+            cv::Mat label_mask(sz, CV_32F, cv::Scalar(1));
             // only effective for near points
             cv::Mat params(sz, CV_32FC3, cv::Scalar(0, 0, 0));
-            cv::Mat params_mask(sz, CV_32F, cv::Scalar(0));
+            cv::Mat params_mask(sz, CV_32FC3, cv::Scalar(0));
 
             for (int y = 0; y < sz.height; ++y) {
 
@@ -462,7 +464,7 @@ namespace picpac {
                 float *pp = params.ptr<float>(y);
                 float *ppm = params_mask.ptr<float>(y);
 
-                for (int x = 0; x < sz.width; ++x, pl += 1, plm += 1, pp += 3, ppm += 1) {
+                for (int x = 0; x < sz.width; ++x, pl += 1, plm += 1, pp += 3, ppm += 3) {
                     // find closest circle
                     cv::Point2f pt(x, y);
                     Circle *best_c = nullptr;
@@ -491,9 +493,11 @@ namespace picpac {
                         pp[1] = best_c->center.x - x;
                         pp[2] = best_c->center.y - y;
                         ppm[0] = 1;
+                        ppm[1] = 1;
+                        ppm[2] = 1;
                     }
-                    else if (r >= upper_th) {
-                        plm[0] = 1;
+                    else if (r <= upper_th) {
+                        plm[0] = 0;
                     }
                 }
             }
@@ -536,7 +540,8 @@ namespace picpac {
             auto const &params_mask = sample->facets[index+1].image;
 
             cv::Size sz = params.size();
-            sz *= upsize;
+            sz.width *= upsize;
+            sz.height *= upsize;
 
             cv::Mat image = sample->facets[0].image.clone();
             CHECK(image.channels() == 3);
