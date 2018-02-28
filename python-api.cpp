@@ -59,8 +59,12 @@ public:
         Value v(ImageStream::next());
         l.append(v.label);
         for (auto &im: v.facets) {
-            CHECK(im.annotation.empty());
-            l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
+            if (im.image.data) {
+                l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
+            }
+            else {
+                l.append(object());
+            }
         }
         return l;
     }

@@ -9,10 +9,6 @@ namespace picpac {
 			 {194, 119, 227}, {210, 182, 247}, {127, 127, 127}, {199, 199, 199},
 			 {34, 189, 188}, {141, 219, 219}, {207, 190, 23}, {229, 218, 158}};
 
-    cv::Point round (cv::Point2f p) {
-        return cv::Point(std::round(p.x), std::round(p.y));
-    }
-
     cv::Scalar Shape::render_color (RenderOptions const &opt) const {
         if (opt.use_palette) {
             return PALETTE[rand() % PALETTE.size()];

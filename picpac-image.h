@@ -693,5 +693,9 @@ namespace picpac {
         return LimitSize(input, -1, max_size, output);
     }
 
+    static inline cv::Point round (cv::Point2f p) {
+        return cv::Point(std::round(p.x), std::round(p.y));
+    }
+
 }
 

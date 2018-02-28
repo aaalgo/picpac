@@ -397,22 +397,42 @@ namespace picpac {
         CircleRegression (json const &spec) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
-            upper_th = spec.value<float>("upper_th", 1.5);
-            lower_th = spec.value<float>("lower_th", 0.5);
+            upper_th = spec.value<float>("upper_th", 2);
+            lower_th = spec.value<float>("lower_th", 0.3);
         }
 
         virtual size_t apply (Sample *sample, void const *) const {
             auto const &facet = sample->facets[index];
             auto const &anno = facet.annotation;
 
+            CHECK(!anno.empty());
+
             vector<Circle> truths(anno.shapes.size());  // ground-truth circles
             for (unsigned i = 0; i < anno.shapes.size(); ++i) {
                 vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
-                CHECK(ctrls.size() == 2); // must be boxes
+                CHECK(ctrls.size() >= 1); // must be boxes
+
+				float minx = ctrls[0].x;
+				float maxx = minx;
+				float miny = ctrls[0].y;
+				float maxy = miny;
+				for (unsigned j = 1; j < ctrls.size(); ++j) {
+					minx = std::min(ctrls[j].x, minx);
+					maxx = std::max(ctrls[j].x, maxx);
+					miny = std::min(ctrls[j].y, miny);
+					maxy = std::max(ctrls[j].y, maxy);
+				}
+		        cv::Point2f ul(minx, miny);
+		        cv::Point2f br(maxx, maxy);
+
                 Circle &c = truths[i];
 
+#if 0
                 c.center = (ctrls[0] + ctrls[1]) / 2 / downsize;
                 c.radius =  cv::norm(ctrls[0] - ctrls[1]) / 2 / downsize;
+#endif
+                c.center = (ul + br) / 2 / downsize;
+                c.radius =  cv::norm(br - ul) / 2 / downsize;
 
                 c.score = numeric_limits<float>::max();
                 c.label = nullptr;
@@ -501,6 +521,42 @@ namespace picpac {
         }
     };
 
+    class DrawCircleRegression: public Transform {
+        int index;
+        int upsize;
+        int copy;
+    public:
+        DrawCircleRegression (json const &spec) {
+            index = spec.value<int>("index", 4);
+            upsize = spec.value<int>("upsize", 1);
+            copy = spec.value<int>("copy", 0);
+        }
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto const &params = sample->facets[index].image;
+            auto const &params_mask = sample->facets[index+1].image;
+
+            cv::Size sz = params.size();
+            sz *= upsize;
+
+            cv::Mat image = sample->facets[0].image.clone();
+            CHECK(image.channels() == 3);
+
+            for (int y = 0; y < params.rows; ++y) {
+                float const *pp = params.ptr<float>(y);
+                float const *pm = params_mask.ptr<float>(y);
+                for (int x = 0; x < params.cols; ++x, pp += 3, pm += 1) {
+                    if (pm[0] == 0) continue;
+                    cv::Point2f pt = cv::Point2f(x, y) + cv::Point2f(pp[1],pp[2]);
+                    pt *= upsize;
+                    cv::circle(image, round(pt), std::round(pp[0] * upsize), cv::Scalar(0, 255, 0), 1);
+
+                }
+            }
+            sample->facets.emplace_back(image);
+            return 0;
+        }
+    };
+
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
         if (type == "rasterize") {
@@ -526,6 +582,12 @@ namespace picpac {
         }
         else if (type == "augment.add") {
             return std::unique_ptr<Transform>(new AugAdd(spec));
+        }
+        else if (type == "circle_regression") {
+            return std::unique_ptr<Transform>(new CircleRegression(spec));
+        }
+        else if (type == "draw_circle_regression") {
+            return std::unique_ptr<Transform>(new DrawCircleRegression(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
