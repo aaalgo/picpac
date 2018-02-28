@@ -375,6 +375,43 @@ namespace picpac {
         }
     };
 
+    class CircleRegression: public Transform {
+        int index;
+        int downsize;
+        float upper_th;
+        float lower_th;
+
+        void extract (Annotation const &anno, cv::Mat *pparams, cv::Mat *pmask) {
+            // params: dx dy radius
+            cv::Size sz = anno.size;
+            sz.width /= downsize;
+            sz.height /= downsize;
+
+            cv::Mat params(sz, CV_32FC3);
+            cv::Mat mask(sz, CV_32F);
+
+        }
+    public:
+        CircleRegression (json const &spec) {
+            index = spec.value<int>("index", 1);
+            downsize = spec.value<int>("downsize", 1);
+            upper_th = spec.value<float>("upper_th", 0.7);
+            lower_th = spec.value<float>("lower_th", 0.3);
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            cv::Mat params;
+            cv::Mat mask;
+            auto const &facet = sample->facets[index];
+            if (!facet.annotation.empty()) {
+                extract(facet.annotation, &params, &mask);
+            }
+            sample->facets.emplace_back(params);
+            sample->facets.emplace_back(mask);
+            return 0;
+        }
+    };
+
     
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
