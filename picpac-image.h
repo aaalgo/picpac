@@ -86,6 +86,10 @@ namespace picpac {
         }
         virtual void render (cv::Mat *, RenderOptions const &) const = 0;
         static std::unique_ptr<Shape> create (json const &, cv::Size);
+
+        vector<cv::Point2f> const &__controls () const {
+            return controls;
+        };
     };
 
     struct Annotation: private boost::noncopyable {
