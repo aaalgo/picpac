@@ -375,7 +375,7 @@ namespace picpac {
         }
     };
 
-    class CircleRegression: public Transform {
+    class CircleAnchors: public Transform {
         int index;
         int downsize;
         float upper_th;
@@ -394,10 +394,10 @@ namespace picpac {
         };
 
     public:
-        CircleRegression (json const &spec) {
+        CircleAnchors (json const &spec) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
-            upper_th = spec.value<float>("upper_th", 9);
+            upper_th = spec.value<float>("upper_th", 0.8);
             lower_th = spec.value<float>("lower_th", 0.4);
         }
 
@@ -486,18 +486,17 @@ namespace picpac {
                     }
                     if (!best_c) continue;
                     float r = best_d / best_c->radius;
-                    if (r <= lower_th) { // close to center
+                    if (r <= upper_th) { // close to center
                         pl[0] = 1;
-                        plm[0] = 1;
                         pp[0] = best_c->radius;
                         pp[1] = best_c->center.x - x;
                         pp[2] = best_c->center.y - y;
                         ppm[0] = 1;
                         ppm[1] = 1;
                         ppm[2] = 1;
-                    }
-                    else if (r <= upper_th) {
-                        plm[0] = 0;
+                        if (r > lower_th) {
+                            plm[0] = 0;
+                        }
                     }
                 }
             }
@@ -525,12 +524,12 @@ namespace picpac {
         }
     };
 
-    class DrawCircleRegression: public Transform {
+    class DrawCircleAnchors: public Transform {
         int index;
         int upsize;
         int copy;
     public:
-        DrawCircleRegression (json const &spec) {
+        DrawCircleAnchors (json const &spec) {
             index = spec.value<int>("index", 4);
             upsize = spec.value<int>("upsize", 1);
             copy = spec.value<int>("copy", 0);
@@ -588,11 +587,11 @@ namespace picpac {
         else if (type == "augment.add") {
             return std::unique_ptr<Transform>(new AugAdd(spec));
         }
-        else if (type == "circle_regression") {
-            return std::unique_ptr<Transform>(new CircleRegression(spec));
+        else if (type == "anchor.circles") {
+            return std::unique_ptr<Transform>(new CircleAnchors(spec));
         }
-        else if (type == "draw_circle_regression") {
-            return std::unique_ptr<Transform>(new DrawCircleRegression(spec));
+        else if (type == "anchor.circles.draw") {
+            return std::unique_ptr<Transform>(new DrawCircleAnchors(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
