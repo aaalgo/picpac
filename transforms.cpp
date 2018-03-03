@@ -375,7 +375,7 @@ namespace picpac {
         }
     };
 
-    class CircleAnchors: public Transform {
+    class DenseCircleAnchors: public Transform {
         int index;
         int downsize;
         float upper_th;
@@ -394,7 +394,7 @@ namespace picpac {
         };
 
     public:
-        CircleAnchors (json const &spec) {
+        DenseCircleAnchors (json const &spec) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
             upper_th = spec.value<float>("upper_th", 0.8);
@@ -524,12 +524,12 @@ namespace picpac {
         }
     };
 
-    class DrawCircleAnchors: public Transform {
+    class DrawDenseCircleAnchors: public Transform {
         int index;
         int upsize;
         int copy;
     public:
-        DrawCircleAnchors (json const &spec) {
+        DrawDenseCircleAnchors (json const &spec) {
             index = spec.value<int>("index", 4);
             upsize = spec.value<int>("upsize", 1);
             copy = spec.value<int>("copy", 0);
@@ -587,11 +587,11 @@ namespace picpac {
         else if (type == "augment.add") {
             return std::unique_ptr<Transform>(new AugAdd(spec));
         }
-        else if (type == "anchor.circles") {
-            return std::unique_ptr<Transform>(new CircleAnchors(spec));
+        else if (type == "anchors.dense.circle") {
+            return std::unique_ptr<Transform>(new DenseCircleAnchors(spec));
         }
-        else if (type == "anchor.circles.draw") {
-            return std::unique_ptr<Transform>(new DrawCircleAnchors(spec));
+        else if (type == "anchors.dense.circle.draw") {
+            return std::unique_ptr<Transform>(new DrawDenseCircleAnchors(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
