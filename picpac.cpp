@@ -52,6 +52,13 @@ namespace picpac {
         std::copy(image.begin(), image.end(), field_ptrs[0]);
     }
 
+    Record::Record (float label, const_buffer buf) {
+        size_t sz = boost::asio::buffer_size(buf);
+        alloc(label, sz);
+        char const *begin = boost::asio::buffer_cast<char const *>(buf);
+        std::copy(begin, begin + sz, field_ptrs[0]);
+    }
+
     Record::Record (float label, fs::path const &image, string const &extra) {
         uintmax_t sz = fs::file_size(image);
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
@@ -85,6 +92,16 @@ namespace picpac {
         alloc(label, image.size(), extra.size());
         std::copy(image.begin(), image.end(), field_ptrs[0]);
         std::copy(extra.begin(), extra.end(), field_ptrs[1]);
+    }
+
+    Record::Record (float label, const_buffer buf, const_buffer buf2) {
+        size_t sz = boost::asio::buffer_size(buf);
+        size_t sz2 = boost::asio::buffer_size(buf2);
+        alloc(label, sz, sz2);
+        char const *begin = boost::asio::buffer_cast<char const *>(buf);
+        char const *begin2 = boost::asio::buffer_cast<char const *>(buf2);
+        std::copy(begin, begin + sz, field_ptrs[0]);
+        std::copy(begin2, begin2 + sz2, field_ptrs[1]);
     }
 
     Record::Record (float label, string const &image, string const &extra, string const &extra2) {

@@ -194,8 +194,11 @@ namespace picpac {
         ssize_t read (int fd, off_t off, size_t size);
         /// Construct an empty record, for future read from disk.
         Record () {}
+        Record (float label, const_buffer);
         /// Construct a record with file content.
         Record (float label, fs::path const &file);
+
+        Record (float label, const_buffer, const_buffer);
         /// Construct a record with file content and extra string.
         Record (float label, fs::path const &file, string const &extra);
         /// Construct a record with file content and extra string.

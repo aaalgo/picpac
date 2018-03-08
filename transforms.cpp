@@ -33,14 +33,18 @@ namespace picpac {
     };
 
     class Clip: public Transform {
-        int min, max;
+        int min, max, round;
         int min_width, max_width;
         int min_height, max_height;
-        int round;
+        int round_width, round_height;
+        int max_crop;
+        int max_crop_width;
+        int max_crop_height;
 
         static void adjust_crop_pad_range (int &from_x, int &from_width,
                                     int &to_x, int &to_width, bool perturb, int shiftx) {
             if (from_width < to_width) {
+                CHECK(from_x == 0);
                 int margin = to_width - from_width;
                 if (perturb) {
                     to_x = shiftx % margin;
@@ -53,10 +57,10 @@ namespace picpac {
             else if (from_width > to_width) {
                 int margin = from_width - to_width;
                 if (perturb) {
-                    from_x = shiftx % margin;
+                    from_x += shiftx % margin;
                 }
                 else {
-                    from_x = margin / 2;
+                    from_x += margin / 2;
                 }
                 from_width = to_width;
             }
@@ -65,16 +69,24 @@ namespace picpac {
         struct PerturbVector {
             int xshift;
             int yshift;
+            int xcrop1, xcrop2;
+            int ycrop1, ycrop2;
         };
 
         Clip (json const &spec)
             : min(spec.value<int>("min", 0)),
               max(spec.value<int>("max", numeric_limits<int>::max())),
+              round(spec.value<int>("round", 0)),
               min_width(spec.value<int>("min_width", min)),
               max_width(spec.value<int>("max_width", max)),
               min_height(spec.value<int>("min_height", min)),
               max_height(spec.value<int>("max_height", max)),
-              round(spec.value<int>("round", 0))
+              round_width(spec.value<int>("round_width", round)),
+              round_height(spec.value<int>("round_height", round)),
+              max_crop(spec.value<int>("max_crop", 0)),
+              max_crop_width(spec.value<int>("max_crop_width", max_crop)),
+              max_crop_height(spec.value<int>("max_crop_height", max_crop))
+
         {
             CHECK(min_width <= max_width);
             CHECK(min_height <= max_height);
@@ -86,26 +98,80 @@ namespace picpac {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
             pv->xshift = rng();
             pv->yshift = rng();
+            if (max_crop_width > 0) {
+                pv->xcrop1 = rng() % max_crop_width;
+                pv->xcrop2 = rng() % max_crop_width;
+            }
+            else {
+                pv->xcrop1 = pv->xcrop2 = 0;
+            }
+            if (max_crop_height > 0) {
+                pv->ycrop1 = rng() % max_crop_height;
+                pv->ycrop2 = rng() % max_crop_height;
+            }
+            else {
+                pv->ycrop1 = pv->ycrop2 = 0;
+            }
             return sizeof(PerturbVector);
+        }
+
+        static void update_crop (int size, int min, int max, int &crop1, int &crop2) {
+            CHECK(size >= min);
+            int above = size - min;
+            int crop = crop1 + crop2;
+            if (above < crop){
+                int delta = crop - above;
+                int a = delta / 2;
+                int b = delta - a;
+                if (a > crop1) {
+                    a = crop1;
+                    b = delta - a;
+                }
+                if (b > crop2) {
+                    b = crop2;
+                    a = delta - crop2;
+                }
+                CHECK(a + b == delta);
+                crop1 -= a;
+                crop2 -= b;
+            }
+            CHECK(crop1 >= 0);
+            CHECK(crop2 >= 0);
+            CHECK(size - crop1 - crop2 >= min);
+
         }
 
         virtual size_t apply_one (Facet *facet, void const *buf) const {
             cv::Size sz0 = facet->check_size();
             if (sz0.width == 0) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            int xcrop1 = pv->xcrop1;
+            int xcrop2 = pv->xcrop2;
+            int ycrop1 = pv->ycrop1;
+            int ycrop2 = pv->ycrop2;
+
             cv::Size sz = sz0;
             if (sz.width < min_width) sz.width = min_width;
-            if (sz.width > max_width) sz.width = max_width;
+            update_crop(sz.width, min_width, max_width, xcrop1, xcrop2);
+            if (sz.width - xcrop1 - xcrop2 > max_width) sz.width = max_width + xcrop1 + xcrop2;
             if (sz.height < min_height) sz.height = min_height;
-            if (sz.height > max_height) sz.height = max_height;
-            if (round > 0) {
-                sz.width = sz.width / round * round;
-                sz.height = sz.height / round * round;
+            update_crop(sz.height, min_height, max_height, ycrop1, ycrop2);
+            if (sz.height - ycrop1 - ycrop2 > max_height) sz.height = max_height + ycrop1 + ycrop2;
+            if (round_width > 0) {
+                int mod = (sz.width - xcrop1 - xcrop2) % round_width;
+                sz.width -= mod;
             }
+            if (round_height > 0) {
+                int mod = (sz.height - ycrop1 - ycrop2) % round_height;
+                sz.height -= mod;
+            }
+            sz.width -= xcrop1 + xcrop2;
+            sz.height -= ycrop1 + ycrop2;
             if (sz == sz0) return sizeof(PerturbVector);
 
-            int from_x = 0, from_width = sz0.width;
-            int from_y = 0, from_height = sz0.height;
+
+            int from_x = xcrop1, from_width = sz0.width - xcrop1 - xcrop2;
+            int from_y = ycrop1, from_height = sz0.height - ycrop1 - ycrop2;
 
             int to_x = 0, to_width = sz.width;
             int to_y = 0, to_height = sz.height;
@@ -257,7 +323,7 @@ namespace picpac {
         };
     public:
         AugScale (json const &spec):
-            range(spec.value("range", 0)),
+            range(spec.value<float>("range", 0)),
             linear_scale(spec.value<float>("min", 1.0-range), spec.value<float>("max", 1.0+range)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -338,8 +404,8 @@ namespace picpac {
         };
     public:
         AugRotate (json const &spec)
-            : range(spec.value("range", 0)),
-            linear_angle(spec.value("min", -range), spec.value("max", range)) {
+            : range(spec.value<float>("range", 0)),
+            linear_angle(spec.value<float>("min", -range), spec.value<float>("max", range)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
         virtual size_t pv_sample (random_engine &rng, void *buf) const {
@@ -561,6 +627,90 @@ namespace picpac {
         }
     };
 
+    // apply to all channels
+    class WaveAugAdd: public Transform {
+        float range;
+        std::uniform_real_distribution<float> linear_delta;
+    public:
+        struct PerturbVector {
+            float delta;
+        };
+        WaveAugAdd (json const &spec) :
+            range(spec.value<float>("range", 0)),
+            linear_delta(spec.value<float>("min", -range), spec.value<float>("max", range))
+        {
+        }
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->delta = const_cast<WaveAugAdd *>(this)->linear_delta(rng);
+            return sizeof(PerturbVector);
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            if (facet->type == Facet::IMAGE && facet->image.data) {
+                //std::cerr << pv->delta[0] << ' ' << pv->delta[1] << ' ' << pv->delta[2] << std::endl;
+                facet->image += pv->delta;
+            }
+            return sizeof(PerturbVector);
+        }
+    };
+
+    class WaveAugMul: public Transform {
+        float range;
+        std::uniform_real_distribution<float> linear_delta;
+    public:
+        struct PerturbVector {
+            float delta;
+        };
+        WaveAugMul (json const &spec) :
+            range(spec.value<float>("range", 0)),
+            linear_delta(spec.value<float>("min", 1.0-range), spec.value<float>("max", 1.0+range))
+        {
+        }
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->delta = const_cast<WaveAugMul *>(this)->linear_delta(rng);
+            return sizeof(PerturbVector);
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            if (facet->type == Facet::IMAGE && facet->image.data) {
+                //std::cerr << pv->delta[0] << ' ' << pv->delta[1] << ' ' << pv->delta[2] << std::endl;
+                facet->image *= pv->delta;
+            }
+            return sizeof(PerturbVector);
+        }
+    };
+
+    class AugWidthScale: public AugScale {
+        float range;
+        std::uniform_real_distribution<float> linear_scale;
+        struct PerturbVector {
+            float scale;
+        };
+    public:
+        AugWidthScale (json const &spec): AugScale(spec) {
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            cv::Size sz0 = facet->check_size();
+            CHECK(sz0.height == 1);
+            if (sz0.width == 0) return sizeof(PerturbVector);
+            cv::Size sz = sz0;
+            sz.width = std::round(sz.width * pv->scale);
+            if (facet->image.data) {
+                cv::resize(facet->image, facet->image, sz);
+            }
+            if (!facet->annotation.empty()) {
+                CHECK(0);
+            }
+            return sizeof(PerturbVector);
+        }
+    };
+
+
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
         if (type == "rasterize") {
@@ -592,6 +742,15 @@ namespace picpac {
         }
         else if (type == "anchors.dense.circle.draw") {
             return std::unique_ptr<Transform>(new DrawDenseCircleAnchors(spec));
+        }
+        else if (type == "wave.augment.add") {
+            return std::unique_ptr<Transform>(new WaveAugAdd(spec));
+        }
+        else if (type == "wave.augment.mul") {
+            return std::unique_ptr<Transform>(new WaveAugMul(spec));
+        }
+        else if (type == "wave.augment.scale") {
+            return std::unique_ptr<Transform>(new AugWidthScale(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;

@@ -79,7 +79,7 @@ object return_iterator (tuple args, dict kwargs) {
 class Writer: public FileWriter {
     int nextid;
 public:
-    int const FLAG_OVERWRITE = OVERWRITE;
+    static int constexpr FLAG_OVERWRITE = OVERWRITE;
     Writer (string const &path, int flags): FileWriter(fs::path(path), flags), nextid(0) {
     }
 
@@ -87,6 +87,35 @@ public:
         nextid = v;
     }
 
+    const_buffer pyobject2buffer (PyObject *buf) {
+#if PY_MAJOR_VERSION >= 3
+        if (PyBytes_Check(buf)) {
+            return const_buffer(PyBytes_AsString(buf), PyBytes_Size(buf));
+        }
+#else
+        if (PyString_Check(buf)) {
+            return const_buffer(PyString_AsString(buf), PyString_Size(buf));
+        }
+#endif
+        else CHECK(0) << "can only append string or bytes";
+
+    }
+
+    void append (float label, PyObject *buf) {
+        Record record(label, pyobject2buffer(buf));
+        record.meta().id = nextid;
+        ++nextid;
+        FileWriter::append(record);
+    }
+
+    void append (float label, PyObject *buf, PyObject *buf2) {
+        Record record(label, pyobject2buffer(buf), pyobject2buffer(buf2));
+        record.meta().id = nextid;
+        ++nextid;
+        FileWriter::append(record);
+    }
+
+#if 0
     void append (float label, string const &buf) {
         Record record(label, buf);
         record.meta().id = nextid;
@@ -128,6 +157,7 @@ public:
         ++nextid;
         FileWriter::append(record);
     }
+#endif
 };
 
 class Reader: public IndexedFileReader {
@@ -205,10 +235,20 @@ void serialize_raw_ndarray (object &obj, std::ostream &os) {
     }
 }
 
-string encode_raw_ndarray (object &obj) {
+#if PY_MAJOR_VERSION >= 3
+object
+#else
+string
+#endif
+encode_raw_ndarray (object &obj) {
     std::ostringstream ss;
     serialize_raw_ndarray(obj, ss);
+#if PY_MAJOR_VERSION >= 3
+    string str = ss.str();
+    return object(handle<>(PyBytes_FromStringAndSize(&str[0], str.size())));
+#else
     return ss.str();
+#endif
 }
 
 void write_raw_ndarray (string const &path, object &obj) {
@@ -216,8 +256,9 @@ void write_raw_ndarray (string const &path, object &obj) {
     serialize_raw_ndarray(obj, os);
 }
 
-void (Writer::*append1) (float, string const &) = &Writer::append;
-void (Writer::*append2) (string const &, string const &) = &Writer::append;
+void (Writer::*append1) (float, PyObject *) = &Writer::append;
+void (Writer::*append2) (float, PyObject *, PyObject *) = &Writer::append;
+/*
 void (Writer::*append3) (float, string const &, string const &) = &Writer::append;
 
 void (Writer::*append4) (float, string const &, string const &, string const &) = &Writer::append;
@@ -225,6 +266,7 @@ void (Writer::*append4) (float, string const &, string const &, string const &) 
 void (Writer::*append5) (float, string const &, string const &, string const &, string const &) = &Writer::append;
 
 void (Writer::*append6) (float, string const &, string const &, string const &, string const &, string const &) = &Writer::append;
+*/
 
 void translate_eos (EoS const &)
 {
@@ -251,6 +293,7 @@ BOOST_PYTHON_MODULE(picpac)
 {
 	init_numpy();
     scope().attr("__doc__") = "PicPoc Python API";
+    scope().attr("OVERWRITE") = Writer::FLAG_OVERWRITE;
     to_python_converter<cv::Mat,
                      pbcvt::matToNDArrayBoostConverter>();
 
@@ -276,14 +319,15 @@ BOOST_PYTHON_MODULE(picpac)
         .def("read", &Reader::read)
         .def("reset", &Reader::reset)
     ;
-    class_<Writer>("Writer", init<string, bool>())
-        .def_readonly("OVERWRITE", &Writer::FLAG_OVERWRITE)
+    class_<Writer>("Writer", init<string, int>())
         .def("append", append1)
         .def("append", append2)
+        /*
         .def("append", append3)
         .def("append", append4)
         .def("append", append5)
         .def("append", append6)
+        */
         .def("setNextId", &Writer::setNextId);
     ;
     def("encode_raw", ::encode_raw_ndarray);
