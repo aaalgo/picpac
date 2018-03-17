@@ -366,6 +366,7 @@ BOOST_PYTHON_MODULE(picpac)
 	init_numpy();
     scope().attr("__doc__") = "PicPoc Python API";
     scope().attr("OVERWRITE") = Writer::FLAG_OVERWRITE;
+#ifdef CVBOOSTCONVERTER_HPP_
     to_python_converter<cv::Mat,
                      pbcvt::matToNDArrayBoostConverter>();
 
