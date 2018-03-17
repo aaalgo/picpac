@@ -19,3 +19,6 @@
 [submodule "pyboostcvconverter"]
 	path = pyboostcvconverter
 	url = https://github.com/Algomorph/pyboostcvconverter
+[submodule "bachelor"]
+	path = bachelor
+	url = https://github.com/aaalgo/bachelor
