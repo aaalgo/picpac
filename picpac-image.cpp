@@ -25,6 +25,7 @@ namespace picpac {
             Record r;
             rr(&r); // disk access
             cached.label = r.meta().label;
+            cached.id = r.meta().id;
             //CHECK(r.size() >= (annotate ? 2 : 1));
             int decode_mode = cv::IMREAD_UNCHANGED;
             if (config.channels == 1) {

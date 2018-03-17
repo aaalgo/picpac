@@ -325,7 +325,7 @@ namespace picpac {
                 ncat = 0;
                 break;
             }
-            if (c > ncat) ncat = c;
+            if (c > int(ncat)) ncat = c;
         }
         ++ncat;
         if (config.stratify && (ncat > MAX_CATEGORIES)) {
@@ -373,7 +373,7 @@ namespace picpac {
         }
         else {
             // setup k-fold cross validation
-            for (int k = 0; k < K; ++k) {
+            for (unsigned k = 0; k < K; ++k) {
                 if (k != config.split_fold) keys.push_back(k);
             }
         }

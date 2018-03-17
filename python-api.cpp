@@ -5,15 +5,22 @@
 #include <boost/python/make_constructor.hpp>
 #include <boost/python/raw_function.hpp>
 //#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-//#include <numpy/ndarrayobject.h>
-#include <pyboostcvconverter/pyboostcvconverter.hpp>
+#include <numpy/ndarrayobject.h>
+//#include <pyboostcvconverter/pyboostcvconverter.hpp>
 #include "picpac.h"
 #include "picpac-image.h"
+#include "bachelor/bachelor.h"
 using namespace boost::python;
 using namespace picpac;
+using bachelor::NumpyBatch;
 namespace {
+    using std::unique_ptr;
 
 class PyImageStream: public ImageStream {
+    int batch;
+    string order;
+    bachelor::Order bachelor_order;
+    object ctor;
 public:
     struct Config: public ImageStream::Config {
         Config (dict const &kwargs) {
@@ -41,7 +48,6 @@ public:
             UPDATE_CONFIG(threads, kwargs);
             UPDATE_CONFIG(channels, kwargs);
             UPDATE_CONFIG(annotate, kwargs);
-#undef UPDATE_CONFIG
             // check dtype
             string dt = extract<string>(kwargs.get("dtype", "uint8"));
             dtype = dtype_np2cv(dt);
@@ -50,23 +56,89 @@ public:
         }
     };
 
-    PyImageStream (dict conf) //{std::string const &path, Config const &c)
-        : ImageStream(fs::path(extract<string>(conf.get("db"))), Config(conf)) {
+    PyImageStream (dict kwargs) //{std::string const &path, Config const &c)
+        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), order("NHWC") {
+            UPDATE_CONFIG(batch, kwargs);
+            UPDATE_CONFIG(order, kwargs);
+#undef UPDATE_CONFIG
+            if (order == "NHWC") {
+                bachelor_order = bachelor::NHWC;
+            }
+            else if (order == "NCHW") {
+                bachelor_order = bachelor::NCHW;
+            }
+            else CHECK(0) << "Unrecognized order: " << order;
+            auto collections = import("collections");
+            auto namedtuple = collections.attr("namedtuple");
+            list fields;
+            fields.append("ids"); 
+            fields.append("labels"); 
+            ctor = namedtuple("Meta", fields);
     }
 
     list next () {
-        list l;
+        // return a batch
+        // if EOS, this will 
+        vector<int32_t> ids;
+        vector<float> labels;
+        vector<unique_ptr<NumpyBatch>> data;
+        // create batch, emplace first object
         Value v(ImageStream::next());
-        l.append(v.label);
+        ids.push_back(v.id);
+        labels.push_back(v.label);
         for (auto &im: v.facets) {
             if (im.image.data) {
-                l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
+                NumpyBatch::Config conf;
+                conf.batch = batch;
+                conf.height = im.image.rows;
+                conf.width = im.image.cols;
+                conf.channels = im.image.channels();
+                conf.depth = im.image.depth();
+                conf.order = bachelor_order;
+                data.emplace_back(new NumpyBatch(conf));
+                data.back()->fill_next(im.image);
+                //l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
             }
             else {
-                l.append(object());
+                CHECK(0) << "image is empty";
+                //l.append(object());
             }
         }
-        return l;
+        for (int i = 1; i < batch; ++i) {
+            // reset of the batch
+            try {
+                Value v(ImageStream::next());
+                ids.push_back(v.id);
+                labels.push_back(v.label);
+                CHECK(data.size() == v.facets.size());
+                for (unsigned j = 0; j < data.size(); ++j) {
+                    auto &im = v.facets[j];
+                    if (im.image.data) {
+                        data[j]->fill_next(im.image);
+                    }
+                    else {
+                        CHECK(0) << "image is empty";
+                    }
+                }
+            }
+            catch (EoS const &) {
+                break;
+            }
+        }
+        npy_intp dims[1] = {labels.size()};
+        PyObject *pyids = PyArray_SimpleNew(1, dims, NPY_INT32);
+        CHECK(pyids);
+        PyObject *pylabels = PyArray_SimpleNew(1, dims, NPY_FLOAT32);
+        CHECK(pylabels);
+        std::copy(ids.begin(), ids.end(), (int32_t *)PyArray_DATA(pyids));
+        std::copy(labels.begin(), labels.end(), (float *)PyArray_DATA(pylabels));
+
+        list r;
+        r.append(ctor(boost::python::handle<>(pyids), boost::python::handle<>(pylabels)));
+        for (auto &p: data) {
+            r.append(object(boost::python::handle<>(p->detach())));
+        }
+        return r;
     }
 };
 
@@ -251,10 +323,12 @@ BOOST_PYTHON_MODULE(picpac)
 {
 	init_numpy();
     scope().attr("__doc__") = "PicPoc Python API";
+#ifdef CVBOOSTCONVERTER_HPP_
     to_python_converter<cv::Mat,
                      pbcvt::matToNDArrayBoostConverter>();
 
     pbcvt::matFromNDArrayBoostConverter();
+#endif
     register_exception_translator<EoS>(&translate_eos);
     class_<PyImageStream, boost::noncopyable>("ImageStream", init<dict>())
         .def("__iter__", raw_function(return_iterator))

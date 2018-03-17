@@ -1249,9 +1249,9 @@ namespace picpac {
         int rows = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
         int cols = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
         int elemSize = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
-        if (sz != rows * cols * elemSize) return cv::Mat();
+        if (sz != size_t(rows * cols * elemSize)) return cv::Mat();
         cv::Mat m(rows, cols, type);
-        if (m.elemSize() != elemSize) return cv::Mat();
+        if (int(m.elemSize()) != elemSize) return cv::Mat();
         size_t line = cols * elemSize;
         for (int i = 0; i < rows; ++i) {
             std::copy(buf, buf + line, m.ptr<char>(i));

@@ -180,17 +180,20 @@ namespace picpac {
     };
 
     struct Sample: private boost::noncopyable {
+        uint32_t id;
         float label;
         vector<Facet> facets;
 
         Sample () {}
 
         void swap (Sample &v) {
+            std::swap(id, v.id);
             std::swap(label, v.label);
             facets.swap(v.facets);
         }
 
         void copy (Sample const &v) {
+            id = v.id;
             label = v.label;
             facets.clear();
             facets.resize(v.facets.size());
