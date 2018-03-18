@@ -32,6 +32,73 @@ namespace picpac {
         }
     };
 
+    class Normalize: public Transform {
+        bool do_mu;
+        cv::Scalar mu;
+        bool do_sigma;
+        cv::Scalar sigma;
+        void load_scalar (cv::Scalar &v, json const &j) {
+            if (j.is_number()) {
+                float a = j.get<float>();
+                v = cv::Scalar(a,a,a,a);
+            }
+            else if (j.is_array()) {
+                int o = 0;
+                for (json const &e: j) {
+                    v[o++] = j.get<float>();
+                    if (o == 4) break;
+                }
+            }
+        }
+    public:
+        Normalize (json const &spec): do_mu(false), mu(0,0,0,0), do_sigma(false), sigma(1,1,1,1) {
+            auto m = spec.find("mean");
+            if (m != spec.end()) {
+                do_mu = true;
+                load_scalar(mu, *m);
+            }
+            auto s = spec.find("std");
+            if (s != spec.end()) {
+                do_sigma = true;
+                load_scalar(sigma, *s);
+            }
+            std::cerr << do_mu;
+            if (do_mu) {
+                std::cerr << " " << mu[0] << ':' << mu[1] << ':' << mu[2] << ':' << mu[3];
+            }
+            std::cerr << do_sigma;
+            if (do_sigma) {
+                std::cerr << " " << sigma[0] << ':' << sigma[1] << ':' << sigma[2] << ':' << sigma[3];
+            }
+            std::cerr << std::endl;
+        }
+        virtual size_t apply (Sample *sample, void const *) const {
+            do {
+                if (sample->facets.size() == 1) {
+                    break;
+                }
+                else if (sample->facets.size() == 2) {
+                    if (sample->facets[1].type == Facet::LABEL) break;
+                }
+                CHECK(0) << "Normalize doens't support non-standard configuration.";
+            } while (false);
+            auto &facet = sample->facets[0];
+            if (do_mu) {
+                facet.image -= mu;
+            }
+            if (do_sigma) {
+                vector<cv::Mat> channels;
+                cv::split(facet.image, channels);
+                for (unsigned i = 0; i < channels.size(); ++i) {
+                    channels[i] /= sigma[i];
+                }
+                cv::merge(channels, facet.image);
+                //facet.image /= sigma;
+            }
+            return 0;
+        }
+    };
+
     class Clip: public Transform {
         int size, min, max, round;
         int min_width, max_width;
@@ -750,6 +817,9 @@ namespace picpac {
         string type = spec.at("type").get<string>();
         if (type == "rasterize") {
             return std::unique_ptr<Transform>(new Rasterize(spec));
+        }
+        if (type == "normalize") {
+            return std::unique_ptr<Transform>(new Normalize(spec));
         }
         else if (type == "clip") {
             return std::unique_ptr<Transform>(new Clip(spec));

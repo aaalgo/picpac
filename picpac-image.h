@@ -282,7 +282,7 @@ namespace picpac {
             string transforms;
             Config ()
                 : channels(-1), // unchanged
-                dtype(CV_8U),
+                dtype(CV_32F),
                 annotate(false),
                 transforms("[]")
 
