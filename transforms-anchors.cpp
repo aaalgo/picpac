@@ -2,39 +2,54 @@
 
 namespace picpac {
 
-    class CircleAnchors: public Transform {
-        int index;
+    class Anchors: public Transform {
+        int index;          // 
         int downsize;
         float upper_th;
         float lower_th;
+        vector<float> ratios;
+        vector<float> sizes;
 
-        struct Circle {
-            cv::Point2f center;
-            float radius;
-
+        struct Box {
+            float x1, y1, x2, y2;
             float score;
             uint8_t *label;
             float *label_mask;
             float *params;
-            float *params_mask;
             cv::Point2f shift;
         };
 
     public:
-        DenseCircleAnchors (json const &spec) {
+        Anchors (json const &spec) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
             upper_th = spec.value<float>("upper_th", 0.8);
             lower_th = spec.value<float>("lower_th", 0.4);
+            float size = spec.value<int>("size", 30);
+            
+            if (spec.find("ratios") == spec.end()) {
+                ratios.push_back(1.0);
+            }
+            else 
+            for (auto const &r: spec.at("ratios")) {
+                ratios.push_back(r.get<float>());
+            }
+            if (spec.find("sizes") == spec.end()) {
+            }
+            else 
+            for (auto const &r: spec.at("sizes")) {
+                ratios.push_back(r.get<float>());
+            }
         }
 
         virtual size_t apply (Sample *sample, void const *) const {
+#if 0
             auto const &facet = sample->facets[index];
             auto const &anno = facet.annotation;
 
             CHECK(!anno.empty());
 
-            vector<Circle> truths(anno.shapes.size());  // ground-truth circles
+            vector<Box> truths(anno.shapes.size());  // ground-truth circles
             for (unsigned i = 0; i < anno.shapes.size(); ++i) {
                 vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
                 CHECK(ctrls.size() >= 1); // must be boxes
@@ -58,16 +73,15 @@ namespace picpac {
                 c.center = (ctrls[0] + ctrls[1]) / 2 / downsize;
                 c.radius =  cv::norm(ctrls[0] - ctrls[1]) / 2 / downsize;
 #endif
-                c.center = (ul + br);
-                c.center.x /=  2 * downsize;
-                c.center.y /=  2 * downsize;
-                c.radius =  cv::norm(br - ul) / 2 / downsize;
+                c.x1 = minx;
+                c.x2 = maxx;
+                c.y1 = miny;
+                c.y2 = maxy;
 
                 c.score = numeric_limits<float>::max();
                 c.label = nullptr;
                 c.label_mask = nullptr;
                 c.params = nullptr;
-                c.params_mask = nullptr;
             }
 
             // params: dx dy radius
@@ -149,8 +163,13 @@ namespace picpac {
             sample->facets.emplace_back(params);
             sample->facets.emplace_back(params_mask);
             */
+#endif
             return 0;
         }
     };
+
+    Transform *create_anchors (json const &spec) {
+        return new Anchors(spec);
+    }
 
 }

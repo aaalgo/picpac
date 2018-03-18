@@ -33,7 +33,7 @@ namespace picpac {
     };
 
     class Clip: public Transform {
-        int min, max, round;
+        int size, min, max, round;
         int min_width, max_width;
         int min_height, max_height;
         int round_width, round_height;
@@ -41,41 +41,65 @@ namespace picpac {
         int max_crop_width;
         int max_crop_height;
 
+        int max_shift;
+        int max_shift_x, max_shift_y;
+
         static void adjust_crop_pad_range (int &from_x, int &from_width,
-                                    int &to_x, int &to_width, bool perturb, int shiftx) {
+                                           int &to_x, int &to_width, bool perturb, int shiftx) {
             if (from_width < to_width) {
-                CHECK(from_x == 0);
                 int margin = to_width - from_width;
-                if (perturb) {
-                    to_x = shiftx % margin;
-                }
-                else {
-                    to_x = margin / 2;
+                if (from_x == 0) {
+                    if (perturb) {
+                        to_x += shiftx % margin;
+                    }
+                    else {
+                        to_x += margin / 2;
+                    }
                 }
                 to_width = from_width;
             }
             else if (from_width > to_width) {
                 int margin = from_width - to_width;
-                if (perturb) {
-                    from_x += shiftx % margin;
-                }
-                else {
-                    from_x += margin / 2;
+                if (to_x == 0) {
+                    if (perturb) {
+                        from_x += shiftx % margin;
+                    }
+                    else {
+                        from_x += margin / 2;
+                    }
                 }
                 from_width = to_width;
             }
         }
+        static void adjust_shift_pos (int &from_x, int &from_width, int from_size, int shift) {
+            from_x = std::min(from_x + shift, from_size);
+            if (from_x + from_width > from_size) {
+                from_width = from_size - from_x;
+            }
+        }
+        static void adjust_shift(int &from_x, int &from_width, int from_size,
+                          int &to_x, int &to_width, int to_size, int shift) {
+            if (shift > 0) {
+                adjust_shift_pos(from_x, from_width, from_size, shift);
+            }
+            else {
+                adjust_shift_pos(to_x, to_width, to_size, -shift);
+            }
+        }
     public:
         struct PerturbVector {
-            int xshift;
-            int yshift;
+            int xrand;
+            int yrand;
             int xcrop1, xcrop2;
             int ycrop1, ycrop2;
+            int xshift;
+            int yshift;
         };
 
         Clip (json const &spec)
-            : min(spec.value<int>("min", 0)),
-              max(spec.value<int>("max", numeric_limits<int>::max())),
+            : size(spec.value<int>("size", 0)),
+              min(spec.value<int>("min", size ? size : 0)),
+              max(spec.value<int>("max", size ? size : numeric_limits<int>::max())),
               round(spec.value<int>("round", 0)),
               min_width(spec.value<int>("min_width", min)),
               max_width(spec.value<int>("max_width", max)),
@@ -85,7 +109,10 @@ namespace picpac {
               round_height(spec.value<int>("round_height", round)),
               max_crop(spec.value<int>("max_crop", 0)),
               max_crop_width(spec.value<int>("max_crop_width", max_crop)),
-              max_crop_height(spec.value<int>("max_crop_height", max_crop))
+              max_crop_height(spec.value<int>("max_crop_height", max_crop)),
+              max_shift(spec.value<int>("shift", 0)),
+              max_shift_x(spec.value<int>("shift_x", max_shift)),
+              max_shift_y(spec.value<int>("shift_y", max_shift))
 
         {
             CHECK(min_width <= max_width);
@@ -96,8 +123,8 @@ namespace picpac {
 
         virtual size_t pv_sample (random_engine &rng, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->xshift = rng();
-            pv->yshift = rng();
+            pv->xrand = rng();
+            pv->yrand = rng();
             if (max_crop_width > 0) {
                 pv->xcrop1 = rng() % max_crop_width;
                 pv->xcrop2 = rng() % max_crop_width;
@@ -112,6 +139,9 @@ namespace picpac {
             else {
                 pv->ycrop1 = pv->ycrop2 = 0;
             }
+            // -max_shift_x 0 max_shift_x
+            pv->xshift = (rng() % (2 * max_shift_x + 1)) - max_shift_x;
+            pv->yshift = (rng() % (2 * max_shift_y + 1)) - max_shift_y;
             return sizeof(PerturbVector);
         }
 
@@ -167,21 +197,26 @@ namespace picpac {
             }
             sz.width -= xcrop1 + xcrop2;
             sz.height -= ycrop1 + ycrop2;
-            if (sz == sz0) return sizeof(PerturbVector);
+            if (sz == sz0 && (pv->xshift == 0) && (pv->yshift == 0)) return sizeof(PerturbVector);
 
 
             int from_x = xcrop1, from_width = sz0.width - xcrop1 - xcrop2;
             int from_y = ycrop1, from_height = sz0.height - ycrop1 - ycrop2;
 
+
             int to_x = 0, to_width = sz.width;
             int to_y = 0, to_height = sz.height;
 
-            adjust_crop_pad_range(from_x, from_width, to_x, to_width, true, pv->xshift);
-            adjust_crop_pad_range(from_y, from_height, to_y, to_height, true, pv->yshift);
+            adjust_shift(from_x, from_width, sz0.width, to_x, to_width, sz.width, pv->xshift);
+            adjust_shift(from_y, from_height, sz0.height, to_y, to_height, sz.height, pv->yshift);
+
+            adjust_crop_pad_range(from_x, from_width, to_x, to_width, true, pv->xrand);
+            adjust_crop_pad_range(from_y, from_height, to_y, to_height, true, pv->yrand);
 
             if (facet->image.data) {
                 cv::Mat to(sz, facet->image.type(), cv::Scalar(0,0,0,0));
-                facet->image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
+                cv::copyMakeBorder(facet->image(cv::Rect(from_x, from_y, from_width, from_height)), to, to_y, to.rows-(to_y + to_height), to_x, to.cols-(to_x + to_width), cv::BORDER_REPLICATE, cv::Scalar(0,0,0,0));
+                //facet->image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
                 facet->image = to;
             }
             if (!facet->annotation.empty()) {
