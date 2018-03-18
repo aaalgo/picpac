@@ -38,16 +38,16 @@ namespace picpac {
         bool do_sigma;
         cv::Scalar sigma;
         void load_scalar (cv::Scalar &v, json const &j) {
-            if (j.is_number()) {
-                float a = j.get<float>();
-                v = cv::Scalar(a,a,a,a);
-            }
-            else if (j.is_array()) {
+            if (j.is_array()) {
                 int o = 0;
                 for (json const &e: j) {
-                    v[o++] = j.get<float>();
+                    v[o++] = e.get<float>();
                     if (o == 4) break;
                 }
+            }
+            else {
+                float a = j.get<float>();
+                v = cv::Scalar(a,a,a,a);
             }
         }
     public:
@@ -62,6 +62,7 @@ namespace picpac {
                 do_sigma = true;
                 load_scalar(sigma, *s);
             }
+            /*
             std::cerr << do_mu;
             if (do_mu) {
                 std::cerr << " " << mu[0] << ':' << mu[1] << ':' << mu[2] << ':' << mu[3];
@@ -71,6 +72,7 @@ namespace picpac {
                 std::cerr << " " << sigma[0] << ':' << sigma[1] << ':' << sigma[2] << ':' << sigma[3];
             }
             std::cerr << std::endl;
+            */
         }
         virtual size_t apply (Sample *sample, void const *) const {
             do {
@@ -110,6 +112,8 @@ namespace picpac {
 
         int max_shift;
         int max_shift_x, max_shift_y;
+
+        int border;
 
         static void adjust_crop_pad_range (int &from_x, int &from_width,
                                            int &to_x, int &to_width, bool perturb, int shiftx) {
@@ -184,6 +188,14 @@ namespace picpac {
         {
             CHECK(min_width <= max_width);
             CHECK(min_height <= max_height);
+            string b = spec.value<string>("border", "replicate");
+            if (b == "replicate") {
+                border = cv::BORDER_REPLICATE;
+            }
+            else if (b == "constant") {
+                border = cv::BORDER_CONSTANT;
+            }
+            else CHECK(0) << "border " << b << " not recognized.";
         }
 
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -282,7 +294,7 @@ namespace picpac {
 
             if (facet->image.data) {
                 cv::Mat to(sz, facet->image.type(), cv::Scalar(0,0,0,0));
-                cv::copyMakeBorder(facet->image(cv::Rect(from_x, from_y, from_width, from_height)), to, to_y, to.rows-(to_y + to_height), to_x, to.cols-(to_x + to_width), cv::BORDER_REPLICATE, cv::Scalar(0,0,0,0));
+                cv::copyMakeBorder(facet->image(cv::Rect(from_x, from_y, from_width, from_height)), to, to_y, to.rows-(to_y + to_height), to_x, to.cols-(to_x + to_width), border, cv::Scalar(0,0,0,0));
                 //facet->image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
                 facet->image = to;
             }
