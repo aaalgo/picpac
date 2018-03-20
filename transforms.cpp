@@ -2,6 +2,89 @@
 
 namespace picpac {
 
+    class BorderConfig {
+    protected:
+        int border_type;
+        cv::Scalar border_value;
+    public:
+        BorderConfig (json const &spec, int type, cv::Scalar value)
+            : border_type(type), border_value(value)
+        {
+            string b = spec.value<string>("border_type", "replicate");
+            if (b == "replicate") {
+                border_type = cv::BORDER_REPLICATE;
+            }
+            else if (b == "constant") {
+                border_type = cv::BORDER_CONSTANT;
+            }
+            else CHECK(0) << "Border type " << b << " not recognized";
+            // TODO: config border value
+        }
+    };
+
+    class Mask: public Transform {
+        int ref;
+        int index;
+    public:
+        Mask (json const &spec) {
+            ref = spec.value<int>("ref", 0);
+            index = spec.value<int>("index", -1);
+        }
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto &ref_image = sample->facets[ref].image;
+            int idx = index;
+            if (idx < 0) {  // add image
+                sample->facets.emplace_back();
+                idx = sample->facets.size()-1;
+            }
+            auto &facet = sample->facets[idx];
+            facet.type = Facet::LABEL;
+            cv::Size sz = sample->facets[ref].check_size();
+            /*
+            if (!ref_image.data) {
+                return 0;
+            }
+            */
+            facet.image = cv::Mat(sz, CV_8U, cv::Scalar(1));
+            return 0;
+        }
+    };
+
+    class ErodeMask: public Transform, public BorderConfig {
+        int index;
+        cv::Mat kernel;
+        int border_value;
+        int iterations;
+    public:
+        ErodeMask (json const &spec): BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(1,1,1,1)) {
+            index = spec.value<int>("index", -1);
+            int r = spec.value<int>("radius", 0);
+            iterations = spec.value<int>("iterations", 1);
+            kernel = cv::getStructuringElement(cv::MORPH_RECT,
+                            cv::Size(2*r+1,2*r+1),
+                            cv::Point(r,r));
+        }
+        virtual size_t apply (Sample *sample, void const *) const {
+            int idx = index;
+            if (idx < 0) {  // add image
+                idx = sample->facets.size()-1;
+            }
+            auto &facet = sample->facets[idx];
+            CHECK(facet.type = Facet::LABEL);
+            if (!facet.image.data) {
+                return 0;
+            }
+            CHECK(facet.image.type() == CV_8UC1);
+            cv::erode(facet.image,
+                      facet.image, 
+                      kernel,
+                      cv::Point(-1, -1),
+                      iterations,
+                      border_type, border_value);
+            return 0;
+        }
+    };
+
     class Rasterize: public Transform {
         int copy;
         int index;
@@ -79,10 +162,12 @@ namespace picpac {
                 if (sample->facets.size() == 1) {
                     break;
                 }
+                /*
                 else if (sample->facets.size() == 2) {
                     if (sample->facets[1].type == Facet::LABEL) break;
                 }
                 CHECK(0) << "Normalize doens't support non-standard configuration.";
+                */
             } while (false);
             auto &facet = sample->facets[0];
             if (do_mu) {
@@ -101,7 +186,7 @@ namespace picpac {
         }
     };
 
-    class Clip: public Transform {
+    class Clip: public Transform, public BorderConfig {
         int size, min, max, round;
         int min_width, max_width;
         int min_height, max_height;
@@ -112,8 +197,6 @@ namespace picpac {
 
         int max_shift;
         int max_shift_x, max_shift_y;
-
-        int border;
 
         static void adjust_crop_pad_range (int &from_x, int &from_width,
                                            int &to_x, int &to_width, bool perturb, int shiftx) {
@@ -168,7 +251,8 @@ namespace picpac {
         };
 
         Clip (json const &spec)
-            : size(spec.value<int>("size", 0)),
+            : BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)),
+              size(spec.value<int>("size", 0)),
               min(spec.value<int>("min", size ? size : 0)),
               max(spec.value<int>("max", size ? size : numeric_limits<int>::max())),
               round(spec.value<int>("round", 0)),
@@ -188,14 +272,6 @@ namespace picpac {
         {
             CHECK(min_width <= max_width);
             CHECK(min_height <= max_height);
-            string b = spec.value<string>("border", "replicate");
-            if (b == "replicate") {
-                border = cv::BORDER_REPLICATE;
-            }
-            else if (b == "constant") {
-                border = cv::BORDER_CONSTANT;
-            }
-            else CHECK(0) << "border " << b << " not recognized.";
         }
 
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -294,7 +370,7 @@ namespace picpac {
 
             if (facet->image.data) {
                 cv::Mat to(sz, facet->image.type(), cv::Scalar(0,0,0,0));
-                cv::copyMakeBorder(facet->image(cv::Rect(from_x, from_y, from_width, from_height)), to, to_y, to.rows-(to_y + to_height), to_x, to.cols-(to_x + to_width), border, cv::Scalar(0,0,0,0));
+                cv::copyMakeBorder(facet->image(cv::Rect(from_x, from_y, from_width, from_height)), to, to_y, to.rows-(to_y + to_height), to_x, to.cols-(to_x + to_width), border_type, border_value);
                 //facet->image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
                 facet->image = to;
             }
@@ -458,7 +534,7 @@ namespace picpac {
             }
             if (!facet->annotation.empty()) {
                 float fx = 1.0 * sz.width / sz0.width;
-                float fy = 1.0 * sz.height / sz0.width;
+                float fy = 1.0 * sz.height / sz0.height;
 
                 facet->annotation.size = sz;
 
@@ -510,7 +586,7 @@ namespace picpac {
         }
     };
 
-    class AugRotate: public Transform {
+    class AugRotate: public Transform, public BorderConfig {
         float range;
         std::uniform_real_distribution<float> linear_angle;
         struct PerturbVector {
@@ -518,7 +594,8 @@ namespace picpac {
         };
     public:
         AugRotate (json const &spec)
-            : range(spec.value<float>("range", 0)),
+            : BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)),
+            range(spec.value<float>("range", 0)),
             linear_angle(spec.value<float>("min", -range), spec.value<float>("max", range)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -534,7 +611,7 @@ namespace picpac {
             cv::Mat rot = cv::getRotationMatrix2D(cv::Point(sz.width/2, sz.height/2), pv->angle, 1.0);
             if (facet->image.data) {
                 cv::Mat tmp;
-                cv::warpAffine(facet->image, tmp, rot, sz, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);//, CV_INTER);
+                cv::warpAffine(facet->image, tmp, rot, sz, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR, border_type, border_value);//, CV_INTER);
                 //cv::resize(tmp, tmp, cv::Size(), p.scale, p.scale);
                 facet->image = tmp;
             }
@@ -827,6 +904,12 @@ namespace picpac {
 
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
+        if (type == "mask") {
+            return std::unique_ptr<Transform>(new Mask(spec));
+        }
+        if (type == "erode_mask") {
+            return std::unique_ptr<Transform>(new ErodeMask(spec));
+        }
         if (type == "rasterize") {
             return std::unique_ptr<Transform>(new Rasterize(spec));
         }

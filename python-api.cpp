@@ -169,7 +169,7 @@ public:
             return const_buffer(PyString_AsString(buf), PyString_Size(buf));
         }
 #endif
-        else CHECK(0) << "can only append string or bytes";
+        CHECK(0) << "can only append string or bytes";
 
     }
 
