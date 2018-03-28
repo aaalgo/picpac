@@ -186,6 +186,33 @@ namespace picpac {
         }
     };
 
+    class Resize: public Transform {
+        int size;
+        int width, height;
+    public:
+        Resize (json const &spec)
+            : size(spec.value<int>("size", 228)),
+              width(spec.value<int>("width", size)),
+              height(spec.value<int>("height", size))
+        {
+            CHECK(size > 0);
+            CHECK(width > 0);
+            CHECK(height > 0);
+        }
+
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            cv::Size sz(width, height);
+            while (facet->image.data) {
+                if (facet->image.size() == sz) break;
+                cv::Mat tmp;
+                cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);
+                facet->image = tmp;
+                break;
+            }
+            return 0;
+        }
+    };
+
     class Clip: public Transform, public BorderConfig {
         int size, min, max, round;
         int min_width, max_width;
@@ -915,6 +942,9 @@ namespace picpac {
         }
         if (type == "normalize") {
             return std::unique_ptr<Transform>(new Normalize(spec));
+        }
+        else if (type == "resize") {
+            return std::unique_ptr<Transform>(new Resize(spec));
         }
         else if (type == "clip") {
             return std::unique_ptr<Transform>(new Clip(spec));
