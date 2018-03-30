@@ -19,7 +19,9 @@ namespace {
 class PyImageStream: public ImageStream {
     int batch;
     string order;
+    string colorspace;
     bachelor::Order bachelor_order;
+    bachelor::ColorSpace bachelor_colorspace;
     object ctor;
 public:
     struct Config: public ImageStream::Config {
@@ -57,9 +59,10 @@ public:
     };
 
     PyImageStream (dict kwargs) //{std::string const &path, Config const &c)
-        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), order("NHWC") {
+        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), order("NHWC"), colorspace("BGR") {
             UPDATE_CONFIG(batch, kwargs);
             UPDATE_CONFIG(order, kwargs);
+            UPDATE_CONFIG(colorspace, kwargs);
 #undef UPDATE_CONFIG
             if (order == "NHWC") {
                 bachelor_order = bachelor::NHWC;
@@ -68,6 +71,13 @@ public:
                 bachelor_order = bachelor::NCHW;
             }
             else CHECK(0) << "Unrecognized order: " << order;
+            if (colorspace == "BGR") {
+                bachelor_colorspace = bachelor::BGR;
+            }
+            else if (colorspace == "RGB") {
+                bachelor_colorspace = bachelor::RGB;
+            }
+            else CHECK(0) << "Unrecognized colorspace: " << colorspace;
             auto collections = import("collections");
             auto namedtuple = collections.attr("namedtuple");
             list fields;
@@ -95,6 +105,7 @@ public:
                 conf.channels = im.image.channels();
                 conf.depth = im.image.depth();
                 conf.order = bachelor_order;
+                conf.colorspace = bachelor_colorspace;
                 data.emplace_back(new NumpyBatch(conf));
                 data.back()->fill_next(im.image);
                 //l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
