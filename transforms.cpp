@@ -659,26 +659,79 @@ namespace picpac {
         }
     };
 
-    class DenseCircleAnchors: public Transform {
-        int index;
+    struct CircleAnchor {
+
+        static unsigned constexpr PARAMS = 3;
+
+        struct Shape {
+            cv::Point2f center;
+            float radius;
+        };
+
+        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
+            float minx = ctrls[0].x;
+            float maxx = minx;
+            float miny = ctrls[0].y;
+            float maxy = miny;
+            for (unsigned j = 1; j < ctrls.size(); ++j) {
+                minx = std::min(ctrls[j].x, minx);
+                maxx = std::max(ctrls[j].x, maxx);
+                miny = std::min(ctrls[j].y, miny);
+                maxy = std::max(ctrls[j].y, maxy);
+            }
+            cv::Point2f ul(minx, miny);
+            cv::Point2f br(maxx, maxy);
+            c->center = (ul + br);
+            c->center.x /=  2; 
+            c->center.y /=  2;
+            c->radius =  cv::norm(br - ul) / 2;
+        }
+
+        static float score (cv::Point_<float> const &pt,
+                              float const *prior,
+                              Shape const &c) {
+            float r = cv::norm(pt - c.center);
+            // r = 0 ---> 1
+            // r = c.radius --> 0
+            return (c.radius - r) / c.radius;
+        }
+
+        static void update_params (cv::Point_<float> const &pt, Shape const &c, float *params) {
+            params[0] = c.center.x - pt.x;
+            params[1] = c.center.y - pt.y;
+            params[2] = c.radius;
+        }
+    };
+
+    class BoxAnchor {
+    };
+
+    template <typename ANCHOR>
+    class DenseAnchors: public Transform {
+        int index;		// annotation facet
         int downsize;
+        cv::Mat priors;
         float upper_th;
         float lower_th;
 
-        struct Circle {
-            cv::Point2f center;
-            float radius;
-
+        struct Shape: public ANCHOR::Shape {
+            // keep track the best match of the shape
+            // this is always used if score > lower_th
             float score;
-            uint8_t *label;
+            cv::Point_<float> pt;
+            float const *prior;
+            int32_t *label;
             float *label_mask;
             float *params;
             float *params_mask;
-            cv::Point2f shift;
+            Shape (): score(0), prior(nullptr),
+                label(nullptr), label_mask(nullptr), 
+                params(nullptr), params_mask(nullptr) {
+            }
         };
 
     public:
-        DenseCircleAnchors (json const &spec) {
+        DenseAnchors (json const &spec): priors(1, ANCHOR::PARAMS, CV_32F, cv::Scalar(0)) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
             upper_th = spec.value<float>("upper_th", 0.8);
@@ -691,40 +744,11 @@ namespace picpac {
 
             CHECK(!anno.empty());
 
-            vector<Circle> truths(anno.shapes.size());  // ground-truth circles
+            vector<Shape> truths(anno.shapes.size());  // ground-truth circles
             for (unsigned i = 0; i < anno.shapes.size(); ++i) {
                 vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
                 CHECK(ctrls.size() >= 1); // must be boxes
-
-				float minx = ctrls[0].x;
-				float maxx = minx;
-				float miny = ctrls[0].y;
-				float maxy = miny;
-				for (unsigned j = 1; j < ctrls.size(); ++j) {
-					minx = std::min(ctrls[j].x, minx);
-					maxx = std::max(ctrls[j].x, maxx);
-					miny = std::min(ctrls[j].y, miny);
-					maxy = std::max(ctrls[j].y, maxy);
-				}
-		        cv::Point2f ul(minx, miny);
-		        cv::Point2f br(maxx, maxy);
-
-                Circle &c = truths[i];
-
-#if 0
-                c.center = (ctrls[0] + ctrls[1]) / 2 / downsize;
-                c.radius =  cv::norm(ctrls[0] - ctrls[1]) / 2 / downsize;
-#endif
-                c.center = (ul + br);
-                c.center.x /=  2 * downsize;
-                c.center.y /=  2 * downsize;
-                c.radius =  cv::norm(br - ul) / 2 / downsize;
-
-                c.score = numeric_limits<float>::max();
-                c.label = nullptr;
-                c.label_mask = nullptr;
-                c.params = nullptr;
-                c.params_mask = nullptr;
+                ANCHOR::init_shape_with_controls(&truths[i], ctrls);
             }
 
             // params: dx dy radius
@@ -734,71 +758,72 @@ namespace picpac {
             sz.width /= downsize;
             sz.height /= downsize;
 
-            cv::Mat label(sz, CV_8UC1, cv::Scalar(0));
+            cv::Mat label(sz, CV_32SC(priors.rows), cv::Scalar(0));
             // only effective for near and far points
-            cv::Mat label_mask(sz, CV_32F, cv::Scalar(1));
+            cv::Mat label_mask(cv::Mat::ones(sz, CV_32FC(priors.rows)));
             // only effective for near points
-            cv::Mat params(sz, CV_32FC3, cv::Scalar(0, 0, 0));
-            cv::Mat params_mask(sz, CV_32FC3, cv::Scalar(0));
+            cv::Mat params(cv::Mat::zeros(sz, CV_32FC(priors.rows * ANCHOR::PARAMS)));
+            cv::Mat params_mask(cv::Mat::zeros(sz, CV_32FC(priors.rows)));
 
             for (int y = 0; y < sz.height; ++y) {
 
-                uint8_t *pl = label.ptr<uint8_t>(y);
+                int32_t *pl = label.ptr<int32_t>(y);
                 float *plm = label_mask.ptr<float>(y);
                 float *pp = params.ptr<float>(y);
                 float *ppm = params_mask.ptr<float>(y);
 
-                for (int x = 0; x < sz.width; ++x, pl += 1, plm += 1, pp += 3, ppm += 3) {
-                    // find closest circle
-                    cv::Point2f pt(x, y);
-                    Circle *best_c = nullptr;
-                    float best_d = numeric_limits<float>::max();
-                    for (auto &c: truths) {
-                        float d = cv::norm(pt - c.center);
-                        if (d < best_d) {   // find best circle
-                            best_d = d;
-                            best_c = &c;
+                for (int x = 0; x < sz.width; ++x) {
+                    // find closest shape
+                    cv::Point2f pt(x * downsize, y * downsize);
+
+                    for (int k = 0; k < priors.rows; ++k,
+                            pl += 1, plm +=1,
+                            pp += ANCHOR::PARAMS, ppm += 1) {
+                        float const *prior = priors.ptr<float>(k);
+
+                        Shape *best_c = nullptr;
+                        float best_d = 0;
+                        for (auto &c: truths) {
+                            float d = ANCHOR::score(pt, prior, c); 
+                            if (d > best_d) {   // find best circle
+                                best_d = d;
+                                best_c = &c;
+                            }
+                            if (d > c.score) {
+                                c.score = d;
+                                c.pt = pt;
+                                c.prior = prior;
+                                c.label = pl;
+                                c.label_mask = plm;
+                                c.params = pp;
+                                c.params_mask = ppm;
+                            }
                         }
-                        if (d < c.score) {  // for each circle find best match
-                            c.score = d;
-                            c.label = pl;
-                            c.label_mask = plm;
-                            c.params = pp;
-                            c.params_mask = ppm;
-                            c.shift = c.center - pt;
+                        if (!best_c) continue;
+                        if (best_d >= lower_th) {
+                            ANCHOR::update_params(pt, *best_c, pp);
+                            ppm[0] = 1.0;
+                            if (best_d < upper_th) {
+                                plm[0] = 0;
+                            }
+                            else {
+                                pl[0] = 1;      // to class label
+                            }
                         }
-                    }
-                    if (!best_c) continue;
-                    float r = best_d / best_c->radius;
-                    if (r <= upper_th) { // close to center
-                        pl[0] = 1;
-                        pp[0] = best_c->radius;
-                        pp[1] = best_c->center.x - x;
-                        pp[2] = best_c->center.y - y;
-                        ppm[0] = 1;
-                        ppm[1] = 1;
-                        ppm[2] = 1;
-                        if (r > lower_th) {
-                            plm[0] = 0;
-                        }
-                    }
-                }
-            }
+                    } // prior
+                } // x
+            } // y
             for (auto &c: truths) {
                 if (c.label == nullptr) {
-                    std::cerr << "MISS: " << c.center.x << ',' << c.center.y << ' ' << c.radius << std::endl;
+                    std::cerr << "MISS: " << std::endl;// << c.center.x << ',' << c.center.y << ' ' << c.radius << std::endl;
                     continue;   // not found
                 }
-#if 0
-                if (c.score / c.radious <= lower_th) {
+                if (c.score >= lower_th) {
                     c.label[0] = 1;
                     c.label_mask[0] = 1;
-                    c.params[0] = c.radious;
-                    c.params[1] = c.shift.x;
-                    c.params[2] = c.shift.y;
+                    ANCHOR::update_params(c.pt, c, c.params);
                     c.params_mask[0] = 1;
                 }
-#endif
             }
             sample->facets.emplace_back(label);
             sample->facets.emplace_back(label_mask);
@@ -808,7 +833,9 @@ namespace picpac {
         }
     };
 
-    class DrawDenseCircleAnchors: public Transform {
+#if 0
+    <template typename=ANCHOR>
+    class DrawDenseAnchors: public Transform {
         int index;
         int upsize;
         int copy;
@@ -844,6 +871,7 @@ namespace picpac {
             return 0;
         }
     };
+#endif
 
     // apply to all channels
     class WaveAugAdd: public Transform {
@@ -968,11 +996,13 @@ namespace picpac {
             return std::unique_ptr<Transform>(new AugAdd(spec));
         }
         else if (type == "anchors.dense.circle") {
-            return std::unique_ptr<Transform>(new DenseCircleAnchors(spec));
+            return std::unique_ptr<Transform>(new DenseAnchors<CircleAnchor>(spec));
         }
+        /*
         else if (type == "anchors.dense.circle.draw") {
             return std::unique_ptr<Transform>(new DrawDenseCircleAnchors(spec));
         }
+        */
         else if (type == "wave.augment.add") {
             return std::unique_ptr<Transform>(new WaveAugAdd(spec));
         }
