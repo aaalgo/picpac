@@ -10,7 +10,7 @@ namespace picpac {
         BorderConfig (json const &spec, int type, cv::Scalar value)
             : border_type(type), border_value(value)
         {
-            string b = spec.value<string>("border_type", "replicate");
+            string b = spec.value<string>("border_type", "constant");
             if (b == "replicate") {
                 border_type = cv::BORDER_REPLICATE;
             }
@@ -661,6 +661,7 @@ namespace picpac {
 
     struct CircleAnchor {
 
+        static unsigned constexpr PRIOR_PARAMS = 1;
         static unsigned constexpr PARAMS = 3;
 
         struct Shape {
@@ -684,7 +685,7 @@ namespace picpac {
             c->center = (ul + br);
             c->center.x /=  2; 
             c->center.y /=  2;
-            c->radius =  cv::norm(br - ul) / 2;
+            c->radius =  std::sqrt((maxx-minx)*(maxy-miny)) / 2;
         }
 
         static float score (cv::Point_<float> const &pt,
@@ -701,7 +702,51 @@ namespace picpac {
         }
     };
 
-    class BoxAnchor {
+    struct BoxAnchor {
+        static unsigned constexpr PRIOR_PARAMS = 1;
+        static unsigned constexpr PARAMS = 4;
+
+        struct Shape {
+            cv::Point2f center;
+            float width, height;
+        };
+
+        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
+            float minx = ctrls[0].x;
+            float maxx = minx;
+            float miny = ctrls[0].y;
+            float maxy = miny;
+            for (unsigned j = 1; j < ctrls.size(); ++j) {
+                minx = std::min(ctrls[j].x, minx);
+                maxx = std::max(ctrls[j].x, maxx);
+                miny = std::min(ctrls[j].y, miny);
+                maxy = std::max(ctrls[j].y, maxy);
+            }
+            cv::Point2f ul(minx, miny);
+            cv::Point2f br(maxx, maxy);
+            c->center = (ul + br);
+            c->center.x /=  2; 
+            c->center.y /=  2;
+            c->width = maxx - minx;
+            c->height = maxy - miny;
+        }
+
+        static float score (cv::Point_<float> const &pt,
+                              float const *prior,
+                              Shape const &c) {
+            // overlap
+            float dx = std::abs(pt.x - c.center.x) * 2; 
+            float dy = std::abs(pt.y - c.center.y) * 2;
+            return std::min((c.width - dx) / c.width,
+                            (c.height - dy) / c.height);
+        }
+
+        static void update_params (cv::Point_<float> const &pt, Shape const &c, float *params) {
+            params[0] = c.center.x - pt.x;
+            params[1] = c.center.y - pt.y;
+            params[2] = c.width;
+            params[3] = c.height;
+        }
     };
 
     template <typename ANCHOR>
@@ -718,7 +763,7 @@ namespace picpac {
             float score;
             cv::Point_<float> pt;
             float const *prior;
-            int32_t *label;
+            float *label;
             float *label_mask;
             float *params;
             float *params_mask;
@@ -729,7 +774,7 @@ namespace picpac {
         };
 
     public:
-        DenseAnchors (json const &spec): priors(1, ANCHOR::PARAMS, CV_32F, cv::Scalar(0)) {
+        DenseAnchors (json const &spec): priors(1, ANCHOR::PRIOR_PARAMS, CV_32F, cv::Scalar(0)) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
             upper_th = spec.value<float>("upper_th", 0.8);
@@ -756,7 +801,7 @@ namespace picpac {
             sz.width /= downsize;
             sz.height /= downsize;
 
-            cv::Mat label(sz, CV_32SC(priors.rows), cv::Scalar(0));
+            cv::Mat label(sz, CV_32FC(priors.rows), cv::Scalar(0));
             // only effective for near and far points
             cv::Mat label_mask(cv::Mat::ones(sz, CV_32FC(priors.rows)));
             // only effective for near points
@@ -765,7 +810,7 @@ namespace picpac {
 
             for (int y = 0; y < sz.height; ++y) {
 
-                int32_t *pl = label.ptr<int32_t>(y);
+                float *pl = label.ptr<float>(y);
                 float *plm = label_mask.ptr<float>(y);
                 float *pp = params.ptr<float>(y);
                 float *ppm = params_mask.ptr<float>(y);
@@ -782,6 +827,7 @@ namespace picpac {
                         Shape *best_c = nullptr;
                         float best_d = 0;
                         for (auto &c: truths) {
+                            // TODO: what if a pixel belongs to two shapes
                             float d = ANCHOR::score(pt, prior, c); 
                             if (d > best_d) {   // find best circle
                                 best_d = d;
@@ -995,6 +1041,9 @@ namespace picpac {
         }
         else if (type == "anchors.dense.circle") {
             return std::unique_ptr<Transform>(new DenseAnchors<CircleAnchor>(spec));
+        }
+        else if (type == "anchors.dense.box") {
+            return std::unique_ptr<Transform>(new DenseAnchors<BoxAnchor>(spec));
         }
         /*
         else if (type == "anchors.dense.circle.draw") {

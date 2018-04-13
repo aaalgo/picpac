@@ -271,7 +271,12 @@ public:
         IndexedFileReader::read(i, &rec);
         list fields;
         for (unsigned i = 0; i < rec.size(); ++i) {
+#if PY_MAJOR_VERSION >= 3
+            const_buffer buf = rec.field(i);
+            fields.append(object(handle<>(PyBytes_FromStringAndSize(boost::asio::buffer_cast<char const *>(buf), boost::asio::buffer_size(buf)))));
+#else
             fields.append(rec.field_string(i));
+#endif
         }
         auto const &meta = rec.meta();
         return ctor(meta.id, meta.label, meta.label2, fields);
