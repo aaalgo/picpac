@@ -691,8 +691,6 @@ namespace picpac {
                               float const *prior,
                               Shape const &c) {
             float r = cv::norm(pt - c.center);
-            // r = 0 ---> 1
-            // r = c.radius --> 0
             return (c.radius - r) / c.radius;
         }
 
