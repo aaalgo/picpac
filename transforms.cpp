@@ -1,3 +1,4 @@
+#include <iostream>
 #include "picpac-image.h"
 
 namespace picpac {
