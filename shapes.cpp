@@ -10,6 +10,9 @@ namespace picpac {
 			 {34, 189, 188}, {141, 219, 219}, {207, 190, 23}, {229, 218, 158}};
 
     cv::Scalar Shape::render_color (RenderOptions const &opt) const {
+        if (opt.use_tag) {
+            return cv::Scalar(tag, tag, tag);
+        }
         if (opt.use_palette) {
             return PALETTE[rand() % PALETTE.size()];
         }

@@ -53,6 +53,7 @@ namespace picpac {
         int point_radius;
         bool show_numbers;
         bool use_palette;
+        bool use_tag;
 
         RenderOptions ()
             : thickness(CV_FILLED),
@@ -60,7 +61,8 @@ namespace picpac {
             shift(0),
             point_radius(5),
             show_numbers(false),
-            use_palette(false)
+            use_palette(false),
+            use_tag(false)
         {
         }
     };
