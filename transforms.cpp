@@ -116,7 +116,7 @@ namespace picpac {
             opt.use_palette = spec.value<bool>("use_palette", opt.use_palette);
             opt.use_tag = spec.value<bool>("use_tag", opt.use_tag);
             opt.thickness = spec.value<int>("thickness", opt.thickness);
-            if ((!opt.use_palette) || (!opt.use_tag)) << "Cannot use both tag and palette";
+            CHECK(((!opt.use_palette) || (!opt.use_tag))) << "Cannot use both tag and palette";
         }
         virtual size_t apply (Sample *sample, void const *) const {
             auto &facet = sample->facets[index];
