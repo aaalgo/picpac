@@ -219,6 +219,10 @@ namespace picpac {
                 shape->color = cv::Scalar(v, v, v, v);
             }
         }
+        auto ptag = spec.find("tag");
+        if (ptag != spec.end()) { // has label
+            shape->tag = ptag->get<float>();
+        }
         return shape;
     }
 }

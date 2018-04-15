@@ -3,6 +3,21 @@
 
 namespace picpac {
 
+    class Drop: public Transform {
+        int index;
+    public:
+        Drop (json const &spec) {
+            index = spec.value<int>("index", 1);
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto &facet = sample->facets[index];
+            facet.type = Facet::NONE;
+            return 0;
+        }
+    };
+
+
     class BorderConfig {
     protected:
         int border_type;
@@ -878,6 +893,38 @@ namespace picpac {
         }
     };
 
+    class BoxFeature: public Transform {
+        int index;
+    public:
+        BoxFeature (json const &spec) {
+            index = spec.value<int>("index", 1);
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto const &facet = sample->facets[index];
+            auto const &anno = facet.annotation;
+
+            CHECK(!anno.empty());
+
+            cv::Mat feature(anno.shapes.size(), 6, CV_32F);
+            for (unsigned i = 0; i < anno.shapes.size(); ++i) {
+                vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
+                CHECK(ctrls.size() >= 1); // must be boxes
+                BoxAnchor::Shape box;
+                BoxAnchor::init_shape_with_controls(&box, ctrls);
+                float *p = feature.ptr<float>(i);
+                p[0] = anno.shapes[i]->color[0];
+                p[1] = anno.shapes[i]->tag;
+                p[2] = box.center.x - box.width/2;
+                p[3] = box.center.y - box.height/2;
+                p[4] = p[2] + box.width;
+                p[5] = p[3] + box.height;
+            }
+            sample->facets.emplace_back(feature , Facet::FEATURE);
+            return 0;
+        }
+    };
+
 #if 0
     <template typename=ANCHOR>
     class DrawDenseAnchors: public Transform {
@@ -1046,6 +1093,9 @@ namespace picpac {
         else if (type == "anchors.dense.box") {
             return std::unique_ptr<Transform>(new DenseAnchors<BoxAnchor>(spec));
         }
+        else if (type == "box_feature") {
+            return std::unique_ptr<Transform>(new BoxFeature(spec));
+        }
         /*
         else if (type == "anchors.dense.circle.draw") {
             return std::unique_ptr<Transform>(new DrawDenseCircleAnchors(spec));
@@ -1059,6 +1109,9 @@ namespace picpac {
         }
         else if (type == "wave.augment.scale") {
             return std::unique_ptr<Transform>(new AugWidthScale(spec));
+        }
+        else if (type == "drop") {
+            return std::unique_ptr<Transform>(new Drop(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;

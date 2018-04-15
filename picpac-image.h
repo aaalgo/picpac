@@ -71,13 +71,15 @@ namespace picpac {
     // to control points (with a callback function)
     class Shape {
     protected:
+        vector<cv::Point2f> controls;
+    public:
         char const *type;   // text name
         cv::Scalar color;
-        vector<cv::Point2f> controls;
+        float tag;
 
         cv::Scalar render_color (RenderOptions const &) const;
-    public:
-        Shape (char const *t): type(t), color(1.0, 1.0, 1.0, 1.0) {}
+
+        Shape (char const *t): type(t), color(1.0, 1.0, 1.0, 1.0), tag(0) {}
         virtual ~Shape () {}
         virtual std::unique_ptr<Shape> clone () const = 0;
         virtual void transform (std::function<void(vector<cv::Point2f> *)> f) {
@@ -132,7 +134,9 @@ namespace picpac {
     struct Facet {
         enum {
             IMAGE = 1,
-            LABEL = 2
+            LABEL = 2,
+            FEATURE = 3,
+            NONE = 4
         };
         int type;
         cv::Mat image;
@@ -144,7 +148,7 @@ namespace picpac {
             annotation(begin, end, sz) {
         }
 
-        Facet (cv::Mat v): type(IMAGE), image(v) {
+        Facet (cv::Mat v, int type_ = IMAGE): type(type_), image(v) {
         }
 
         Facet (Facet &&ai) {

@@ -16,6 +16,61 @@ using bachelor::NumpyBatch;
 namespace {
     using std::unique_ptr;
 
+    class FacetData {
+    public:
+        virtual ~FacetData () {}
+        virtual void fill_next (cv::Mat const &image) = 0;
+        virtual PyObject *detach () = 0;
+    };
+
+    class BachelorFacetData: public FacetData, public NumpyBatch {
+    public:
+        BachelorFacetData (NumpyBatch::Config const &conf): NumpyBatch(conf) {
+        }
+
+        virtual void fill_next (cv::Mat const &image) {
+            NumpyBatch::fill_next(image);
+        }
+        virtual PyObject *detach () {
+            return NumpyBatch::detach();
+        }
+    };
+
+    class FacetFeatureData: public FacetData {
+        vector<cv::Mat> features;
+    public:
+        virtual void fill_next (cv::Mat const &image) {
+            features.emplace_back(image.clone());
+        }
+        virtual PyObject *detach () {
+            int total = 0;
+            int cols = 0;
+            for (auto const &v: features) {
+                if (v.rows) {
+                    total += v.rows;
+                    if (cols) CHECK(cols == v.cols) << "feature dimension do not match";
+                    else cols = v.cols;
+                }
+            }
+            cols += 1;
+            npy_intp dims[2] = {total, cols};
+            PyObject *pydata = PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+            CHECK(pydata);
+            // copy
+            float *p = (float *)PyArray_DATA(pydata);
+            for (unsigned i = 0; i < features.size(); ++i) {
+                cv::Mat const &v = features[i];
+                if (v.rows == 0) continue;
+                for (int j = 0; j < v.rows; ++j, p += cols) {
+                    p[0] = i;
+                    float const *from = v.ptr<float const>(j);
+                    std::copy(from, from + v.cols, p+1);
+                }
+            }
+            return pydata;
+        }
+    };
+
 class PyImageStream: public ImageStream {
     int batch;
     string order;
@@ -91,13 +146,14 @@ public:
         // if EOS, this will 
         vector<int32_t> ids;
         vector<float> labels;
-        vector<unique_ptr<NumpyBatch>> data;
+        vector<unique_ptr<FacetData>> data;
         // create batch, emplace first object
         Value v(ImageStream::next());
         ids.push_back(v.id);
         labels.push_back(v.label);
         for (auto &im: v.facets) {
-            if (im.image.data) {
+            if ((im.type == Facet::IMAGE) || (im.type == Facet::LABEL)) {
+                //if (im.image.data) {
                 NumpyBatch::Config conf;
                 conf.batch = batch;
                 conf.height = im.image.rows;
@@ -106,13 +162,18 @@ public:
                 conf.depth = im.image.depth();
                 conf.order = bachelor_order;
                 conf.colorspace = bachelor_colorspace;
-                data.emplace_back(new NumpyBatch(conf));
+                data.emplace_back(new BachelorFacetData(conf));
                 data.back()->fill_next(im.image);
-                //l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
+            }
+            else if (im.type == Facet::FEATURE) {
+                data.emplace_back(new FacetFeatureData());
+                data.back()->fill_next(im.image);
+            }
+            else if (im.type == Facet::NONE) {
+                data.emplace_back(nullptr);
             }
             else {
-                CHECK(0) << "image is empty";
-                //l.append(object());
+                CHECK(0);
             }
         }
         for (int i = 1; i < batch; ++i) {
@@ -124,12 +185,9 @@ public:
                 CHECK(data.size() == v.facets.size());
                 for (unsigned j = 0; j < data.size(); ++j) {
                     auto &im = v.facets[j];
-                    if (im.image.data) {
-                        data[j]->fill_next(im.image);
-                    }
-                    else {
-                        CHECK(0) << "image is empty";
-                    }
+                    if (im.type == Facet::NONE) continue;
+                    CHECK(data[j]);
+                    data[j]->fill_next(im.image);
                 }
             }
             catch (EoS const &) {
@@ -147,7 +205,12 @@ public:
         list r;
         r.append(ctor(boost::python::handle<>(pyids), boost::python::handle<>(pylabels)));
         for (auto &p: data) {
-            r.append(object(boost::python::handle<>(p->detach())));
+            if (p) {
+                r.append(object(boost::python::handle<>(p->detach())));
+            }
+            else {
+                r.append(object(boost::python::handle<>(Py_None)));
+            }
         }
         return r;
     }
