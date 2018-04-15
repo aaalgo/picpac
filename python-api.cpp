@@ -16,10 +16,67 @@ using bachelor::NumpyBatch;
 namespace {
     using std::unique_ptr;
 
+    class FacetData {
+    public:
+        virtual ~FacetData () {}
+        virtual void fill_next (cv::Mat const &image) = 0;
+        virtual PyObject *detach () = 0;
+    };
+
+    class BachelorFacetData: public FacetData, public NumpyBatch {
+    public:
+        BachelorFacetData (NumpyBatch::Config const &conf): NumpyBatch(conf) {
+        }
+
+        virtual void fill_next (cv::Mat const &image) {
+            NumpyBatch::fill_next(image);
+        }
+        virtual PyObject *detach () {
+            return NumpyBatch::detach();
+        }
+    };
+
+    class FacetFeatureData: public FacetData {
+        vector<cv::Mat> features;
+    public:
+        virtual void fill_next (cv::Mat const &image) {
+            features.emplace_back(image.clone());
+        }
+        virtual PyObject *detach () {
+            int total = 0;
+            int cols = 0;
+            for (auto const &v: features) {
+                if (v.rows) {
+                    total += v.rows;
+                    if (cols) CHECK(cols == v.cols) << "feature dimension do not match";
+                    else cols = v.cols;
+                }
+            }
+            cols += 1;
+            npy_intp dims[2] = {total, cols};
+            PyObject *pydata = PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+            CHECK(pydata);
+            // copy
+            float *p = (float *)PyArray_DATA(pydata);
+            for (unsigned i = 0; i < features.size(); ++i) {
+                cv::Mat const &v = features[i];
+                if (v.rows == 0) continue;
+                for (int j = 0; j < v.rows; ++j, p += cols) {
+                    p[0] = i;
+                    float const *from = v.ptr<float const>(j);
+                    std::copy(from, from + v.cols, p+1);
+                }
+            }
+            return pydata;
+        }
+    };
+
 class PyImageStream: public ImageStream {
     int batch;
     string order;
+    string colorspace;
     bachelor::Order bachelor_order;
+    bachelor::ColorSpace bachelor_colorspace;
     object ctor;
 public:
     struct Config: public ImageStream::Config {
@@ -57,9 +114,10 @@ public:
     };
 
     PyImageStream (dict kwargs) //{std::string const &path, Config const &c)
-        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), order("NHWC") {
+        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), order("NHWC"), colorspace("BGR") {
             UPDATE_CONFIG(batch, kwargs);
             UPDATE_CONFIG(order, kwargs);
+            UPDATE_CONFIG(colorspace, kwargs);
 #undef UPDATE_CONFIG
             if (order == "NHWC") {
                 bachelor_order = bachelor::NHWC;
@@ -68,6 +126,13 @@ public:
                 bachelor_order = bachelor::NCHW;
             }
             else CHECK(0) << "Unrecognized order: " << order;
+            if (colorspace == "BGR") {
+                bachelor_colorspace = bachelor::BGR;
+            }
+            else if (colorspace == "RGB") {
+                bachelor_colorspace = bachelor::RGB;
+            }
+            else CHECK(0) << "Unrecognized colorspace: " << colorspace;
             auto collections = import("collections");
             auto namedtuple = collections.attr("namedtuple");
             list fields;
@@ -81,13 +146,14 @@ public:
         // if EOS, this will 
         vector<int32_t> ids;
         vector<float> labels;
-        vector<unique_ptr<NumpyBatch>> data;
+        vector<unique_ptr<FacetData>> data;
         // create batch, emplace first object
         Value v(ImageStream::next());
         ids.push_back(v.id);
         labels.push_back(v.label);
         for (auto &im: v.facets) {
-            if (im.image.data) {
+            if ((im.type == Facet::IMAGE) || (im.type == Facet::LABEL)) {
+                //if (im.image.data) {
                 NumpyBatch::Config conf;
                 conf.batch = batch;
                 conf.height = im.image.rows;
@@ -95,13 +161,19 @@ public:
                 conf.channels = im.image.channels();
                 conf.depth = im.image.depth();
                 conf.order = bachelor_order;
-                data.emplace_back(new NumpyBatch(conf));
+                conf.colorspace = bachelor_colorspace;
+                data.emplace_back(new BachelorFacetData(conf));
                 data.back()->fill_next(im.image);
-                //l.append(boost::python::handle<>(pbcvt::fromMatToNDArray(im.image)));
+            }
+            else if (im.type == Facet::FEATURE) {
+                data.emplace_back(new FacetFeatureData());
+                data.back()->fill_next(im.image);
+            }
+            else if (im.type == Facet::NONE) {
+                data.emplace_back(nullptr);
             }
             else {
-                CHECK(0) << "image is empty";
-                //l.append(object());
+                CHECK(0);
             }
         }
         for (int i = 1; i < batch; ++i) {
@@ -113,12 +185,9 @@ public:
                 CHECK(data.size() == v.facets.size());
                 for (unsigned j = 0; j < data.size(); ++j) {
                     auto &im = v.facets[j];
-                    if (im.image.data) {
-                        data[j]->fill_next(im.image);
-                    }
-                    else {
-                        CHECK(0) << "image is empty";
-                    }
+                    if (im.type == Facet::NONE) continue;
+                    CHECK(data[j]);
+                    data[j]->fill_next(im.image);
                 }
             }
             catch (EoS const &) {
@@ -136,7 +205,12 @@ public:
         list r;
         r.append(ctor(boost::python::handle<>(pyids), boost::python::handle<>(pylabels)));
         for (auto &p: data) {
-            r.append(object(boost::python::handle<>(p->detach())));
+            if (p) {
+                r.append(object(boost::python::handle<>(p->detach())));
+            }
+            else {
+                r.append(object(boost::python::handle<>(Py_None)));
+            }
         }
         return r;
     }
@@ -169,7 +243,7 @@ public:
             return const_buffer(PyString_AsString(buf), PyString_Size(buf));
         }
 #endif
-        else CHECK(0) << "can only append string or bytes";
+        CHECK(0) << "can only append string or bytes";
 
     }
 
@@ -260,7 +334,12 @@ public:
         IndexedFileReader::read(i, &rec);
         list fields;
         for (unsigned i = 0; i < rec.size(); ++i) {
+#if PY_MAJOR_VERSION >= 3
+            const_buffer buf = rec.field(i);
+            fields.append(object(handle<>(PyBytes_FromStringAndSize(boost::asio::buffer_cast<char const *>(buf), boost::asio::buffer_size(buf)))));
+#else
             fields.append(rec.field_string(i));
+#endif
         }
         auto const &meta = rec.meta();
         return ctor(meta.id, meta.label, meta.label2, fields);
@@ -346,6 +425,165 @@ void translate_eos (EoS const &)
     PyErr_SetNone(PyExc_StopIteration);
 }
 
+
+
+}
+
+namespace {
+	cv::Mat Py3DArray2CvMat (PyObject *array_) {
+        PyArrayObject *array((PyArrayObject *)array_);
+        if (array->nd != 3) throw runtime_error("not 3d array");
+        if (array->descr->type_num != NPY_FLOAT32) throw runtime_error("not float32 array");
+        if (!PyArray_ISCONTIGUOUS(array)) throw runtime_error("not contiguous");
+		return cv::Mat(array->dimensions[0],
+					   array->dimensions[1],
+					   CV_32FC(array->dimensions[2]), array->data);
+						
+	}
+
+    struct Circle {
+
+        static unsigned constexpr PARAMS= 3;
+
+        struct Shape {
+            float x, y, r;
+        };
+
+        static void update_shape (Shape *s, cv::Point_<float> const &pt, float const *params) {
+            s->x = pt.x + params[0];
+            s->y = pt.y + params[1];
+            s->r = params[2];
+
+        }
+        static void update_params (Shape const &c, float *params) {
+            params[0] = c.x;
+            params[1] = c.y;
+            params[2] = c.r;
+        }
+
+        static float overlap (Shape const &a, Shape const &b) {
+            float dx = a.x - b.x;
+            float dy = a.y - b.y;
+            float d = sqrt(dx * dx + dy * dy);
+            float r = std::max(a.r, b.r) + 1;
+            return  (r-d)/r;
+        }
+
+        static void draw (cv::Mat image, Shape const &c) {
+            int r = std::round(c.r);
+            int x = std::round(c.x);
+            int y = std::round(c.y);
+            cv::circle(image, cv::Point(x, y), r, cv::Scalar(255, 0, 0), 1);
+        }
+    };
+
+    struct Box {
+        static unsigned constexpr PARAMS= 4;
+
+        typedef cv::Rect_<float> Shape;
+
+        static void update_shape (Shape *s, cv::Point_<float> const &pt, float const *params) {
+            s->x = pt.x + params[0] - params[2]/2;
+            s->y = pt.y + params[1] - params[3]/2;
+            s->width = params[2];
+            s->height = params[3];
+        }
+
+        static float overlap (Shape const &s1, Shape const &s2) {
+            float o = (s1 & s2).area();
+            return o / (s1.area() + s2.area() - o +1);
+        }
+
+        static void update_params (Shape const &s, float *params) {
+            params[0] = s.x;
+            params[1] = s.y;
+            params[2] = s.x + s.width;
+            params[3] = s.y + s.height;
+        }
+
+        static void draw (cv::Mat image, Shape const &c) {
+            cv::rectangle(image, cv::Point(int(round(c.x)), int(round(c.y))),
+                                 cv::Point(int(round(c.x+c.width)), int(round(c.y+c.height))), 
+                                 cv::Scalar(255, 0, 0), 1);
+        }
+    };
+
+    template <typename SHAPE>
+    class AnchorProposal {
+        int upsize;
+        float pth;
+        float th;
+
+        struct Shape: public SHAPE::Shape {
+            float score;
+            float keep;
+        };
+    public:
+        AnchorProposal (int up, float pth_, float th_): upsize(up), pth(pth_), th(th_) {
+        }
+
+        PyObject* apply (PyObject *prob_, PyObject *params_, PyObject *image_) {
+            cv::Mat prob(Py3DArray2CvMat(prob_));
+            cv::Mat params(Py3DArray2CvMat(params_));
+
+            CHECK(prob.type() == CV_32F);
+            //CHECK(params.type() == CV_32FC3);
+            CHECK(prob.rows == params.rows);
+            CHECK(prob.cols == params.cols);
+            //CHECK(prob.channels() == 1);
+            CHECK(params.channels() == SHAPE::PARAMS * prob.channels());
+            vector<Shape> all;
+            int priors = prob.channels();
+            for (int y = 0; y < prob.rows; ++y) {
+                float const *pl = prob.ptr<float const>(y);
+                float const *pp = params.ptr<float const>(y);
+                for (int x = 0; x < prob.cols; ++x) {
+                    cv::Point_<float> pt(x * upsize, y * upsize);
+                    for (int prior = 0; prior < priors; ++prior, ++pl, pp += SHAPE::PARAMS) {
+                        if (pl[0] < pth) continue;
+                        Shape c;
+                        SHAPE::update_shape(&c, pt, pp);
+                        c.score = pl[0];
+                        c.keep = true;
+                        all.push_back(c);
+                    }
+                }
+            }
+            sort(all.begin(), all.end(), [](Shape const &a, Shape const &b){return a.score > b.score;});
+
+            unsigned cnt = 0;
+            for (unsigned i = 0; i < all.size(); ++i) {
+                if (!all[i].keep) continue;
+                cnt += 1;
+                Shape const &a = all[i];
+                for (unsigned j = i+1; j < all.size(); ++j) {
+                    Shape &b = all[j];
+                    float d = SHAPE::overlap(a, b);
+                    if (d > th) {
+                       b.keep = false;
+                    }
+                }
+            }
+		
+        	npy_intp dims[2] = {cnt, SHAPE::PARAMS};
+            PyObject *result = PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+            float *out_params = (float *)((PyArrayObject *)result)->data;
+            for (auto const &c: all) {
+                if (!c.keep) continue;
+                SHAPE::update_params(c, out_params);
+                out_params += SHAPE::PARAMS;
+            }
+
+            if (image_ != Py_None) {
+                cv::Mat image(Py3DArray2CvMat(image_));
+                for (auto const &c: all) {
+                    if (!c.keep) continue;
+                    SHAPE::draw(image, c);
+                }
+            }
+            return result;
+        }
+    };
 }
 
 #if (PY_VERSION_HEX >= 0x03000000)
@@ -406,6 +644,13 @@ BOOST_PYTHON_MODULE(picpac)
     ;
     def("encode_raw", ::encode_raw_ndarray);
     def("write_raw", ::write_raw_ndarray);
+
+    class_<AnchorProposal<Circle>>("CircleProposal", init<int, float, float>())
+        .def("apply", &AnchorProposal<Circle>::apply)
+    ;
+    class_<AnchorProposal<Box>>("BoxProposal", init<int, float, float>())
+        .def("apply", &AnchorProposal<Box>::apply)
+    ;
 //#undef NUMPY_IMPORT_ARRAY_RETVAL
 //#define NUMPY_IMPORT_ARRAY_RETVAL
 }

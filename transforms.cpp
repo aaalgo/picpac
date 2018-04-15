@@ -1,6 +1,105 @@
+#include <iostream>
 #include "picpac-image.h"
 
 namespace picpac {
+
+    class Drop: public Transform {
+        int index;
+    public:
+        Drop (json const &spec) {
+            index = spec.value<int>("index", 1);
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto &facet = sample->facets[index];
+            facet.type = Facet::NONE;
+            return 0;
+        }
+    };
+
+
+    class BorderConfig {
+    protected:
+        int border_type;
+        cv::Scalar border_value;
+    public:
+        BorderConfig (json const &spec, int type, cv::Scalar value)
+            : border_type(type), border_value(value)
+        {
+            string b = spec.value<string>("border_type", "constant");
+            if (b == "replicate") {
+                border_type = cv::BORDER_REPLICATE;
+            }
+            else if (b == "constant") {
+                border_type = cv::BORDER_CONSTANT;
+            }
+            else CHECK(0) << "Border type " << b << " not recognized";
+            // TODO: config border value
+        }
+    };
+
+    class Mask: public Transform {
+        int ref;
+        int index;
+    public:
+        Mask (json const &spec) {
+            ref = spec.value<int>("ref", 0);
+            index = spec.value<int>("index", -1);
+        }
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto &ref_image = sample->facets[ref].image;
+            int idx = index;
+            if (idx < 0) {  // add image
+                sample->facets.emplace_back();
+                idx = sample->facets.size()-1;
+            }
+            auto &facet = sample->facets[idx];
+            facet.type = Facet::LABEL;
+            cv::Size sz = sample->facets[ref].check_size();
+            /*
+            if (!ref_image.data) {
+                return 0;
+            }
+            */
+            facet.image = cv::Mat(sz, CV_8U, cv::Scalar(1));
+            return 0;
+        }
+    };
+
+    class ErodeMask: public Transform, public BorderConfig {
+        int index;
+        cv::Mat kernel;
+        int border_value;
+        int iterations;
+    public:
+        ErodeMask (json const &spec): BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(1,1,1,1)) {
+            index = spec.value<int>("index", -1);
+            int r = spec.value<int>("radius", 0);
+            iterations = spec.value<int>("iterations", 1);
+            kernel = cv::getStructuringElement(cv::MORPH_RECT,
+                            cv::Size(2*r+1,2*r+1),
+                            cv::Point(r,r));
+        }
+        virtual size_t apply (Sample *sample, void const *) const {
+            int idx = index;
+            if (idx < 0) {  // add image
+                idx = sample->facets.size()-1;
+            }
+            auto &facet = sample->facets[idx];
+            CHECK(facet.type = Facet::LABEL);
+            if (!facet.image.data) {
+                return 0;
+            }
+            CHECK(facet.image.type() == CV_8UC1);
+            cv::erode(facet.image,
+                      facet.image, 
+                      kernel,
+                      cv::Point(-1, -1),
+                      iterations,
+                      border_type, border_value);
+            return 0;
+        }
+    };
 
     class Rasterize: public Transform {
         int copy;
@@ -81,10 +180,12 @@ namespace picpac {
                 if (sample->facets.size() == 1) {
                     break;
                 }
+                /*
                 else if (sample->facets.size() == 2) {
                     if (sample->facets[1].type == Facet::LABEL) break;
                 }
                 CHECK(0) << "Normalize doens't support non-standard configuration.";
+                */
             } while (false);
             auto &facet = sample->facets[0];
             if (do_mu) {
@@ -103,7 +204,34 @@ namespace picpac {
         }
     };
 
-    class Clip: public Transform {
+    class Resize: public Transform {
+        int size;
+        int width, height;
+    public:
+        Resize (json const &spec)
+            : size(spec.value<int>("size", 228)),
+              width(spec.value<int>("width", size)),
+              height(spec.value<int>("height", size))
+        {
+            CHECK(size > 0);
+            CHECK(width > 0);
+            CHECK(height > 0);
+        }
+
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            cv::Size sz(width, height);
+            while (facet->image.data) {
+                if (facet->image.size() == sz) break;
+                cv::Mat tmp;
+                cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);
+                facet->image = tmp;
+                break;
+            }
+            return 0;
+        }
+    };
+
+    class Clip: public Transform, public BorderConfig {
         int size, min, max, round;
         int min_width, max_width;
         int min_height, max_height;
@@ -114,8 +242,6 @@ namespace picpac {
 
         int max_shift;
         int max_shift_x, max_shift_y;
-
-        int border;
 
         static void adjust_crop_pad_range (int &from_x, int &from_width,
                                            int &to_x, int &to_width, bool perturb, int shiftx) {
@@ -170,7 +296,8 @@ namespace picpac {
         };
 
         Clip (json const &spec)
-            : size(spec.value<int>("size", 0)),
+            : BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)),
+              size(spec.value<int>("size", 0)),
               min(spec.value<int>("min", size ? size : 0)),
               max(spec.value<int>("max", size ? size : numeric_limits<int>::max())),
               round(spec.value<int>("round", 0)),
@@ -190,14 +317,6 @@ namespace picpac {
         {
             CHECK(min_width <= max_width);
             CHECK(min_height <= max_height);
-            string b = spec.value<string>("border", "replicate");
-            if (b == "replicate") {
-                border = cv::BORDER_REPLICATE;
-            }
-            else if (b == "constant") {
-                border = cv::BORDER_CONSTANT;
-            }
-            else CHECK(0) << "border " << b << " not recognized.";
         }
 
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -296,7 +415,7 @@ namespace picpac {
 
             if (facet->image.data) {
                 cv::Mat to(sz, facet->image.type(), cv::Scalar(0,0,0,0));
-                cv::copyMakeBorder(facet->image(cv::Rect(from_x, from_y, from_width, from_height)), to, to_y, to.rows-(to_y + to_height), to_x, to.cols-(to_x + to_width), border, cv::Scalar(0,0,0,0));
+                cv::copyMakeBorder(facet->image(cv::Rect(from_x, from_y, from_width, from_height)), to, to_y, to.rows-(to_y + to_height), to_x, to.cols-(to_x + to_width), border_type, border_value);
                 //facet->image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
                 facet->image = to;
             }
@@ -460,7 +579,7 @@ namespace picpac {
             }
             if (!facet->annotation.empty()) {
                 float fx = 1.0 * sz.width / sz0.width;
-                float fy = 1.0 * sz.height / sz0.width;
+                float fy = 1.0 * sz.height / sz0.height;
 
                 facet->annotation.size = sz;
 
@@ -512,7 +631,7 @@ namespace picpac {
         }
     };
 
-    class AugRotate: public Transform {
+    class AugRotate: public Transform, public BorderConfig {
         float range;
         std::uniform_real_distribution<float> linear_angle;
         struct PerturbVector {
@@ -520,7 +639,8 @@ namespace picpac {
         };
     public:
         AugRotate (json const &spec)
-            : range(spec.value<float>("range", 0)),
+            : BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)),
+            range(spec.value<float>("range", 0)),
             linear_angle(spec.value<float>("min", -range), spec.value<float>("max", range)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -536,7 +656,7 @@ namespace picpac {
             cv::Mat rot = cv::getRotationMatrix2D(cv::Point(sz.width/2, sz.height/2), pv->angle, 1.0);
             if (facet->image.data) {
                 cv::Mat tmp;
-                cv::warpAffine(facet->image, tmp, rot, sz, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);//, CV_INTER);
+                cv::warpAffine(facet->image, tmp, rot, sz, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR, border_type, border_value);//, CV_INTER);
                 //cv::resize(tmp, tmp, cv::Size(), p.scale, p.scale);
                 facet->image = tmp;
             }
@@ -557,26 +677,122 @@ namespace picpac {
         }
     };
 
-    class DenseCircleAnchors: public Transform {
-        int index;
+    struct CircleAnchor {
+
+        static unsigned constexpr PRIOR_PARAMS = 1;
+        static unsigned constexpr PARAMS = 3;
+
+        struct Shape {
+            cv::Point2f center;
+            float radius;
+        };
+
+        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
+            float minx = ctrls[0].x;
+            float maxx = minx;
+            float miny = ctrls[0].y;
+            float maxy = miny;
+            for (unsigned j = 1; j < ctrls.size(); ++j) {
+                minx = std::min(ctrls[j].x, minx);
+                maxx = std::max(ctrls[j].x, maxx);
+                miny = std::min(ctrls[j].y, miny);
+                maxy = std::max(ctrls[j].y, maxy);
+            }
+            cv::Point2f ul(minx, miny);
+            cv::Point2f br(maxx, maxy);
+            c->center = (ul + br);
+            c->center.x /=  2; 
+            c->center.y /=  2;
+            c->radius =  std::sqrt((maxx-minx)*(maxy-miny)) / 2;
+        }
+
+        static float score (cv::Point_<float> const &pt,
+                              float const *prior,
+                              Shape const &c) {
+            float r = cv::norm(pt - c.center);
+            return (c.radius - r) / c.radius;
+        }
+
+        static void update_params (cv::Point_<float> const &pt, Shape const &c, float *params) {
+            params[0] = c.center.x - pt.x;
+            params[1] = c.center.y - pt.y;
+            params[2] = c.radius;
+        }
+    };
+
+    struct BoxAnchor {
+        static unsigned constexpr PRIOR_PARAMS = 1;
+        static unsigned constexpr PARAMS = 4;
+
+        struct Shape {
+            cv::Point2f center;
+            float width, height;
+        };
+
+        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
+            float minx = ctrls[0].x;
+            float maxx = minx;
+            float miny = ctrls[0].y;
+            float maxy = miny;
+            for (unsigned j = 1; j < ctrls.size(); ++j) {
+                minx = std::min(ctrls[j].x, minx);
+                maxx = std::max(ctrls[j].x, maxx);
+                miny = std::min(ctrls[j].y, miny);
+                maxy = std::max(ctrls[j].y, maxy);
+            }
+            cv::Point2f ul(minx, miny);
+            cv::Point2f br(maxx, maxy);
+            c->center = (ul + br);
+            c->center.x /=  2; 
+            c->center.y /=  2;
+            c->width = maxx - minx;
+            c->height = maxy - miny;
+        }
+
+        static float score (cv::Point_<float> const &pt,
+                              float const *prior,
+                              Shape const &c) {
+            // overlap
+            float dx = std::abs(pt.x - c.center.x) * 2; 
+            float dy = std::abs(pt.y - c.center.y) * 2;
+            return std::min((c.width - dx) / c.width,
+                            (c.height - dy) / c.height);
+        }
+
+        static void update_params (cv::Point_<float> const &pt, Shape const &c, float *params) {
+            params[0] = c.center.x - pt.x;
+            params[1] = c.center.y - pt.y;
+            params[2] = c.width;
+            params[3] = c.height;
+        }
+    };
+
+    template <typename ANCHOR>
+    class DenseAnchors: public Transform {
+        int index;		// annotation facet
         int downsize;
+        cv::Mat priors;
         float upper_th;
         float lower_th;
 
-        struct Circle {
-            cv::Point2f center;
-            float radius;
-
+        struct Shape: public ANCHOR::Shape {
+            // keep track the best match of the shape
+            // this is always used if score > lower_th
             float score;
-            uint8_t *label;
+            cv::Point_<float> pt;
+            float const *prior;
+            float *label;
             float *label_mask;
             float *params;
             float *params_mask;
-            cv::Point2f shift;
+            Shape (): score(0), prior(nullptr),
+                label(nullptr), label_mask(nullptr), 
+                params(nullptr), params_mask(nullptr) {
+            }
         };
 
     public:
-        DenseCircleAnchors (json const &spec) {
+        DenseAnchors (json const &spec): priors(1, ANCHOR::PRIOR_PARAMS, CV_32F, cv::Scalar(0)) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
             upper_th = spec.value<float>("upper_th", 0.8);
@@ -589,40 +805,11 @@ namespace picpac {
 
             CHECK(!anno.empty());
 
-            vector<Circle> truths(anno.shapes.size());  // ground-truth circles
+            vector<Shape> truths(anno.shapes.size());  // ground-truth circles
             for (unsigned i = 0; i < anno.shapes.size(); ++i) {
                 vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
                 CHECK(ctrls.size() >= 1); // must be boxes
-
-				float minx = ctrls[0].x;
-				float maxx = minx;
-				float miny = ctrls[0].y;
-				float maxy = miny;
-				for (unsigned j = 1; j < ctrls.size(); ++j) {
-					minx = std::min(ctrls[j].x, minx);
-					maxx = std::max(ctrls[j].x, maxx);
-					miny = std::min(ctrls[j].y, miny);
-					maxy = std::max(ctrls[j].y, maxy);
-				}
-		        cv::Point2f ul(minx, miny);
-		        cv::Point2f br(maxx, maxy);
-
-                Circle &c = truths[i];
-
-#if 0
-                c.center = (ctrls[0] + ctrls[1]) / 2 / downsize;
-                c.radius =  cv::norm(ctrls[0] - ctrls[1]) / 2 / downsize;
-#endif
-                c.center = (ul + br);
-                c.center.x /=  2 * downsize;
-                c.center.y /=  2 * downsize;
-                c.radius =  cv::norm(br - ul) / 2 / downsize;
-
-                c.score = numeric_limits<float>::max();
-                c.label = nullptr;
-                c.label_mask = nullptr;
-                c.params = nullptr;
-                c.params_mask = nullptr;
+                ANCHOR::init_shape_with_controls(&truths[i], ctrls);
             }
 
             // params: dx dy radius
@@ -632,71 +819,73 @@ namespace picpac {
             sz.width /= downsize;
             sz.height /= downsize;
 
-            cv::Mat label(sz, CV_8UC1, cv::Scalar(0));
+            cv::Mat label(sz, CV_32FC(priors.rows), cv::Scalar(0));
             // only effective for near and far points
-            cv::Mat label_mask(sz, CV_32F, cv::Scalar(1));
+            cv::Mat label_mask(cv::Mat::ones(sz, CV_32FC(priors.rows)));
             // only effective for near points
-            cv::Mat params(sz, CV_32FC3, cv::Scalar(0, 0, 0));
-            cv::Mat params_mask(sz, CV_32FC3, cv::Scalar(0));
+            cv::Mat params(cv::Mat::zeros(sz, CV_32FC(priors.rows * ANCHOR::PARAMS)));
+            cv::Mat params_mask(cv::Mat::zeros(sz, CV_32FC(priors.rows)));
 
             for (int y = 0; y < sz.height; ++y) {
 
-                uint8_t *pl = label.ptr<uint8_t>(y);
+                float *pl = label.ptr<float>(y);
                 float *plm = label_mask.ptr<float>(y);
                 float *pp = params.ptr<float>(y);
                 float *ppm = params_mask.ptr<float>(y);
 
-                for (int x = 0; x < sz.width; ++x, pl += 1, plm += 1, pp += 3, ppm += 3) {
-                    // find closest circle
-                    cv::Point2f pt(x, y);
-                    Circle *best_c = nullptr;
-                    float best_d = numeric_limits<float>::max();
-                    for (auto &c: truths) {
-                        float d = cv::norm(pt - c.center);
-                        if (d < best_d) {   // find best circle
-                            best_d = d;
-                            best_c = &c;
+                for (int x = 0; x < sz.width; ++x) {
+                    // find closest shape
+                    cv::Point2f pt(x * downsize, y * downsize);
+
+                    for (int k = 0; k < priors.rows; ++k,
+                            pl += 1, plm +=1,
+                            pp += ANCHOR::PARAMS, ppm += 1) {
+                        float const *prior = priors.ptr<float>(k);
+
+                        Shape *best_c = nullptr;
+                        float best_d = 0;
+                        for (auto &c: truths) {
+                            // TODO: what if a pixel belongs to two shapes
+                            float d = ANCHOR::score(pt, prior, c); 
+                            if (d > best_d) {   // find best circle
+                                best_d = d;
+                                best_c = &c;
+                            }
+                            if (d > c.score) {
+                                c.score = d;
+                                c.pt = pt;
+                                c.prior = prior;
+                                c.label = pl;
+                                c.label_mask = plm;
+                                c.params = pp;
+                                c.params_mask = ppm;
+                            }
                         }
-                        if (d < c.score) {  // for each circle find best match
-                            c.score = d;
-                            c.label = pl;
-                            c.label_mask = plm;
-                            c.params = pp;
-                            c.params_mask = ppm;
-                            c.shift = c.center - pt;
+                        if (!best_c) continue;
+                        if (best_d >= lower_th) {
+                            ANCHOR::update_params(pt, *best_c, pp);
+                            ppm[0] = 1.0;
+                            if (best_d < upper_th) {
+                                plm[0] = 0;
+                            }
+                            else {
+                                pl[0] = 1;      // to class label
+                            }
                         }
-                    }
-                    if (!best_c) continue;
-                    float r = best_d / best_c->radius;
-                    if (r <= upper_th) { // close to center
-                        pl[0] = 1;
-                        pp[0] = best_c->radius;
-                        pp[1] = best_c->center.x - x;
-                        pp[2] = best_c->center.y - y;
-                        ppm[0] = 1;
-                        ppm[1] = 1;
-                        ppm[2] = 1;
-                        if (r > lower_th) {
-                            plm[0] = 0;
-                        }
-                    }
-                }
-            }
+                    } // prior
+                } // x
+            } // y
             for (auto &c: truths) {
                 if (c.label == nullptr) {
-                    std::cerr << "MISS: " << c.center.x << ',' << c.center.y << ' ' << c.radius << std::endl;
+                    std::cerr << "MISS: " << std::endl;// << c.center.x << ',' << c.center.y << ' ' << c.radius << std::endl;
                     continue;   // not found
                 }
-#if 0
-                if (c.score / c.radious <= lower_th) {
+                if (c.score >= lower_th) {
                     c.label[0] = 1;
                     c.label_mask[0] = 1;
-                    c.params[0] = c.radious;
-                    c.params[1] = c.shift.x;
-                    c.params[2] = c.shift.y;
+                    ANCHOR::update_params(c.pt, c, c.params);
                     c.params_mask[0] = 1;
                 }
-#endif
             }
             sample->facets.emplace_back(label);
             sample->facets.emplace_back(label_mask);
@@ -706,7 +895,41 @@ namespace picpac {
         }
     };
 
-    class DrawDenseCircleAnchors: public Transform {
+    class BoxFeature: public Transform {
+        int index;
+    public:
+        BoxFeature (json const &spec) {
+            index = spec.value<int>("index", 1);
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto const &facet = sample->facets[index];
+            auto const &anno = facet.annotation;
+
+            CHECK(!anno.empty());
+
+            cv::Mat feature(anno.shapes.size(), 6, CV_32F);
+            for (unsigned i = 0; i < anno.shapes.size(); ++i) {
+                vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
+                CHECK(ctrls.size() >= 1); // must be boxes
+                BoxAnchor::Shape box;
+                BoxAnchor::init_shape_with_controls(&box, ctrls);
+                float *p = feature.ptr<float>(i);
+                p[0] = anno.shapes[i]->color[0];
+                p[1] = anno.shapes[i]->tag;
+                p[2] = box.center.x - box.width/2;
+                p[3] = box.center.y - box.height/2;
+                p[4] = p[2] + box.width;
+                p[5] = p[3] + box.height;
+            }
+            sample->facets.emplace_back(feature , Facet::FEATURE);
+            return 0;
+        }
+    };
+
+#if 0
+    <template typename=ANCHOR>
+    class DrawDenseAnchors: public Transform {
         int index;
         int upsize;
         int copy;
@@ -742,6 +965,7 @@ namespace picpac {
             return 0;
         }
     };
+#endif
 
     // apply to all channels
     class WaveAugAdd: public Transform {
@@ -829,11 +1053,20 @@ namespace picpac {
 
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
+        if (type == "mask") {
+            return std::unique_ptr<Transform>(new Mask(spec));
+        }
+        if (type == "erode_mask") {
+            return std::unique_ptr<Transform>(new ErodeMask(spec));
+        }
         if (type == "rasterize") {
             return std::unique_ptr<Transform>(new Rasterize(spec));
         }
         if (type == "normalize") {
             return std::unique_ptr<Transform>(new Normalize(spec));
+        }
+        else if (type == "resize") {
+            return std::unique_ptr<Transform>(new Resize(spec));
         }
         else if (type == "clip") {
             return std::unique_ptr<Transform>(new Clip(spec));
@@ -857,11 +1090,19 @@ namespace picpac {
             return std::unique_ptr<Transform>(new AugAdd(spec));
         }
         else if (type == "anchors.dense.circle") {
-            return std::unique_ptr<Transform>(new DenseCircleAnchors(spec));
+            return std::unique_ptr<Transform>(new DenseAnchors<CircleAnchor>(spec));
         }
+        else if (type == "anchors.dense.box") {
+            return std::unique_ptr<Transform>(new DenseAnchors<BoxAnchor>(spec));
+        }
+        else if (type == "box_feature") {
+            return std::unique_ptr<Transform>(new BoxFeature(spec));
+        }
+        /*
         else if (type == "anchors.dense.circle.draw") {
             return std::unique_ptr<Transform>(new DrawDenseCircleAnchors(spec));
         }
+        */
         else if (type == "wave.augment.add") {
             return std::unique_ptr<Transform>(new WaveAugAdd(spec));
         }
@@ -870,6 +1111,9 @@ namespace picpac {
         }
         else if (type == "wave.augment.scale") {
             return std::unique_ptr<Transform>(new AugWidthScale(spec));
+        }
+        else if (type == "drop") {
+            return std::unique_ptr<Transform>(new Drop(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
