@@ -114,7 +114,9 @@ namespace picpac {
             int dtype = dtype_np2cv(spec.value<string>("dtype", "uint8"));
             type = CV_MAKETYPE(dtype, channels);
             opt.use_palette = spec.value<bool>("use_palette", opt.use_palette);
+            opt.use_tag = spec.value<bool>("use_tag", opt.use_tag);
             opt.thickness = spec.value<int>("thickness", opt.thickness);
+            CHECK(((!opt.use_palette) || (!opt.use_tag))) << "Cannot use both tag and palette";
         }
         virtual size_t apply (Sample *sample, void const *) const {
             auto &facet = sample->facets[index];
@@ -895,9 +897,11 @@ namespace picpac {
 
     class BoxFeature: public Transform {
         int index;
+        float min_area;
     public:
         BoxFeature (json const &spec) {
             index = spec.value<int>("index", 1);
+            min_area = spec.value<float>("min_area", 1);
         }
 
         virtual size_t apply (Sample *sample, void const *) const {
@@ -907,18 +911,31 @@ namespace picpac {
             CHECK(!anno.empty());
 
             cv::Mat feature(anno.shapes.size(), 6, CV_32F);
+            unsigned o = 0;
             for (unsigned i = 0; i < anno.shapes.size(); ++i) {
                 vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
                 CHECK(ctrls.size() >= 1); // must be boxes
                 BoxAnchor::Shape box;
                 BoxAnchor::init_shape_with_controls(&box, ctrls);
-                float *p = feature.ptr<float>(i);
+                float *p = feature.ptr<float>(o);
                 p[0] = anno.shapes[i]->color[0];
                 p[1] = anno.shapes[i]->tag;
                 p[2] = box.center.x - box.width/2;
                 p[3] = box.center.y - box.height/2;
                 p[4] = p[2] + box.width;
                 p[5] = p[3] + box.height;
+
+                p[2] = std::min<float>(anno.size.width-1, std::max<float>(0, p[2]));
+                p[3] = std::min<float>(anno.size.height-1, std::max<float>(0, p[3]));
+                p[4] = std::min<float>(anno.size.width-1, std::max<float>(0, p[4]));
+                p[5] = std::min<float>(anno.size.height-1, std::max<float>(0, p[5]));
+                float area = (p[4] - p[2]  + 1) * (p[5] - p[3] + 1);
+                if (area >= min_area) {
+                     o += 1;
+                }
+            }
+            if (o < anno.shapes.size()) {
+                feature = feature(cv::Rect(0, 0, 6, o));
             }
             sample->facets.emplace_back(feature , Facet::FEATURE);
             return 0;
