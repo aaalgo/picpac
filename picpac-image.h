@@ -157,6 +157,20 @@ namespace picpac {
             annotation.swap(ai.annotation);
         }
 
+        // ensure that all annotation has been cleared so data
+        // can be converted to python array
+        void check_pythonize () {
+            if (type == LABEL) {
+                if (!annotation.empty() || annotation.shapes.size()) {
+                    CHECK(0) << "Your data contains a facet that cannot be converted to numpy array."
+                        "This is because the label facet contains annotations that has not been"
+                        " rasterized.  This can be avoided by adding a 'drop' transformation to discard the annotation or "
+                        " a 'rasterize' transformation.";
+
+                }
+            }
+        }
+
         void operator = (Facet &&ai) {
             std::swap(type, ai.type);
             cv::swap(image, ai.image);

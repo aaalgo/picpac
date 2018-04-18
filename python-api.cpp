@@ -152,6 +152,7 @@ public:
         ids.push_back(v.id);
         labels.push_back(v.label);
         for (auto &im: v.facets) {
+            im.check_pythonize();
             if ((im.type == Facet::IMAGE) || (im.type == Facet::LABEL)) {
                 //if (im.image.data) {
                 NumpyBatch::Config conf;
@@ -185,6 +186,7 @@ public:
                 CHECK(data.size() == v.facets.size());
                 for (unsigned j = 0; j < data.size(); ++j) {
                     auto &im = v.facets[j];
+                    im.check_pythonize();
                     if (im.type == Facet::NONE) continue;
                     CHECK(data[j]);
                     data[j]->fill_next(im.image);
@@ -432,12 +434,16 @@ void translate_eos (EoS const &)
 namespace {
 	cv::Mat Py3DArray2CvMat (PyObject *array_) {
         PyArrayObject *array((PyArrayObject *)array_);
-        if (array->nd != 3) throw runtime_error("not 3d array");
+        if (array->nd != 2 and array->nd != 3) throw runtime_error("not 3d array");
         if (array->descr->type_num != NPY_FLOAT32) throw runtime_error("not float32 array");
         if (!PyArray_ISCONTIGUOUS(array)) throw runtime_error("not contiguous");
+        int dims = 1;
+        if (array->nd == 3) {
+            dims = array->dimensions[2];
+        }
 		return cv::Mat(array->dimensions[0],
 					   array->dimensions[1],
-					   CV_32FC(array->dimensions[2]), array->data);
+					   CV_32FC(dims), array->data);
 						
 	}
 
@@ -526,7 +532,7 @@ namespace {
             cv::Mat prob(Py3DArray2CvMat(prob_));
             cv::Mat params(Py3DArray2CvMat(params_));
 
-            CHECK(prob.type() == CV_32F);
+            CHECK(prob.type() == CV_32FC1);
             //CHECK(params.type() == CV_32FC3);
             CHECK(prob.rows == params.rows);
             CHECK(prob.cols == params.cols);

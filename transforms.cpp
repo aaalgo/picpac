@@ -875,7 +875,7 @@ namespace picpac {
             } // y
             for (auto &c: truths) {
                 if (c.label == nullptr) {
-                    std::cerr << "MISS: " << std::endl;// << c.center.x << ',' << c.center.y << ' ' << c.radius << std::endl;
+                    //LOG(DEBUG)<< "MISS: ";// << c.center.x << ',' << c.center.y << ' ' << c.radius << std::endl;
                     continue;   // not found
                 }
                 if (c.score >= lower_th) {
