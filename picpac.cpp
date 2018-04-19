@@ -104,6 +104,35 @@ namespace picpac {
         std::copy(begin2, begin2 + sz2, field_ptrs[1]);
     }
 
+    Record::Record (float label, const_buffer buf, const_buffer buf2, const_buffer buf3) {
+        size_t sz = boost::asio::buffer_size(buf);
+        size_t sz2 = boost::asio::buffer_size(buf2);
+        size_t sz3 = boost::asio::buffer_size(buf3);
+        alloc(label, sz, sz2, sz3);
+        char const *begin = boost::asio::buffer_cast<char const *>(buf);
+        char const *begin2 = boost::asio::buffer_cast<char const *>(buf2);
+        char const *begin3 = boost::asio::buffer_cast<char const *>(buf3);
+        std::copy(begin, begin + sz, field_ptrs[0]);
+        std::copy(begin2, begin2 + sz2, field_ptrs[1]);
+        std::copy(begin3, begin3 + sz3, field_ptrs[2]);
+    }
+
+    Record::Record (float label, const_buffer buf, const_buffer buf2, const_buffer buf3, const_buffer buf4) {
+        size_t sz = boost::asio::buffer_size(buf);
+        size_t sz2 = boost::asio::buffer_size(buf2);
+        size_t sz3 = boost::asio::buffer_size(buf3);
+        size_t sz4 = boost::asio::buffer_size(buf4);
+        alloc(label, sz, sz2, sz3, sz4);
+        char const *begin = boost::asio::buffer_cast<char const *>(buf);
+        char const *begin2 = boost::asio::buffer_cast<char const *>(buf2);
+        char const *begin3 = boost::asio::buffer_cast<char const *>(buf3);
+        char const *begin4 = boost::asio::buffer_cast<char const *>(buf4);
+        std::copy(begin, begin + sz, field_ptrs[0]);
+        std::copy(begin2, begin2 + sz2, field_ptrs[1]);
+        std::copy(begin3, begin3 + sz3, field_ptrs[2]);
+        std::copy(begin4, begin4 + sz4, field_ptrs[3]);
+    }
+
     Record::Record (float label, string const &image, string const &extra, string const &extra2) {
         alloc(label, image.size(), extra.size(), extra2.size());
         std::copy(image.begin(), image.end(), field_ptrs[0]);

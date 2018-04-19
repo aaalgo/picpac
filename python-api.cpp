@@ -263,6 +263,29 @@ public:
         FileWriter::append(record);
     }
 
+    void append (float label, PyObject *buf, PyObject *buf2, PyObject *buf3) {
+        Record record(label, pyobject2buffer(buf), pyobject2buffer(buf2), pyobject2buffer(buf3));
+        record.meta().id = nextid;
+        ++nextid;
+        FileWriter::append(record);
+    }
+
+    void append (float label, PyObject *buf, PyObject *buf2, PyObject *buf3, PyObject *buf4) {
+        Record record(label, pyobject2buffer(buf), pyobject2buffer(buf2), pyobject2buffer(buf3), pyobject2buffer(buf4));
+        record.meta().id = nextid;
+        ++nextid;
+        FileWriter::append(record);
+    }
+
+#if 0
+    void append (float label, PyObject *buf, PyObject *buf2, PyObject *buf3, PyObject *buf4) {
+        Record record(label, pyobject2buffer(buf), pyobject2buffer(buf2), pyobject2buffer(buf3), pyobject2buffer(buf4));
+        record.meta().id = nextid;
+        ++nextid;
+        FileWriter::append(record);
+    }
+#endif
+
 #if 0
     void append (float label, string const &buf) {
         Record record(label, buf);
@@ -411,8 +434,9 @@ void write_raw_ndarray (string const &path, object &obj) {
 
 void (Writer::*append1) (float, PyObject *) = &Writer::append;
 void (Writer::*append2) (float, PyObject *, PyObject *) = &Writer::append;
+void (Writer::*append3) (float, PyObject *, PyObject *, PyObject *) = &Writer::append;
+void (Writer::*append4) (float, PyObject *, PyObject *, PyObject *, PyObject *) = &Writer::append;
 /*
-void (Writer::*append3) (float, string const &, string const &) = &Writer::append;
 
 void (Writer::*append4) (float, string const &, string const &, string const &) = &Writer::append;
 
@@ -640,9 +664,9 @@ BOOST_PYTHON_MODULE(picpac)
     class_<Writer>("Writer", init<string, int>())
         .def("append", append1)
         .def("append", append2)
-        /*
         .def("append", append3)
         .def("append", append4)
+        /*
         .def("append", append5)
         .def("append", append6)
         */
