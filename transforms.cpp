@@ -207,20 +207,43 @@ namespace picpac {
     class Resize: public Transform {
         int size;
         int width, height;
+
+        int min_size;
+        int max_size;
     public:
         Resize (json const &spec)
-            : size(spec.value<int>("size", 228)),
+            : size(spec.value<int>("size", 0)),
               width(spec.value<int>("width", size)),
-              height(spec.value<int>("height", size))
+              height(spec.value<int>("height", size)),
+              min_size(spec.value<int>("min_size", 0)),
+              max_size(spec.value<int>("max_size", numeric_limits<int>::max()))
         {
-            CHECK(size > 0);
-            CHECK(width > 0);
-            CHECK(height > 0);
+            if (width > 0) { CHECK(height > 0); CHECK(width >= min_size && width <= max_size); }
+            if (height > 0) { CHECK(width > 0); CHECK(height >= min_size && height <= max_size); }
         }
 
         virtual size_t apply_one (Facet *facet, void const *buf) const {
-            cv::Size sz(width, height);
             while (facet->image.data) {
+                int w = 0, h = 0;
+                if (width > 0) {
+                    w = width;
+                    h = height;
+                }
+                else {  // check max
+                    int min = std::min(facet->image.rows, facet->image.cols);
+                    int max = std::max(facet->image.rows, facet->image.cols);
+                    if (max > max_size) {
+                        w = facet->image.cols * max_size / max;
+                        h = facet->image.rows * max_size / max;
+                    }
+                    else if (min < min_size) {
+                        w = facet->image.cols * min_size / min;
+                        h = facet->image.rows * min_size / min;
+                    }
+                }
+                if (w == 0 || h == 0) break;
+                cv::Size sz(w, h);
+
                 if (facet->image.size() == sz) break;
                 cv::Mat tmp;
                 cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);
