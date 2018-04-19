@@ -223,31 +223,56 @@ namespace picpac {
         }
 
         virtual size_t apply_one (Facet *facet, void const *buf) const {
-            while (facet->image.data) {
+            while (true) {
+                CHECK(facet->type != Facet::FEATURE);
+                if ((!facet->image.data) && (facet->annotation.empty())) break;
+                cv::Size sz0;
+                if (facet->image.data) {
+                    sz0 = facet->image.size();
+                }
+                else {
+                    sz0 = facet->annotation.size;
+                }
+
                 int w = 0, h = 0;
                 if (width > 0) {
                     w = width;
                     h = height;
                 }
                 else {  // check max
-                    int min = std::min(facet->image.rows, facet->image.cols);
-                    int max = std::max(facet->image.rows, facet->image.cols);
+                    int min = std::min(sz0.width, sz0.height);
+                    int max = std::max(sz0.width, sz0.height);
                     if (max > max_size) {
-                        w = facet->image.cols * max_size / max;
-                        h = facet->image.rows * max_size / max;
+                        w = sz0.width * max_size / max;
+                        h = sz0.height * max_size / max;
                     }
                     else if (min < min_size) {
-                        w = facet->image.cols * min_size / min;
-                        h = facet->image.rows * min_size / min;
+                        w = sz0.width * min_size / min;
+                        h = sz0.height * min_size / min;
                     }
                 }
                 if (w == 0 || h == 0) break;
                 cv::Size sz(w, h);
+                if (sz == sz0) break;
 
                 if (facet->image.size() == sz) break;
-                cv::Mat tmp;
-                cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);
-                facet->image = tmp;
+                if (facet->image.data) {
+                    cv::Mat tmp;
+                    cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);
+                    facet->image = tmp;
+                }
+                if (!facet->annotation.empty()) {
+                    CHECK(facet->annotation.size == sz0);
+                    facet->annotation.size = sz;
+                    float fx = 1.0 * sz.width / sz0.width;
+                    float fy = 1.0 * sz.height / sz0.height;
+                    facet->annotation.transform([fx, fy](vector<cv::Point2f> *f) {
+                            for (auto &pt: *f) {
+                                pt.x *= fx;
+                                pt.y *= fy;
+                            }
+                    });
+                }
                 break;
             }
             return 0;
