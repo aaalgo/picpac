@@ -140,6 +140,8 @@ namespace picpac {
     };
     static_assert(sizeof(Meta) == 64, "bad Meta size");
 
+    extern char const *EMPTY_BUFFER;
+
     /// Data Record, non-copiable but movable
     class Record {     // record owns the data
         // All field data are stored in raw/on-disk format in the data field
@@ -226,8 +228,10 @@ namespace picpac {
         void replace (unsigned f, string const &buf, int type = -1);
         /// Get field buffer.
         const_buffer field (unsigned f) const {
-            CHECK(f < meta_ptr->width);
-            return const_buffer(field_ptrs[f], meta_ptr->fields[f].size);
+            if (f < meta_ptr->width) {
+                return const_buffer(field_ptrs[f], meta_ptr->fields[f].size);
+            }
+            return const_buffer(EMPTY_BUFFER, 0);
         }
 
         string field_string (unsigned f) const {
@@ -239,8 +243,10 @@ namespace picpac {
 
         /// Get field type.
         FieldType fieldType (unsigned f) const {
-            CHECK(f < meta_ptr->width);
-            return FieldType(meta_ptr->fields[f].type);
+            if (f < meta_ptr->width) {
+                return FieldType(meta_ptr->fields[f].type);
+            }
+            return FIELD_NONE;
         }
     };
 

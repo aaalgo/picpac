@@ -538,26 +538,31 @@ namespace picpac {
     class AugFlip: public Transform {
         bool horizontal;
         bool vertical;
+        bool transpose;
         struct PerturbVector {
             bool horizontal;
             bool vertical;
+            bool transpose;
         };
     public:
         AugFlip (json const &spec) {
-            horizontal = spec.value<bool>("horizontal", true);
-            vertical = spec.value<bool>("vertical", true);
+            horizontal = spec.value<bool>("horizontal", false);
+            vertical = spec.value<bool>("vertical", false);
+            transpose = spec.value<bool>("transpose", false);
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
         virtual size_t pv_sample (random_engine &rng, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
             pv->horizontal = horizontal && (rng() % 2);
             pv->vertical = vertical && (rng() % 2);
+            pv->transpose = transpose && (rng() % 2);
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             bool hflip = pv->horizontal;
             bool vflip = pv->vertical;
+            bool transpose = pv->transpose;
             if (facet->image.data) {
                 if (hflip && vflip) {
                     cv::flip(facet->image, facet->image, -1);
@@ -567,6 +572,10 @@ namespace picpac {
                 }
                 else if (!hflip && vflip) {
                     cv::flip(facet->image, facet->image, 0);
+                }
+
+                if (transpose) {
+                    cv::transpose(facet->image, facet->image);
                 }
             }
             if (!facet->annotation.empty()) {
@@ -590,6 +599,21 @@ namespace picpac {
                     facet->annotation.transform([sz](vector<cv::Point2f> *f) {
                         for (auto &pt: *f) {
                             pt.y = sz.height - pt.y;
+                        }
+                    });
+                }
+
+                if (transpose) {
+                    int w = facet->annotation.size.width;
+                    int h = facet->annotation.size.height;
+                    facet->annotation.size.width = h;
+                    facet->annotation.size.height = w;
+
+                    facet->annotation.transform([sz](vector<cv::Point2f> *f) {
+                        for (auto &pt: *f) {
+                            float t = pt.x;
+                            pt.x = pt.y;
+                            pt.y = t;
                         }
                     });
                 }
@@ -827,6 +851,8 @@ namespace picpac {
             // keep track the best match of the shape
             // this is always used if score > lower_th
             float score;
+            cv::Scalar color;
+            float tag;
             cv::Point_<float> pt;
             float const *prior;
             float *label;
@@ -857,6 +883,8 @@ namespace picpac {
             for (unsigned i = 0; i < anno.shapes.size(); ++i) {
                 vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
                 CHECK(ctrls.size() >= 1); // must be boxes
+                truths[i].color = anno.shapes[i]->color;
+                truths[i].tag = anno.shapes[i]->tag;
                 ANCHOR::init_shape_with_controls(&truths[i], ctrls);
             }
 
@@ -917,7 +945,8 @@ namespace picpac {
                                 plm[0] = 0;
                             }
                             else {
-                                pl[0] = 1;      // to class label
+                                //pl[0] = 1;      // to class label
+                                pl[0] = best_c->color[0];
                             }
                         }
                     } // prior

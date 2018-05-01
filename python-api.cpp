@@ -98,6 +98,9 @@ public:
 
 
             UPDATE_CONFIG(mixin, kwargs);
+            UPDATE_CONFIG(mixin_group_reset, kwargs);
+            UPDATE_CONFIG(mixin_group_delta, kwargs);
+            UPDATE_CONFIG(mixin_max, kwargs);
 
             //dict loader = kwargs.get("loader");
             UPDATE_CONFIG(cache, kwargs);

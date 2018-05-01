@@ -501,5 +501,7 @@ namespace picpac {
         }
         return e;
     }
+
+    char const *EMPTY_BUFFER = "";
 }
 
