@@ -447,6 +447,28 @@ A subset of the supported transformations implement image augmentation.
 An augmentation operation applies to all facets in the same way whenever
 applicable.
 
+## Inspecting Facet Images
+
+The user is encouraged to visually inspect the data that are streamed
+from PicPac to make sure they are actually good.  
+
+```
+config = { ...
+           'dump': 10,  # save the first 100 batches, default is 0
+           ...
+         }
+```
+
+The above configuration asks PicPac to save the facets of the first 10
+batches to disk as PNG images.  Images are saved to "picpac_dump" and
+named as `{batch_facet_batchoffset}.png` whenever possible (facet images
+contain 1 or 3 channels).  Label images usually contains 0-1
+values and are not visually apparent.
+The script
+`scripts/visualize_dumped_masks.py` looks for `picpac_dump/*_1_*.png`
+and overlay them to `picpac_dump/*_0_*.png` and creates gif
+animiations.
+
 ## Accessing Raw Data in Streaming
 
 Occasionally, one needs to access raw data when streaming.
