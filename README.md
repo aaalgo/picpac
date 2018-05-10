@@ -82,7 +82,7 @@ for label, image_path, mask in some_list:
 
     # there's annotation/mask
     if mask_is_a_zero_one_png_image:
-        with open(mask, 'rb') as f:		# use lossless PNG for annotation
+        with open(mask, 'rb') as f:    # use lossless PNG for annotation
             mask_buf = f.read()
         db.append(float(label), image_buf, mask_buf)
         continue
@@ -107,7 +107,7 @@ You can view database content with picpac-explorer; see below.
 After a database has been created, it can be used to stream
 training samples to a deep-learning framework:
 
-```
+```python
 import picpac
 
 is_training = True
@@ -162,7 +162,7 @@ produced with nearest-neighbor interpolation(so we don't accidentally
 produce meaningless categorical labels like 0.5).
 
 
-```
+```python
 import picpac
 
 is_training = True
@@ -216,7 +216,7 @@ example.
 
 We are still working on an API that supports multiple priors.
 
-```
+```python
 import picpac
 
 config = {"db": db_path,
@@ -263,7 +263,7 @@ transformation and setting `use_tag` of `rasterize`).
 See https://github.com/aaalgo/box/blob/master/train.py for a full
 example.
 
-```
+```python
 import picpac
 
 is_training = True
@@ -335,6 +335,25 @@ of an object there's no part of another object with the same tag.
 This can usually be achieved by setting a sufficiently large dilation
 value when testing the touching condition.
 
+## Reading Database 
+
+Use `picpac.Reader` to access raw data.
+
+```python
+import picpac
+
+db = picpac.Reader(path)
+
+# method 1
+for rec in db:
+    rec.label	    # is the label
+	rec.fields      # are the fields
+	rec.fields[0]   # is usually the image
+
+# method 2
+for i in range(db.size()):
+    rec = db.read(i)
+```
 
 # Special Topics
 
@@ -348,7 +367,7 @@ format is based on that of
 such annotations. 
 
 Below is a sample json annotation with a rectangle and a polygon.
-```
+```javascript
 {"shapes": [ {"label": 1.0,
               "type": "rect",
               "geometry": {"x": 0.15, "y": 0.13, "height": 0.083, "width": 0.061},
@@ -378,7 +397,50 @@ operation.
 
 PicPac ignores any additional data in JSON that it does not recognize.
 
+## Facets and Transformation
+
+PicPac database stores raw data of training samples in the in up to 6
+buffers on disk.  Usually only the first two are used for the image and
+the annotation, but our API is flexible enough to support multiple
+images and annotations.  The only constraints now is that images of
+the same sample must have the same shape.
+
+At streaming time, PicPac use a series of loading and transformation
+operations to create a set of Facets for each example.  These facets are
+merged into minibatches and returned in the streaming API.
+The general streaming API is
+
+```python
+for meta, facet0, facet1, ..., last_facet in stream:
+    # meta is the meta data
+    pass
+```
+
+The facets loading are controled by the following two fields in
+configuration.
+```
+    config = { ...
+               'images': [0],    # default to [0]
+               'annotate': [1]   # default to []
+               ...
+			   'transforms': [ ...]
+             }
+```
+
+Both `images` and `annotate` are lists of field IDs (so they must be
+within 0-5).
+
+First, fields in `images` are loaded into the facets list,
+and then fields in `annotate`.   After that, transformations are
+applied to the facets, some, like `anchor.dense.box` generating new facets.
+
 ## Augmentation
+
+A subset of the supported transformations implement image augmentation.
+An augmentation operation applies to all facets in the same way whenever
+applicable.
+
+## Accessing Raw Data in Streaming
 
 
 
