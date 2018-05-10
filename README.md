@@ -164,9 +164,6 @@ produce meaningless categorical labels like 0.5).
 
 
 ```python
-import picpac
-
-is_training = True
 
 config = {"db": db_path,
           # ... same as above ...
@@ -218,7 +215,6 @@ example.
 We are still working on an API that supports multiple priors.
 
 ```python
-import picpac
 
 config = {"db": db_path,
           # ... same as above ...
@@ -265,9 +261,6 @@ See https://github.com/aaalgo/box/blob/master/train.py for a full
 example.
 
 ```python
-import picpac
-
-is_training = True
 
 config = {
           # ... same as box regression ...
