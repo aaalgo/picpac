@@ -1,5 +1,5 @@
-PicPac: An Image Database and Streamer for Deep Learning
-========================================================
+PicPac: An Image Database for Deep Learning
+===========================================
 
 PicPac is an image database and streamer for deep learning.
 It is developed so that the user of different deep learning frameworks
