@@ -16,6 +16,10 @@ Download the .so file from
 [here](http://www.aaalgo.com/picpac/binary/picpac.cpython-35m-x86_64-linux-gnu.so)
 and drop in your current directory.  You should be able to `import picpac` in python3.
 
+```
+wget http://www.aaalgo.com/picpac/binary/picpac.cpython-35m-x86_64-linux-gnu.so
+```
+
 ## Option 2: building from source code.
 
 Prerequisits:
