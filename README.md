@@ -245,9 +245,11 @@ for _, images, labels, anchors, anchor_weight, params, params_weight in stream:
     # params_weight is of shape (,,,priors)
 ```
 
-Note that we still need to rasterize any JSON-based annotation even
-though we do not need them here, as PicPac is not able to encode
-JSON strings into a minibatch.
+Note that we still need to rasterize any JSON-based annotation thats
+loaded even
+though we do not need them here; PicPac is not able to encode
+JSON strings into a minibatch.  In the future we might be able to
+replace this with a `drop` operation and save computation.
 
 `anchor_weight` and `params_weight` are masks to decide which
 pixel-prior combination should participate in loss calculation for
@@ -255,8 +257,8 @@ anchors and params.
 
 ## Streaming for Mask-RCNN
 
-This is one step further on top of box regression (`box_feature`
-transformation and `use_tag` of `rasterize`).
+This is one extra step on top of box regression (`box_feature`
+transformation and setting `use_tag` of `rasterize`).
 
 See https://github.com/aaalgo/box/blob/master/train.py for a full
 example.
@@ -295,6 +297,9 @@ for _, images, tags, anchors, anchor_weight, params, params_weight, box_feature 
     #    box_feature[:, 2]      object tag
     #    box_feature[:, 3:5]    (x1, y1), top left coordinate, clipped to image area
     #    box_feature[:, 5:7]    (x2, y2), bottom right coordinate, clipped to image area
+
+	# params are not clipped to image area.
+	# box_feature[:, 3:7] are clipped, otherwise the two are the same.
 ```
 
 We use the following label-tag mechanism to achieve efficient extraction
@@ -302,8 +307,9 @@ of mask patches with augmentation:
 
 - Each annotated shape (usually a polygon) has a label and a tag.
 - Label is the categorical label; the prediction target.
-- Tag an non-zero integral value calculated when importing samples, such that shapes within certain distance
-  threshold cannot have the same tag.  [Four color theorem](https://en.wikipedia.org/wiki/Four_color_theorem) states that four colors are sufficient if we have to tag touching shapes differently.  In our case, in order to achieve good separation between masks, we want to assign different tags to two shapes if they touch after [dilation](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_imgproc/py_morphological_ops/py_morphological_ops.html).  It doesn't matter how many tag values we use so long as they fit in representation, and we can assume the range [1, 255] is always available.  [This program](https://github.com/aaalgo/box/blob/master/gcolor.py) does such tagging/coloring.
+- Tag an non-zero integral value calculated when importing samples so as
+  to differenciate pixels of touching objects.
+  [Four color theorem](https://en.wikipedia.org/wiki/Four_color_theorem) states that four different tag values (in addition to the background 0) are sufficient if we have to tag touching objects differently.  In our case, in order to achieve good separation between objects, we want to assign different tags to two objects if they touch after [dilation](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_imgproc/py_morphological_ops/py_morphological_ops.html).  The number of tag values we use do not affect computational cost. We can assume the range [1, 255] is always available.  [This program](https://github.com/aaalgo/box/blob/master/gcolor.py) does such tagging/coloring.
 - Instead of a label image, `rasterize` here generates a tag image
   (`use_tag: True`).   The label information is returned in
   `box_feature[:, 1]`. 
@@ -317,11 +323,18 @@ produced with the following procedure:
    corresponding ROI in the tag image.
 2. Set all pixels to 1 where the tag is `box_feature[i, 2]` and
    the remaining pixels to 0.
+3. Resize all masks to the same size.
+
+These are implemented by the `MaskExtractor` class in
+https://github.com/aaalgo/box/blob/master/python-api.cpp.  The same
+program implements some other routines that are needed for Mask-RCNN
+implementation.
 
 The importing program has to guarantee that within the bounding box
 of an object there's no part of another object with the same tag.
 This can usually be achieved by setting a sufficiently large dilation
 value when testing the touching condition.
+
 
 # Special Topics
 
