@@ -66,18 +66,13 @@ A PicPac database is a collection of image samples.
 
 - [Tensorflow Slim](https://github.com/aaalgo/cls)
 
-# Public Dataset
-
-- [Public dataset imported to PicPac databases](http://www.aaalgo.com/picpac/datasets/)
-- [How to import data](http://picpac.readthedocs.io/en/latest/import/)
-
 
 # PicPac Explorer
 
 PicPac Explorer is a Web-based UI that allows the user to explore the
 picpac database content and simulate streaming configurations.
 
-Download portable distribution of PicPac Explorer here: (http://aaalgo.com/picpac/binary/).
+Download portable distribution of PicPac Explorer here: (http://aaalgo.com/picpac/binary/picpac-explorer).
 
 Run ```picpac-explorer db``` and point the web browser to port 18888.  If the program is executed under a GUI environment, the browser will be automatically opened.
 
