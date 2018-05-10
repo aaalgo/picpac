@@ -452,10 +452,10 @@ config = {
               {"type": "augment.add", "range": 10}   # add -10 to 10 independently to each channel
 
               # below only alter the light channel
-			  {"type": "colorspace", "code": "BGR2HSV"},
+              {"type": "colorspace", "code": "BGR2HSV"},
               {"type": "augment.add", "range3": 10}   # add -10 to 10 to V channel
-			  {"type": "colorspace", "code": "HSV2RGB"},
-		  ]}
+              {"type": "colorspace", "code": "HSV2RGB"},
+          ]}
 
 ```
 
