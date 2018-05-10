@@ -441,6 +441,24 @@ A subset of the supported transformations implement image augmentation.
 An augmentation operation applies to all facets in the same way whenever
 applicable.
 
+Currently supported augmentations:
+```
+config = {
+          "transforms": [
+              {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
+              {"type": "augment.scale", "min": 0.9, "max": 1.1},  # x width/height
+              {"type": "augment.rotate", "min": -10, "max": 10},  # in degrees
+
+              {"type": "augment.add", "range": 10}   # add -10 to 10 independently to each channel
+
+              # below only alter the light channel
+			  {"type": "colorspace", "code": "BGR2HSV"},
+              {"type": "augment.add", "range3": 10}   # add -10 to 10 to V channel
+			  {"type": "colorspace", "code": "HSV2RGB"},
+		  ]}
+
+```
+
 ## Inspecting Streaming Samples
 
 The user is encouraged to visually inspect the data that are streamed
