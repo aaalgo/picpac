@@ -435,6 +435,14 @@ the same way, having different facet shapes will cause problems almost
 for sure.  So if its necessary to pack multiple images in the same
 record, the user needs to guarantee they are of the same shape.
 
+Transformations needs to be in the following order:
+- `augment.*` and other transformations that do not change image shape.
+- `resize` and/or `clip`, shape changing ones.
+- `anchor.*` and `box_feature`; anchor generation.
+- `rasterize`. Must be after `anchor.*`.
+- `erode_mask` and other operations applied to the rasterized label
+  image.
+
 ## Augmentation
 
 A subset of the supported transformations implement image augmentation.
