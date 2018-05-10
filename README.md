@@ -243,12 +243,17 @@ for _, images, labels, anchors, anchor_weight, params, params_weight in stream:
     # anchors is of shape (,,,priors), 0/1 anchor mask, priors = 1
 	# anchors_weight is of shape (,,,priors)
 	# params is of shape (,,,priors * 4),  box parameters
+	#                for each prior, the 4 numbers are (dx, dy, width, height)
 	# params_weight is of shape (,,,priors)
 ```
 
 Note that we still need to rasterize any JSON-based annotation even
 though we do not need them here, as PicPac is not able to encode
 JSON strings into a minibatch.
+
+`anchor_weight` and `params_weight` are masks to decide which
+pixel-prior combination should participate in loss calculation for
+anchors and params.
 
 ## Streaming for Mask-RCNN
 
@@ -284,13 +289,110 @@ for _, images, tags, anchors, anchor_weight, params, params_weight, box_feature 
 	# anchors_weight is of shape (,,,priors)
 	# params is of shape (,,,priors * 4),  box parameters
 	# params_weight is of shape (,,,priors)
-	# box_feature is of shape (N, 6), where N is the number of boxes
-	#    box_feature[:, 0]    object label
-	#	 box_feature[:, 1]    object tag
-	#    box_feature[:, 2:4]    (x1, y1), top left coordinate, clipped to image area
-	#    box_feature[:, 4:6]	(x2, y2), bottom right coordinate, clipped to image area
+	#
+
+	# box_feature is of shape (N, 7), where N is the number of boxes
+	#    box_feature[:, 0]      image index within minibatch, 0-based
+	#    box_feature[:, 1]      object label
+	#	 box_feature[:, 2]      object tag
+	#    box_feature[:, 3:5]    (x1, y1), top left coordinate, clipped to image area
+	#    box_feature[:, 5:7]	(x2, y2), bottom right coordinate, clipped to image area
 ```
 
+We use the following label-tag mechanism to achieve efficient extraction
+of mask patches with augmentation:
+
+- Each annotated shape (usually a polygon) has a label and a tag.
+- Label is the categorical label; the prediction target.
+- Tag an non-zero integral value calculated when importing samples, such that shapes within certain distance
+  threshold cannot have the same tag.  [Four color theorem](https://en.wikipedia.org/wiki/Four_color_theorem) states that four colors are sufficient if we have to tag touching shapes differently.  In our case, in order to achieve good separation between masks, we want to assign different tags to two shapes if they touch after [dilation](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_imgproc/py_morphological_ops/py_morphological_ops.html).  It doesn't matter how many tag values we use so long as they fit in representation, and we can assume the range [1, 255] is always available.  [This program](https://github.com/aaalgo/box/blob/master/gcolor.py) does such tagging/coloring.
+- Instead of a label image, `rasterize` here generates a tag image
+  (`use_tag: True`).   The label information is returned in
+  `box_feature[:, 1]`. 
+
+PicPac does not directly return the masks, but the masks can be easily
+produced with the following procedure:
+
+1. `box_feature[i, 3:7]` is the bounding box information, already
+   clipped to image area.  That is `0 <= box_feature[i, 3] <=
+   box_feature[i, 5] < width`.  Round the number and get the
+   corresponding ROI in the tag image.
+2. Set all pixels to 1 where the tag is `box_feature[i, 2]` and
+   the remaining pixels to 0.
+
+The importing program has to guarantee that within the bounding box
+of an object there's no part of another object with the same tag.
+This can usually be achieved by setting a sufficiently large dilation
+value when testing the touching condition.
+
+# Special Topics
+
+## Annotation
+
+PicPac supports image-based annotation.  But to achieve better
+flexibility, we prefer JSON-based annotation.  PicPac's annotation
+format is based on that of
+[annotorious](https://annotorious.github.io/).
+[OWL](https://github.com/aaalgo/owl/) is our in-house tool to produce
+such annotations. 
+
+Below is a sample json annotation with a rectangle and a polygon.
+```
+{"shapes": [ {"label": 1.0,
+			  "type": "rect",
+              "geometry": {"x": 0.15, "y": 0.13, "height": 0.083, "width": 0.061},
+			 },
+			 {"label": 1.0,
+              "type": "polygon",
+              "geometry": {"points": [{"y": 0.75, "x":0.62},
+			                          {"y": 0.75, "x":0.61},
+									  ....
+									  {"y": 0.75,"x": 0.61}
+									 ]}
+
+			 },
+			 ...
+			]
+}
+
+```
+
+Note that all x, y, width and height values are normalized to a [0, 1]
+range, with x and width divided by image width and y and hight divided
+by image height.
+
+In addition to `label`, each shape might also carry an optional integral
+`tag` value, which can be optionally rendered by the `rasterize`
+operation.
+
+PicPac ignores any additional data in JSON that it does not recognize.
+
+## Augmentation
+
+
+
+## I/O Performance and Caching
+
+PicPac enables caching by default, which means images are loaded from
+disk only once.  But with big dataset, this can cause an out-of-memory
+error.  In such case, one has to set `cache = False` in configuration,
+and make sure the database file is on SSD-storage.  PicPac loads each
+sample with a random seek.
+
+## Mixin
+
+
+## Label2 and Stratified Sampling
+
+This is not yet exposed to the Python API.
+
+In order to support stratified sampling, a PicPac database contains an
+index with the sample category information.  The object category must
+be decided at database create time and is usually determined by the
+`label` field.  In rare cases, the sampling category can be different
+from labels.  In such case, a database is created with the
+`INDEX_LABEL2` flag, and the `label2` field of the record is set to the
+stratified sampling category.
 
 
 
