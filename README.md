@@ -175,7 +175,7 @@ config = {"db": db_path,
           "annotate": [1],    # load field 1 as annotation
           "transforms": [ 
               {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
-              {"type": "clip", "round": 16},	     # feature stride, see below
+              {"type": "clip", "round": 16},         # feature stride, see below
               # {"type": "resize", "size": 224},     # add this for batch > 1
               {"type": "rasterize"}
               ]
@@ -299,8 +299,8 @@ for _, images, tags, anchors, anchor_weight, params, params_weight, box_feature 
     #    box_feature[:, 3:5]    (x1, y1), top left coordinate, clipped to image area
     #    box_feature[:, 5:7]    (x2, y2), bottom right coordinate, clipped to image area
 
-	# params are not clipped to image area.
-	# box_feature[:, 3:7] are clipped, otherwise the two are the same.
+    # params are not clipped to image area.
+    # box_feature[:, 3:7] are clipped, otherwise the two are the same.
 ```
 
 We use the following label-tag mechanism to achieve efficient extraction
@@ -347,9 +347,9 @@ db = picpac.Reader(path)
 
 # method 1
 for rec in db:
-    rec.label	    # is the label
-	rec.fields      # are the fields
-	rec.fields[0]   # is usually the image
+    rec.label        # is the label
+    rec.fields      # are the fields
+    rec.fields[0]   # is usually the image
 
 # method 2
 for i in range(db.size()):
@@ -424,7 +424,7 @@ configuration.
                'images': [0],    # default to [0]
                'annotate': [1]   # default to []
                ...
-			   'transforms': [ ...]
+               'transforms': [ ...]
              }
 ```
 
@@ -433,7 +433,7 @@ within 0-5).
 
 First, fields in `images` are loaded into the facets list,
 and then fields in `annotate`.   After that, transformations are
-applied to the facets, some, like `anchor.dense.box` generating new facets.
+applied to the facets, some, like `anchor.dense.box`, generating new facets.
 
 ## Augmentation
 
@@ -454,11 +454,11 @@ code to access raw data:
 
 config = { ...
            'raw': [field1, field2, ...]   # default is []
-		 }
+         }
 
 for meta, ... in stream:
     meta.raw[0][0]  # raw data of the first required raw field or first sample in minibatch.
-	meta.raw[0][1]  # first field, second sample
+    meta.raw[0][1]  # first field, second sample
 ```
 
 Raw data are only loaded on demand.
@@ -491,8 +491,8 @@ dataset in streaming.
 ```
 config = {...
           'mixin': 'some_background_db',
-		  'mixin_group_reset': 0     # set all groups in mixin to 0
-		  'mixin_group_delta': 1     # add 1 to mixin groups.
+          'mixin_group_reset': 0     # set all groups in mixin to 0
+          'mixin_group_delta': 1     # add 1 to mixin groups.
 ```
 
 Mixin is useful in supressing false positives.
@@ -505,6 +505,10 @@ Note that currently labels are loaded unaltered from the mixin db.
 
 # [Legacy Documentation](http://picpac.readthedocs.org/en/latest/)
 
+This API is obsolete and now in `picpac_legacy` namespace.
+The database format is the same.
+
+We are working on new documentation.
 
 # Examples
 
