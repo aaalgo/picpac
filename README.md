@@ -432,7 +432,8 @@ Because numbers in JSON annotations are all normalized to [0-1], we use
 the size information of the first loaded image to properly render the
 annotation.  Also because all augmentations are applied to all facets
 the same way, having different facet shapes will cause problems almost
-for sure.
+for sure.  So if its necessary to pack multiple images in the same
+record, the user needs to guarantee they are of the same shape.
 
 ## Augmentation
 
