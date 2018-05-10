@@ -9,7 +9,7 @@ Features:
 - Store raw images in one-file database, decoding & augmentation on-the-fly.
 - Support most image formats.
 - Python and C++ API.
-- C++ with multi-threading in background.
+- Multi-threading in background.
 - Support most common tasks (classification, regression, segmentation and
   instance segmentation).
 - Flexible streaming options (shuffle, stratified sampling).
