@@ -252,7 +252,7 @@ replace this with a `drop` operation and save computation.
 pixel-prior combination should participate in loss calculation for
 anchors and params.
 
-## Streaming for Mask-RCNN
+## Streaming for Instance Segmentation (Mask-RCNN)
 
 This is one extra step on top of box regression (`box_feature`
 transformation and setting `use_tag` of `rasterize`).
