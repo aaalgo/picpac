@@ -339,20 +339,20 @@ such annotations.
 Below is a sample json annotation with a rectangle and a polygon.
 ```
 {"shapes": [ {"label": 1.0,
-			  "type": "rect",
+              "type": "rect",
               "geometry": {"x": 0.15, "y": 0.13, "height": 0.083, "width": 0.061},
-			 },
-			 {"label": 1.0,
+             },
+             {"label": 1.0,
               "type": "polygon",
               "geometry": {"points": [{"y": 0.75, "x":0.62},
-			                          {"y": 0.75, "x":0.61},
-									  ....
-									  {"y": 0.75,"x": 0.61}
-									 ]}
+                                      {"y": 0.75, "x":0.61},
+                                      ....
+                                      {"y": 0.75,"x": 0.61}
+                                     ]}
 
-			 },
-			 ...
-			]
+             },
+             ...
+            ]
 }
 
 ```
