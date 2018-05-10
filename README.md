@@ -47,22 +47,22 @@ sudo python3 setup.py install
 
 A PicPac database is a collection of records.
 A record is the unit of saving/loading/streaming operation,
-and typically contains data of a single training sample.
+and contains data of a single training sample, which is
+typicall an image with a label and/or a set of annotations.
 A record contains the following:
 
 - `id`: serial number of uint32, automatically set to 0, 1, ... when imported in
   python.
 - `label`: a label of float32.  We use float to support both
   classification and regression.
-/// - `label2`: a secondary label of type int16 (typically not used and not yet exposed in python).
+- ~~`label2`: a secondary label of type int16.  Typically not used.~~
 - `fields[]`: up to 6 binary buffers.
 - `fields[0]`: this is typically the binary image, supports most formats.
 - `fields[1]`(optional): annotation in JSON or binary image.
 - `fields[2-5]`: typically not used.
 
-
 We recommend storing raw images in the database, unless the image is very big
-in size.  PicPac does all decoding, augmentation and other transformations on-thhe-fly.
+in size.  PicPac does all decoding, augmentation and other transformations on-the-fly.
 
 ## Data Importing
 
@@ -72,21 +72,32 @@ import picpac
 db = picpac.Writer('path_to.db', picpac.OVERWRITE)
 
 for label, image_path, mask in some_list:
-	with open(image_path, 'rb') as f:
-		image_buf = f.read()
+    with open(image_path, 'rb') as f:
+        image_buf = f.read()
 
-	if mask is None:
-		# import without annotation, for classification tasks.
-		db.append(float(label), image_buf)
-		continue
+    if mask is None:
+        # import without annotation, for classification tasks.
+        db.append(float(label), image_buf)
+        continue
 
-	# there's annotation/mask
-	mask_buf = load_mask_either_from_image_or_json
-	db.append(float(label), image_buf, mask_buf)
+    # there's annotation/mask
+    if mask_is_a_zero_one_png_image:
+        with open(mask, 'rb') as f:
+            mask_buf = f.read()
+        db.append(float(label), image_buf, mask_buf)
+        continue
 
-	# or if you want to load more fields
-	db.append(float(label), image_buf, extra_buf1, extra_buf2, extra_buf3)
-	pass
+    if mask_is_json_annotation:
+        import simplejson as json
+        db.append(float(label), image_buf, json.dumps(mask).encode('ascii'))
+        continue
+
+    # or if you want more fields, python supports up to 4 buffers
+    # use case: several consecutive video frames as a single example
+    # they'll go through identical augmentation process.
+
+    db.append(float(label), image_buf, extra_buf1, extra_buf2, extra_buf3)
+    pass
 
 ```
 
@@ -100,31 +111,35 @@ import picpac
 is_training = True
 
 config = {"db": db_path,
-		  "loop": is_training,			# endless streaming
-		  "shuffle": is_training,		# shuffle upon loading db
-		  "reshuffle": is_training,		# shuffle after each epoch
-		  "annotate": False,
-		  "channels": 3,				# 1 or 3
-		  "stratify": is_training,		# stratified sample by label
-		  "dtype": "float32",			# dtype of returned numpy arrays
-		  "batch": 64,					# batch size
-		  "cache": True,				# cache to avoid future disk read
-		  "transforms": [ 
-			  {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
-			  {"type": "resize", "size": 224},
-			  ]
-		 }
+          "loop": is_training,          # endless streaming
+          "shuffle": is_training,       # shuffle upon loading db
+          "reshuffle": is_training,     # shuffle after each epoch
+          "annotate": False,
+          "channels": 3,                # 1 or 3
+          "stratify": is_training,      # stratified sample by label
+          "dtype": "float32",           # dtype of returned numpy arrays
+          "batch": 64,                  # batch size
+          "cache": True,                # cache to avoid future disk read
+          "transforms": [ 
+              {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
+              # other augmentations
+              {"type": "resize", "size": 224},
+              ]
+         }
 
 stream = picpac.ImageStream(config)
 
-for meta, images in stream:
-	# meta.labels is the image labels of shape (batch, )
-	# images is of shape (batch, H, W, channels)
+for meta, images in stream:  # the loop is endless
 
-	# feed to tensorflow
-	feed_dict = {X: images, Y: meta.labels, is_training: True}
-	sess.run(train_op, feed_dict=feed_dict)
-	
+    # meta.labels is the image labels of shape (batch, )
+    # images is of shape (batch, H, W, channels)
+
+    # feed to tensorflow
+    feed_dict = {X: images, Y: meta.labels, is_training: True}
+    sess.run(train_op, feed_dict=feed_dict)
+
+    if need_to_stop:
+        break 
 ```
 
 PicPac doesn't do automatic image resizing.  Usually images in the
@@ -135,8 +150,13 @@ must be of the same shape. So you have two options:
 - Add a `resize` transform like the example above.
 
 ## Streaming for Segmentation
-After a database has been created, it can be used to stream
-training samples to a deep-learning framework:
+
+Annotation is enabled by adding `annotate: [1]` in the configuration.
+Both image and annotation will go through identical augmentation
+process.  When image interpolation is needed, image pixel values
+are produced with linear interpolation while label pixels are
+produced with nearest-neighbor interpolation(so we don't accidentally
+produce meaningless categorical labels like 0.5).
 
 ```
 import picpac
@@ -144,31 +164,26 @@ import picpac
 is_training = True
 
 config = {"db": db_path,
-		  "loop": is_training,			# endless streaming
-		  "shuffle": is_training,		# shuffle upon loading db
-		  "reshuffle": is_training,		# shuffle after each epoch
-		  "annotate": False,
-		  "channels": 3,				# 1 or 3
-		  "stratify": is_training,		# stratified sample by label
-		  "dtype": "float32",			# dtype of returned numpy arrays
-		  "batch": 64,					# batch size
-		  "cache": True,				# cache to avoid future disk read
-		  "transforms": [ 
-			  {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
-			  {"type": "resize", "size": 224},
-			  ]
-		 }
+          # ... same as above ...
+          #batch": 1,         # so we don't need to resize image
+                              # and resize/clip transform for batch > 1
+          "annotate": [1],    # load field 1 as annotation
+          "transforms": [ 
+              {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
+              # {"type": "resize", "size": 224},  -- add this for batch > 1
+              ]
+         }
+
 
 stream = picpac.ImageStream(config)
 
-for meta, images in stream:
-	# meta.labels is the image labels of shape (batch, )
-	# images is of shape (batch, H, W, channels)
+for _, images, labels in stream:
+    # images is of shape (batch, H, W, channels)
+    # labels is of shape (batch, H, W, 1)
 
-	# feed to tensorflow
-	feed_dict = {X: images, Y: meta.labels, is_training: True}
-	sess.run(train_op, feed_dict=feed_dict)
-	
+    # feed to tensorflow
+    feed_dict = {X: images, Y: labels, is_training: True}
+    sess.run(train_op, feed_dict=feed_dict)
 ```
 
 
