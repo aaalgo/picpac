@@ -391,6 +391,9 @@ operation.
 
 PicPac ignores any additional data in JSON that it does not recognize.
 
+Check source for [all
+shapes](https://github.com/aaalgo/picpac/blob/master/shapes.cpp).
+
 ## Facets and Transformation
 
 PicPac database stores raw data of training samples in the in up to 6
@@ -442,6 +445,9 @@ Transformations needs to be in the following order:
 - `rasterize`. Must be after `anchor.*`.
 - `erode_mask` and other operations applied to the rasterized label
   image.
+
+Check source for [all
+transformations](https://github.com/aaalgo/picpac/blob/master/transforms.cpp).
 
 ## Augmentation
 
