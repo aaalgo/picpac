@@ -1,9 +1,9 @@
 PicPac: An Image Database for Deep Learning
 ===========================================
 
-PicPac is an image database and streamer for deep learning.
-It is developed so that the user of different deep learning frameworks
-can all use the same image database format. 
+PicPac is an image database for deep learning.  It is developed so that
+the user of different deep learning frameworks can all use the same
+image database format. 
 
 # Installation 
 
@@ -18,6 +18,7 @@ and drop in your current directory.  You should be able to `import picpac` in py
 
 ```
 wget http://www.aaalgo.com/picpac/binary/picpac.cpython-35m-x86_64-linux-gnu.so
+echo "import picpac; print(picpac.__file__)" | python3
 ```
 
 ## Option 2: building from source code.
@@ -40,23 +41,135 @@ python3 setup.py build
 sudo python3 setup.py install
 ```
 
-## Option 3: pip
-
-We are working on it.
-
-
 # Quick Start
 
-## Basic Structure
+## Basic Concepts
 
-A PicPac database is a collection of image samples.
+A PicPac database is a collection of records.
+A record is the unit of saving/loading/streaming operation,
+and typically contains data of a single training sample.
+A record contains the following:
 
-- Image itself.
-- A float32 label.
+- `id`: serial number of uint32, automatically set to 0, 1, ... when imported in
+  python.
+- `label`: a label of float32.  We use float to support both
+  classification and regression.
+/// - `label2`: a secondary label of type int16 (typically not used and not yet exposed in python).
+- `fields[]`: up to 6 binary buffers.
+- `fields[0]`: this is typically the binary image, supports most formats.
+- `fields[1]`(optional): annotation in JSON or binary image.
+- `fields[2-5]`: typically not used.
 
+
+We recommend storing raw images in the database, unless the image is very big
+in size.  PicPac does all decoding, augmentation and other transformations on-thhe-fly.
 
 ## Data Importing
 
+```
+import picpac
+
+db = picpac.Writer('path_to.db', picpac.OVERWRITE)
+
+for label, image_path, mask in some_list:
+	with open(image_path, 'rb') as f:
+		image_buf = f.read()
+
+	if mask is None:
+		# import without annotation, for classification tasks.
+		db.append(float(label), image_buf)
+		continue
+
+	# there's annotation/mask
+	mask_buf = load_mask_either_from_image_or_json
+	db.append(float(label), image_buf, mask_buf)
+
+	# or if you want to load more fields
+	db.append(float(label), image_buf, extra_buf1, extra_buf2, extra_buf3)
+	pass
+
+```
+
+## Streaming for classification
+After a database has been created, it can be used to stream
+training samples to a deep-learning framework:
+
+```
+import picpac
+
+is_training = True
+
+config = {"db": db_path,
+		  "loop": is_training,			# endless streaming
+		  "shuffle": is_training,		# shuffle upon loading db
+		  "reshuffle": is_training,		# shuffle after each epoch
+		  "annotate": False,
+		  "channels": 3,				# 1 or 3
+		  "stratify": is_training,		# stratified sample by label
+		  "dtype": "float32",			# dtype of returned numpy arrays
+		  "batch": 64,					# batch size
+		  "cache": True,				# cache to avoid future disk read
+		  "transforms": [ 
+			  {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
+			  {"type": "resize", "size": 224},
+			  ]
+		 }
+
+stream = picpac.ImageStream(config)
+
+for meta, images in stream:
+	# meta.labels is the image labels of shape (batch, )
+	# images is of shape (batch, H, W, channels)
+
+	# feed to tensorflow
+	feed_dict = {X: images, Y: meta.labels, is_training: True}
+	sess.run(train_op, feed_dict=feed_dict)
+	
+```
+
+PicPac doesn't do automatic image resizing.  Usually images in the
+database are of different shapes.  But all images in the minibatch
+must be of the same shape. So you have two options:
+
+- Use batch size of 1.
+- Add a `resize` transform like the example above.
+
+## Streaming for Segmentation
+After a database has been created, it can be used to stream
+training samples to a deep-learning framework:
+
+```
+import picpac
+
+is_training = True
+
+config = {"db": db_path,
+		  "loop": is_training,			# endless streaming
+		  "shuffle": is_training,		# shuffle upon loading db
+		  "reshuffle": is_training,		# shuffle after each epoch
+		  "annotate": False,
+		  "channels": 3,				# 1 or 3
+		  "stratify": is_training,		# stratified sample by label
+		  "dtype": "float32",			# dtype of returned numpy arrays
+		  "batch": 64,					# batch size
+		  "cache": True,				# cache to avoid future disk read
+		  "transforms": [ 
+			  {"type": "augment.flip", "horizontal": True, "vertical": False, "transpose": False},
+			  {"type": "resize", "size": 224},
+			  ]
+		 }
+
+stream = picpac.ImageStream(config)
+
+for meta, images in stream:
+	# meta.labels is the image labels of shape (batch, )
+	# images is of shape (batch, H, W, channels)
+
+	# feed to tensorflow
+	feed_dict = {X: images, Y: meta.labels, is_training: True}
+	sess.run(train_op, feed_dict=feed_dict)
+	
+```
 
 
 # [Legacy Documentation](http://picpac.readthedocs.org/en/latest/)

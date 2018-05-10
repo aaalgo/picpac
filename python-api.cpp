@@ -135,6 +135,14 @@ public:
             UPDATE_CONFIG(threads, kwargs);
             UPDATE_CONFIG(channels, kwargs);
 
+            if (kwargs.has_key("images")) {
+                list rf = extract<list>(kwargs.get("images"));
+                images.clear();
+                for (int i = 0; i < len(rf); ++i) {
+                    images.push_back(extract<int>(rf[i]));
+                }
+            }
+
             if (kwargs.has_key("raw")) {
                 list rf = extract<list>(kwargs.get("raw"));
                 for (int i = 0; i < len(rf); ++i) {

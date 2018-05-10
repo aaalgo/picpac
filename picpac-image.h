@@ -308,12 +308,14 @@ namespace picpac {
         struct Config {
             int channels;       // -1: unchanged
             int dtype;
+            vector<int> images;
             vector<int> annotate;
             vector<int> raw;
             //bool annotate;
             string transforms;
             Config ()
-                : channels(-1), // unchanged
+                : images{0},
+                channels(-1), // unchanged
                 dtype(CV_32F),
                 annotate(false),
                 transforms("[]")

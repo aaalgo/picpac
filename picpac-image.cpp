@@ -29,26 +29,28 @@ namespace picpac {
             for (int rf: config.raw) {
                 cached.raw.push_back(r.field_string(rf));
             }
-            //CHECK(r.size() >= (annotate ? 2 : 1));
-            int decode_mode = cv::IMREAD_UNCHANGED;
-            if (config.channels == 1) {
-                decode_mode = cv::IMREAD_GRAYSCALE;
-            }
-            else if (config.channels == 3) {
-                decode_mode = cv::IMREAD_COLOR;
-            }
-            cv::Mat image = decode_buffer(r.field(0), decode_mode);
-            int channels = config.channels;
-            if (channels < 0) channels = image.channels();
-            int type = CV_MAKETYPE(config.dtype, channels);
+            for (int field: config.images) {
+                //CHECK(r.size() >= (annotate ? 2 : 1));
+                int decode_mode = cv::IMREAD_UNCHANGED;
+                if (config.channels == 1) {
+                    decode_mode = cv::IMREAD_GRAYSCALE;
+                }
+                else if (config.channels == 3) {
+                    decode_mode = cv::IMREAD_COLOR;
+                }
+                cv::Mat image = decode_buffer(r.field(field), decode_mode);
+                int channels = config.channels;
+                if (channels < 0) channels = image.channels();
+                int type = CV_MAKETYPE(config.dtype, channels);
 
-            if (image.type() != type) {
-                cv::Mat tmp;
-                image.convertTo(tmp, type);
-                image = tmp;
-            }
+                if (image.type() != type) {
+                    cv::Mat tmp;
+                    image.convertTo(tmp, type);
+                    image = tmp;
+                }
 
-            cached.facets.emplace_back(image);
+                cached.facets.emplace_back(image);
+            }
 
             for (int field: config.annotate) {
                 // load annotation
