@@ -435,6 +435,12 @@ First, fields in `images` are loaded into the facets list,
 and then fields in `annotate`.   After that, transformations are
 applied to the facets, some, like `anchor.dense.box`, generating new facets.
 
+Because numbers in JSON annotations are all normalized to [0-1], we use
+the size information of the first loaded image to properly render the
+annotation.  Also because all augmentations are applied to all facets
+the same way, having different facet shapes will cause problems almost
+for sure.
+
 ## Augmentation
 
 A subset of the supported transformations implement image augmentation.
