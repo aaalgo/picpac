@@ -56,7 +56,7 @@ A record contains the following:
 - `label`: a label of float32.  We use float to support both
   classification and regression.
 - ~~`label2`: a secondary label of type int16.  Typically not used.~~
-- `group`: set to either label or label2.  Stratified sampling group.
+- ~~`group`: set to either label(default) or label2.  Stratified sampling group.~~
 - `fields[]`: up to 6 binary buffers.
 - `fields[0]`: this is typically the binary image, supports most formats.
 - `fields[1]`(optional): annotation in JSON or binary image.
