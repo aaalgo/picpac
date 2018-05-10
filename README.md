@@ -56,6 +56,7 @@ A record contains the following:
 - `label`: a label of float32.  We use float to support both
   classification and regression.
 - ~~`label2`: a secondary label of type int16.  Typically not used.~~
+- `group`: set to either label or label2.  Stratified sampling group.
 - `fields[]`: up to 6 binary buffers.
 - `fields[0]`: this is typically the binary image, supports most formats.
 - `fields[1]`(optional): annotation in JSON or binary image.
@@ -442,7 +443,25 @@ applicable.
 
 ## Accessing Raw Data in Streaming
 
+Occasionally, one needs to access raw data when streaming.
+For example, one might need to know the name or some extra information of the sample image.
+One way is to encode such information into a binary buffer and save in
+one of the 6 fields.  For example, extra information can be merged into
+JSON annotation and saved in field 1.  At run time, use the following
+code to access raw data:
 
+```python
+
+config = { ...
+           'raw': [field1, field2, ...]   # default is []
+		 }
+
+for meta, ... in stream:
+    meta.raw[0][0]  # raw data of the first required raw field or first sample in minibatch.
+	meta.raw[0][1]  # first field, second sample
+```
+
+Raw data are only loaded on demand.
 
 ## I/O Performance and Caching
 
@@ -451,9 +470,6 @@ disk only once.  But with big dataset, this can cause an out-of-memory
 error.  In such case, one has to set `cache = False` in configuration,
 and make sure the database file is on SSD-storage.  PicPac loads each
 sample with a random seek.
-
-## Mixin
-
 
 ## Label2 and Stratified Sampling
 
@@ -466,6 +482,24 @@ be decided at database create time and is usually determined by the
 from labels.  In such case, a database is created with the
 `INDEX_LABEL2` flag, and the `label2` field of the record is set to the
 stratified sampling category.
+
+## Mixin
+
+PicPac provides a convenient mechanism to mix in a general background
+dataset in streaming.
+
+```
+config = {...
+          'mixin': 'some_background_db',
+		  'mixin_group_reset': 0     # set all groups in mixin to 0
+		  'mixin_group_delta': 1     # add 1 to mixin groups.
+```
+
+Mixin is useful in supressing false positives.
+Properly set `mixin_group_reset` and `mixin_group_delta` so mixin
+and the primary dataset have non-overlapping stratified sampling groups.
+
+Note that currently labels are loaded unaltered from the mixin db.
 
 
 
