@@ -1,29 +1,66 @@
 PicPac: An Image Database and Streamer for Deep Learning
+========================================================
 
-PicPac is an image database, explorer and streamer for deep learning.
+PicPac is an image database and streamer for deep learning.
 It is developed so that the user of different deep learning frameworks
-can all use the same image database format.  PicPac currently supports
-streaming data into TensorFlow, MXNet, Torch and a Caffe fork, with C++,
-python and Lua API. 
+can all use the same image database format. 
 
-#[Documentation](http://picpac.readthedocs.org/en/latest/)
+# Installation 
 
-# Installation with Pip
+## Option 1: download binary python module.
+
+This is the recommended installation method if you are using ubuntu
+16.04 and python3.5.
+
+Download the .so file from
+[here](http://www.aaalgo.com/picpac/binary/picpac.cpython-35m-x86_64-linux-gnu.so)
+and drop in your current directory.  You should be able to `import picpac` in python3.
+
+## Option 2: building from source code.
+
 Prerequisits:
 - boost libraries  (libboost-all-dev on ubuntu or boost-devel on centos )
 - opencv2  (libopencv-dev or opencv-devel)
 - glog  (libglog-dev or glog-devel)
 
 ```
-pip install -i https://testpypi.python.org/pypi picpac
+git clone --recurse-submodules https://github.com/aaalgo/picpac
+cd picpac
+
+# python 2, not recommended
+python setup.py build
+sudo python setup.py install
+
+# python 3
+python3 setup.py build
+sudo python3 setup.py install
 ```
 
-This will install the Python streaming API.
+## Option 3: pip
+
+We are working on it.
+
+
+# Quick Start
+
+## Basic Structure
+
+A PicPac database is a collection of image samples.
+
+- Image itself.
+- A float32 label.
+
+
+## Data Importing
+
+
+
+# [Legacy Documentation](http://picpac.readthedocs.org/en/latest/)
+
 
 # Examples
 
-- [Tensorflow Slim](https://github.com/aaalgo/picpac/tree/master/examples/tensorflow)
-- [MXNet](https://github.com/aaalgo/picpac/tree/master/examples/mxnet)
+- [Tensorflow Slim](https://github.com/aaalgo/cls)
 
 # Public Dataset
 
@@ -40,9 +77,9 @@ Download portable distribution of PicPac Explorer here: (http://aaalgo.com/picpa
 
 Run ```picpac-explorer db``` and point the web browser to port 18888.  If the program is executed under a GUI environment, the browser will be automatically opened.
 
-# Building
+# Building C++ Binaries
 
-The basic library depends on OpenCV 2.x and Boost.  The dependency on [Json11](https://github.com/dropbox/json11)
+The basic library depends on OpenCV and Boost.  The dependency on [Json11](https://github.com/dropbox/json11)
 is provided as git submodule, which can be pulled in by 
 ```
 git submodule init

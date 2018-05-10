@@ -26,6 +26,9 @@ namespace picpac {
             rr(&r); // disk access
             cached.label = r.meta().label;
             cached.id = r.meta().id;
+            for (int rf: config.raw) {
+                cached.raw.push_back(r.field_string(rf));
+            }
             //CHECK(r.size() >= (annotate ? 2 : 1));
             int decode_mode = cv::IMREAD_UNCHANGED;
             if (config.channels == 1) {
@@ -47,12 +50,12 @@ namespace picpac {
 
             cached.facets.emplace_back(image);
 
-            if (config.annotate) {
+            for (int field: config.annotate) {
                 // load annotation
-                int tt = r.fieldType(1);
+                int tt = r.fieldType(field);
                 if (tt == 0) {
                     // guess field
-                    const_buffer buf = r.field(1);
+                    const_buffer buf = r.field(field);
                     const unsigned char* p = boost::asio::buffer_cast<const unsigned char*>(buf);
                     int sz = boost::asio::buffer_size(buf);
                     if (sz > 0) {
@@ -67,17 +70,17 @@ namespace picpac {
                     }
                 }
                 if (tt == FIELD_ANNOTATION_JSON) {
-                    const_buffer buf = r.field(1);
+                    const_buffer buf = r.field(field);
                     const char* p = boost::asio::buffer_cast<const char*>(buf);
                     int sz = boost::asio::buffer_size(buf);
-                    cached.facets.emplace_back(p, p + sz, cached.facets.back().image.size());
+                    cached.facets.emplace_back(p, p + sz, cached.facets.front().image.size());
                 }
                 else if (tt == FIELD_ANNOTATION_IMAGE) {
-                    const_buffer buf = r.field(1);
+                    const_buffer buf = r.field(field);
                     cached.facets.emplace_back(decode_buffer(buf, -1));
                 }
                 else {
-                    cached.facets.emplace_back(nullptr, nullptr, cached.facets.back().image.size());
+                    cached.facets.emplace_back(nullptr, nullptr, cached.facets.front().image.size());
                 }
                 cached.facets.back().type = Facet::LABEL;
             }

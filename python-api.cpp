@@ -21,6 +21,8 @@ namespace {
         virtual ~FacetData () {}
         virtual void fill_next (cv::Mat const &image) = 0;
         virtual PyObject *detach () = 0;
+        virtual void dump (string const &prefix) {
+        }
     };
 
     class BachelorFacetData: public FacetData, public NumpyBatch {
@@ -33,6 +35,15 @@ namespace {
         }
         virtual PyObject *detach () {
             return NumpyBatch::detach();
+        }
+        virtual void dump (string const &prefix) {
+            CHECK(conf.order == bachelor::NHWC);
+            char *p = reinterpret_cast<char *>(buffer);
+            for (int i = 0; i < cnt; ++i) {
+                cv::Mat image(conf.height, conf.width, CV_MAKETYPE(conf.depth, conf.channels), p);
+                cv::imwrite(prefix + "_" + lexical_cast<string>(i) + ".png", image);
+                p += image_size;
+            }
         }
     };
 
@@ -71,8 +82,23 @@ namespace {
         }
     };
 
+#if PY_MAJOR_VERSION >= 3
+    object string_to_python (string &s) {
+        if (s.size()) {
+            return object(handle<>(PyBytes_FromStringAndSize(&s[0], s.size())));
+        }
+        else {
+            return object(handle<>(PyBytes_FromStringAndSize(NULL, 0)));
+        }
+    }
+#else
+#define string_to_python(s) s
+#endif
+
 class PyImageStream: public ImageStream {
     int batch;
+    int dump;
+    int dump_cnt;
     string order;
     string colorspace;
     bachelor::Order bachelor_order;
@@ -80,6 +106,7 @@ class PyImageStream: public ImageStream {
     object ctor;
 public:
     struct Config: public ImageStream::Config {
+
         Config (dict const &kwargs) {
             boost::python::object simplejson = boost::python::import("simplejson");
 
@@ -107,7 +134,36 @@ public:
             UPDATE_CONFIG(preload, kwargs);
             UPDATE_CONFIG(threads, kwargs);
             UPDATE_CONFIG(channels, kwargs);
-            UPDATE_CONFIG(annotate, kwargs);
+
+            if (kwargs.has_key("raw")) {
+                list rf = extract<list>(kwargs.get("raw"));
+                for (int i = 0; i < len(rf); ++i) {
+                    raw.push_back(extract<int>(rf[i]));
+                }
+            }
+
+            if (kwargs.has_key("annotate")) {
+                // handle annotation
+                auto anno = kwargs.get("annotate");
+                extract<list> e(anno);
+                if (e.check()) {
+                    list fields = e();
+                    for (int i = 0; i < len(fields); ++i) {
+                        annotate.push_back(extract<int>(fields[i]));
+                    }
+                }
+                else {
+                    extract<bool> e(anno);
+                    CHECK(e.check());
+                    LOG(WARNING) << "setting annotate to True is obsolete.  Use [1] or a list of annotate fields.";
+                    LOG(WARNING) << "pushing 1 to annotate field list.";
+                    if (e()) {
+                        annotate.push_back(1);
+                    }
+                }
+                // anno 
+            }
+
             // check dtype
             string dt = extract<string>(kwargs.get("dtype", "uint8"));
             dtype = dtype_np2cv(dt);
@@ -117,8 +173,9 @@ public:
     };
 
     PyImageStream (dict kwargs) //{std::string const &path, Config const &c)
-        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), order("NHWC"), colorspace("BGR") {
+        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), dump(0), dump_cnt(0), order("NHWC"), colorspace("BGR") {
             UPDATE_CONFIG(batch, kwargs);
+            UPDATE_CONFIG(dump, kwargs);
             UPDATE_CONFIG(order, kwargs);
             UPDATE_CONFIG(colorspace, kwargs);
 #undef UPDATE_CONFIG
@@ -136,12 +193,20 @@ public:
                 bachelor_colorspace = bachelor::RGB;
             }
             else CHECK(0) << "Unrecognized colorspace: " << colorspace;
+
+
             auto collections = import("collections");
             auto namedtuple = collections.attr("namedtuple");
             list fields;
-            fields.append("ids"); 
-            fields.append("labels"); 
+            fields.append("ids");       // np array
+            fields.append("labels");    // labels
+            fields.append("raw");    // list of field.  each field is a list of batch size, containing the field data
             ctor = namedtuple("Meta", fields);
+
+            if (dump) {
+                fs::create_directory("picpac_dump");
+                LOG(WARNING) << "dumping image to picpac_dump/{batch}_{field}_{image}.png";
+            }
     }
 
     list next () {
@@ -149,11 +214,19 @@ public:
         // if EOS, this will 
         vector<int32_t> ids;
         vector<float> labels;
+        vector<list> raw_fields;
+        for (auto const &x: ImageLoader::config.raw) {
+            raw_fields.push_back(list());
+        }
         vector<unique_ptr<FacetData>> data;
         // create batch, emplace first object
         Value v(ImageStream::next());
         ids.push_back(v.id);
         labels.push_back(v.label);
+        CHECK(v.raw.size() == raw_fields.size());
+        for (unsigned i = 0; i < v.raw.size(); ++i) {
+            raw_fields[i].append(string_to_python(v.raw[i]));
+        }
         for (auto &im: v.facets) {
             im.check_pythonize();
             if ((im.type == Facet::IMAGE) || (im.type == Facet::LABEL)) {
@@ -186,6 +259,10 @@ public:
                 Value v(ImageStream::next());
                 ids.push_back(v.id);
                 labels.push_back(v.label);
+                CHECK(v.raw.size() == raw_fields.size());
+                for (unsigned i = 0; i < v.raw.size(); ++i) {
+                    raw_fields[i].append(string_to_python(v.raw[i]));
+                }
                 CHECK(data.size() == v.facets.size());
                 for (unsigned j = 0; j < data.size(); ++j) {
                     auto &im = v.facets[j];
@@ -207,8 +284,24 @@ public:
         std::copy(ids.begin(), ids.end(), (int32_t *)PyArray_DATA(pyids));
         std::copy(labels.begin(), labels.end(), (float *)PyArray_DATA(pylabels));
 
+        list raw_field_list;
+        for (auto &l: raw_fields) {
+            raw_field_list.append(l);
+        }
         list r;
-        r.append(ctor(boost::python::handle<>(pyids), boost::python::handle<>(pylabels)));
+        r.append(ctor(boost::python::handle<>(pyids), boost::python::handle<>(pylabels), raw_field_list));
+
+        if (dump > 0 && dump_cnt < dump) {
+            string prefix = "picpac_dump/" + lexical_cast<string>(dump_cnt);
+            int fc = 0;
+            for (auto &p: data) {
+                if (p) {
+                    p->dump(prefix + "_" + lexical_cast<string>(fc));
+                }
+                fc += 1;
+            }
+            dump_cnt += 1;
+        }
         for (auto &p: data) {
             if (p) {
                 r.append(object(boost::python::handle<>(p->detach())));

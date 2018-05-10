@@ -48,6 +48,8 @@ namespace picpac {
 
             controls.emplace_back(x, y);
             controls.emplace_back(x+w, y+h);
+            controls.emplace_back(x+w, y);
+            controls.emplace_back(x, y + h);
         }
 
         virtual std::unique_ptr<Shape> clone () const {
@@ -56,6 +58,44 @@ namespace picpac {
 
         virtual void render (cv::Mat *m, RenderOptions const &opt) const {
             cv::rectangle(*m, round(controls[0]), round(controls[1]), render_color(opt), opt.thickness, opt.line_type, opt.shift);
+        }
+
+        virtual void transform (std::function<void(vector<cv::Point2f> *)> f) {
+            // some shape might need pre-post processing
+            float area = (controls[1].x - controls[0].x) * (controls[1].y - controls[0].y);
+            f(&controls);
+            float min_x = controls[0].x;
+            float max_x = controls[0].x;
+            float min_y = controls[0].y;
+            float max_y = controls[0].y;
+            for (int i = 1; i < 4; ++i) {
+                min_x = std::min(min_x, controls[i].x);
+                max_x = std::max(max_x, controls[i].x);
+                min_y = std::min(min_y, controls[i].y);
+                max_y = std::max(max_y, controls[i].y);
+            }
+            float mid_x = (min_x + max_x) / 2;
+            float span_x = (max_x - min_x);
+            float mid_y = (min_y + max_y) / 2;
+            float span_y = (max_y - min_y);
+            float rate = std::sqrt((area + 1.0) / (span_x * span_y + 1.0));
+            float d_x = span_x * rate / 2;
+            float d_y = span_y * rate / 2;
+
+            min_x = mid_x - d_x;
+            max_x = mid_x + d_x;
+            min_y = mid_y - d_y;
+            max_y = mid_y + d_y;
+
+
+            controls[0].x = min_x;
+            controls[0].y = min_y;
+            controls[1].x = max_x;
+            controls[1].y = max_y;
+            controls[2].x = max_x;
+            controls[2].y = min_y;
+            controls[3].x = min_x;
+            controls[3].y = max_y;
         }
 
 #if 0

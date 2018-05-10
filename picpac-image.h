@@ -191,6 +191,9 @@ namespace picpac {
                 CHECK(image_sz == anno_sz);
                 return image_sz;
             }
+            if (image_sz.width == 0 && anno_sz.width ==0) {
+                return cv::Size(0, 0);
+            }
             CHECK(0);
             return image_sz;
         }
@@ -202,6 +205,7 @@ namespace picpac {
     struct Sample: private boost::noncopyable {
         uint32_t id;
         float label;
+        vector<string> raw;
         vector<Facet> facets;
 
         Sample () {}
@@ -209,18 +213,24 @@ namespace picpac {
         void swap (Sample &v) {
             std::swap(id, v.id);
             std::swap(label, v.label);
+            raw.swap(v.raw);
             facets.swap(v.facets);
         }
 
         void copy (Sample const &v) {
             id = v.id;
             label = v.label;
+            raw.clear();
+            for (auto const &s: v.raw) {
+                raw.push_back(s);
+            }
             facets.clear();
             facets.resize(v.facets.size());
             for (unsigned i = 0; i < facets.size(); ++i) {
                 auto const &vi = v.facets[i];
+                facets[i].type = vi.type;
                 if (vi.image.data) {
-                    facets[i].image = v.facets[i].image.clone();
+                    facets[i].image = vi.image.clone();
                 } 
                 facets[i].annotation.copy(vi.annotation);
             }
@@ -298,7 +308,9 @@ namespace picpac {
         struct Config {
             int channels;       // -1: unchanged
             int dtype;
-            bool annotate;
+            vector<int> annotate;
+            vector<int> raw;
+            //bool annotate;
             string transforms;
             Config ()
                 : channels(-1), // unchanged
