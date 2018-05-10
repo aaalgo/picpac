@@ -5,6 +5,20 @@ PicPac is an image database for deep learning.  It is developed so that
 the user of different deep learning frameworks can all use the same
 image database format. 
 
+Features:
+- Store raw images in one-file database, decoding & augmentation on-the-fly.
+- Support most image formats.
+- Python and C++ API.
+- C++ with multi-threading in background.
+- Support most common tasks (classification, regression, segmentation and
+  instance segmentation).
+- Flexible streaming options (shuffle, stratified sampling).
+- Flexible augmentation framework.
+- Compatible with all major frameworks (Tensorflow, Keras, PyTorch,
+  Caffe).
+- In memory caching for small datasets.
+- True random shuffle with extremely large dataset (need SSD storage).
+
 # Installation 
 
 ## Option 1: download binary python module.
@@ -104,7 +118,7 @@ for label, image_path, mask in some_list:
 
 You can view database content with picpac-explorer; see below.
 
-## Streaming for classification
+## Streaming for classification and regression
 After a database has been created, it can be used to stream
 training samples to a deep-learning framework:
 
