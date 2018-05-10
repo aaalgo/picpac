@@ -447,10 +447,10 @@ A subset of the supported transformations implement image augmentation.
 An augmentation operation applies to all facets in the same way whenever
 applicable.
 
-## Inspecting Facet Images
+## Inspecting Streaming Samples
 
 The user is encouraged to visually inspect the data that are streamed
-from PicPac to make sure they are actually good.  
+from PicPac to make sure they are actually correct.  
 
 ```
 config = { ...
