@@ -54,6 +54,7 @@ namespace picpac {
         bool show_numbers;
         bool use_palette;
         bool use_tag;
+        bool use_serial;
 
         RenderOptions ()
             : thickness(CV_FILLED),
@@ -62,7 +63,8 @@ namespace picpac {
             point_radius(5),
             show_numbers(false),
             use_palette(false),
-            use_tag(false)
+            use_tag(false),
+            use_serial(false)
         {
         }
     };
@@ -78,6 +80,7 @@ namespace picpac {
         char const *type;   // text name
         cv::Scalar color;
         float tag;
+        int serial;
 
         cv::Scalar render_color (RenderOptions const &) const;
 
@@ -272,6 +275,7 @@ namespace picpac {
     class Transforms: public Transform {
         int total_pv_size;
         vector<std::unique_ptr<Transform>> sub;
+        friend class SomeOf;
     public:
         Transforms (json const &spec): total_pv_size(0) {
             for (auto it = spec.begin(); it != spec.end(); ++it) {
@@ -314,8 +318,8 @@ namespace picpac {
             //bool annotate;
             string transforms;
             Config ()
-                : images{0},
-                channels(-1), // unchanged
+                : channels(-1), // unchanged
+                images{0},
                 dtype(CV_32F),
                 annotate(false),
                 transforms("[]")

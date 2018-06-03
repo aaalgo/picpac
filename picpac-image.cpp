@@ -6,8 +6,10 @@ namespace picpac {
         //std::cerr << string(begin, end) << std::endl;
         if (begin) {
             json anno = json::parse(begin, end);
+            int serial = 1;
             for (auto const &shape: anno.at("shapes")) {
                 shapes.emplace_back(Shape::create(shape, size));
+                shapes.back()->serial = serial++;
             }
         }
     }

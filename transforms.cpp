@@ -115,6 +115,7 @@ namespace picpac {
             type = CV_MAKETYPE(dtype, channels);
             opt.use_palette = spec.value<bool>("use_palette", opt.use_palette);
             opt.use_tag = spec.value<bool>("use_tag", opt.use_tag);
+            opt.use_serial = spec.value<bool>("use_serial", opt.use_serial);
             opt.thickness = spec.value<int>("thickness", opt.thickness);
             CHECK(((!opt.use_palette) || (!opt.use_tag))) << "Cannot use both tag and palette";
         }
@@ -534,6 +535,90 @@ namespace picpac {
         }
     };
 
+    class Sometimes: public Transform {
+        float chance;
+        Transforms transforms;
+        std::uniform_real_distribution<float> linear01;
+        struct PerturbVector {
+            bool apply;
+        };
+    public:
+        Sometimes (json const &spec)
+            : chance(spec.value<float>("chance", 0.5)),
+            transforms(spec.at("transforms")),
+            linear01(0.0, 1.0) {
+        }
+        virtual size_t pv_size () const {
+            return sizeof(PerturbVector) + transforms.pv_size(); 
+        }
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            float p = const_cast<Sometimes *>(this)->linear01(rng);
+            pv->apply = p <= chance;
+            if (pv->apply) {
+                transforms.pv_sample(rng, static_cast<char*>(buf) + sizeof(PerturbVector));
+            }
+            return pv_size();
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            if (pv->apply) {
+                transforms.apply_one(facet, static_cast<char const*>(buf) + sizeof(PerturbVector));
+            }
+            return pv_size();
+        }
+    };
+
+    class SomeOf: public Transform {
+        static const unsigned MAX = 32;
+        struct PerturbVector {
+            std::array<bool, MAX> apply;
+        };
+        unsigned count;
+        Transforms transforms;
+    public:
+        SomeOf (json const &spec)
+            : count(spec.value<unsigned>("count", 1)),
+            transforms(spec.at("transforms")) {
+            CHECK(transforms.sub.size() < MAX);
+            CHECK(count <= transforms.sub.size());
+        }
+        virtual size_t pv_size () const {
+            return sizeof(PerturbVector) + transforms.pv_size(); 
+        }
+
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+
+            std::vector<unsigned> index(transforms.sub.size());
+            for (unsigned i = 0; i < index.size(); ++i) {
+                index[i] = i;
+            }
+            std::shuffle(index.begin(), index.end(), rng);
+            std::fill(pv->apply.begin(), pv->apply.end(), false);
+            for (unsigned i = 0; i < count; ++i) {
+                pv->apply[index[i]] = true;
+            }
+            char *p = static_cast<char*>(buf) + sizeof(PerturbVector);
+            for (unsigned i = 0; index.size(); ++i) {
+                if (pv->apply[i]) {
+                    p += transforms.sub[i]->pv_sample(rng, p);
+                }
+            }
+            return pv_size();
+        }
+
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            char const *p = static_cast<char const *>(buf) + sizeof(PerturbVector);
+            for (unsigned i = 0; i < transforms.sub.size(); ++i) {
+                if (pv->apply[i]) {
+                    p += transforms.sub[i]->apply_one(facet, p);
+                }
+            }
+            return pv_size();
+        }
+    };
 
     class AugFlip: public Transform {
         bool horizontal;
@@ -759,6 +844,15 @@ namespace picpac {
             float radius;
         };
 
+        static void init_prior (float *params) {
+            params[0] = 0;
+        }
+
+        static void init_prior(float *params, json const &p) {
+            CHECK(0) << "Not supported.";
+        }
+
+
         static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
             float minx = ctrls[0].x;
             float maxx = minx;
@@ -793,13 +887,32 @@ namespace picpac {
     };
 
     struct BoxAnchor {
-        static unsigned constexpr PRIOR_PARAMS = 1;
+        static unsigned constexpr PRIOR_PARAMS = 2;
+        // params: width height
         static unsigned constexpr PARAMS = 4;
 
         struct Shape {
             cv::Point2f center;
             float width, height;
         };
+
+        static void init_prior (float *params) {
+            params[0] = params[1] = 0;
+        }
+
+        static void init_prior(float *params, json const &p) {
+            CHECK(p.is_array());
+            CHECK(p.size() == 2);
+            float sz = p.at(0);
+            float ratio = p.at(1);
+            ratio = std::sqrt(ratio);
+            //    x / y = ratio
+            //    x * y = sz * sz
+            //    x = sz * sqrt(ratio)
+            //    y = sz / sqrt(ratio)
+            params[0] = sz * ratio;
+            params[1] = sz / ratio;
+        }
 
         static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
             float minx = ctrls[0].x;
@@ -821,14 +934,32 @@ namespace picpac {
             c->height = maxy - miny;
         }
 
-        static float score (cv::Point_<float> const &pt,
+        static cv::Rect_<float> make_rect (cv::Point2f const &pt,
+                                    float width, float height) {
+            return cv::Rect_<float>(pt.x - width/2,
+                                    pt.y - height/2,
+                                    width, height);
+        }
+
+        static float score (cv::Point2f const &pt,
                               float const *prior,
                               Shape const &c) {
-            // overlap
-            float dx = std::abs(pt.x - c.center.x) * 2; 
-            float dy = std::abs(pt.y - c.center.y) * 2;
-            return std::min((c.width - dx) / c.width,
-                            (c.height - dy) / c.height);
+            if (prior[0] == 0) {
+                float dx = std::abs(pt.x - c.center.x) * 2; 
+                float dy = std::abs(pt.y - c.center.y) * 2;
+                return std::min((c.width - dx) / c.width,
+                                        (c.height - dy) / c.height);
+            }
+            CHECK(0);
+
+            // pt, prior[0], prior[1]
+            // c
+            cv::Rect_<float> p = make_rect(pt, prior[0], prior[1]);
+            cv::Rect_<float> r = make_rect(c.center, c.width, c.height);
+
+            cv::Rect_<float> u = p & r;
+            float i = u.area();
+            return i / (p.area() + r.area() - i);
         }
 
         static void update_params (cv::Point_<float> const &pt, Shape const &c, float *params) {
@@ -851,10 +982,10 @@ namespace picpac {
             // keep track the best match of the shape
             // this is always used if score > lower_th
             float score;
+            float const *prior;
             cv::Scalar color;
             float tag;
             cv::Point_<float> pt;
-            float const *prior;
             float *label;
             float *label_mask;
             float *params;
@@ -866,11 +997,29 @@ namespace picpac {
         };
 
     public:
-        DenseAnchors (json const &spec): priors(1, ANCHOR::PRIOR_PARAMS, CV_32F, cv::Scalar(0)) {
+        DenseAnchors (json const &spec) { //: priors(1, ANCHOR::PRIOR_PARAMS, CV_32F, cv::Scalar(0)) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
             upper_th = spec.value<float>("upper_th", 0.8);
             lower_th = spec.value<float>("lower_th", 0.4);
+            // priors is an array
+            // each entry will construct an anchor object
+            //
+            if (spec.find("priors") == spec.end()) {
+                // no prior
+                priors.create(1, ANCHOR::PRIOR_PARAMS, CV_32F);
+                ANCHOR::init_prior(priors.ptr<float>(0));
+            }
+            else {
+                auto const &pspec = spec.at("priors");
+                priors.create(pspec.size(), ANCHOR::PRIOR_PARAMS, CV_32F);
+                unsigned i = 0;
+                for (auto const &p: spec.at("priors")) {
+                    ANCHOR::init_prior(priors.ptr<float>(i), p);
+
+                    ++i;
+                }
+            }
         }
 
         virtual size_t apply (Sample *sample, void const *) const {
@@ -945,8 +1094,7 @@ namespace picpac {
                                 plm[0] = 0;
                             }
                             else {
-                                //pl[0] = 1;      // to class label
-                                pl[0] = best_c->color[0];
+                                pl[0] = 1;      // to class label
                             }
                         }
                     } // prior
@@ -1145,6 +1293,12 @@ namespace picpac {
 
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
+        if (type == "sometimes") {
+            return std::unique_ptr<Transform>(new Sometimes(spec));
+        }
+        if (type == "some_of") {
+            return std::unique_ptr<Transform>(new SomeOf(spec));
+        }
         if (type == "mask") {
             return std::unique_ptr<Transform>(new Mask(spec));
         }

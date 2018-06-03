@@ -13,6 +13,9 @@ namespace picpac {
         if (opt.use_tag) {
             return cv::Scalar(tag, tag, tag);
         }
+        if (opt.use_serial) {
+            return cv::Scalar(serial, serial, serial);
+        }
         if (opt.use_palette) {
             return PALETTE[rand() % PALETTE.size()];
         }
@@ -225,6 +228,46 @@ namespace picpac {
 #endif
     };
 
+    class Polygons: public Shape {
+        vector<unsigned> sizes;
+    public:
+        Polygons (json const &geo, cv::Size sz): Shape("polygons") {
+            for (auto const &polygon: geo.at("points")) {
+                // array of array
+                unsigned cc = 0;
+                for (auto const &p: polygon) {
+                    controls.emplace_back(p.at("x").get<float>() * sz.width, p.at("y").get<float>() * sz.height);
+                    cc += 1;
+                }
+                sizes.push_back(cc);
+            }
+        }
+
+        virtual std::unique_ptr<Shape> clone () const {
+            return std::unique_ptr<Shape>(new Polygons(*this));
+        }
+
+        virtual void render (cv::Mat *m, RenderOptions const &opt) const {
+            vector<cv::Point> ps; 
+            ps.reserve(controls.size());
+            unsigned off = 0;
+            for (unsigned sz: sizes) {
+                ps.clear();
+                for (unsigned i = 0; i < sz; ++i, ++off) {
+                    ps.push_back(round(controls[off]));
+                }
+                cv::Point const *pps = &ps[0];
+                int const nps = ps.size();
+                if (opt.thickness == CV_FILLED) {
+                    cv::fillPoly(*m, &pps, &nps, 1, render_color(opt), opt.line_type, opt.shift);
+                }
+                else {
+                    cv::polylines(*m, &pps, &nps, 1, true, render_color(opt), opt.thickness, opt.line_type, opt.shift);
+                }
+            }
+        }
+    };
+
     std::unique_ptr<Shape> Shape::create (json const &spec, cv::Size sz) {
         string type = spec.at("type").get<string>();
         auto geo = spec.at("geometry");
@@ -235,6 +278,9 @@ namespace picpac {
         }
         else if (type == "polygon") {
             shape = std::unique_ptr<Shape>(new Polygon(geo, sz));
+        }
+        else if (type == "polygons") {
+            shape = std::unique_ptr<Shape>(new Polygons(geo, sz));
         }
         else if (type == "ellipse") {
             shape = std::unique_ptr<Shape>(new Ellipse(geo, sz));
