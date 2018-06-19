@@ -39,10 +39,12 @@ namespace {
         virtual void dump (string const &prefix) {
             CHECK(conf.order == bachelor::NHWC);
             char *p = reinterpret_cast<char *>(buffer);
-            for (int i = 0; i < cnt; ++i) {
-                cv::Mat image(conf.height, conf.width, CV_MAKETYPE(conf.depth, conf.channels), p);
-                cv::imwrite(prefix + "_" + lexical_cast<string>(i) + ".png", image);
-                p += image_size;
+            if (conf.channels ==1 || conf.channels == 3) {
+                for (int i = 0; i < cnt; ++i) {
+                    cv::Mat image(conf.height, conf.width, CV_MAKETYPE(conf.depth, conf.channels), p);
+                    cv::imwrite(prefix + "_" + lexical_cast<string>(i) + ".png", image);
+                    p += image_size;
+                }
             }
         }
     };
@@ -246,7 +248,9 @@ public:
                 conf.channels = im.image.channels();
                 conf.depth = im.image.depth();
                 conf.order = bachelor_order;
-                conf.colorspace = bachelor_colorspace;
+                if (im.type == Facet::IMAGE) {
+                    conf.colorspace = bachelor_colorspace;
+                }
                 data.emplace_back(new BachelorFacetData(conf));
                 data.back()->fill_next(im.image);
             }

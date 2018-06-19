@@ -4,6 +4,13 @@ import subprocess as sp
 import numpy
 from distutils.core import setup, Extension
 
+git_version = sp.check_output('git rev-parse HEAD', shell=True)
+git_changed = sp.check_output('git diff | wc -l', shell=True)
+
+if git_changed != '0':
+    print("Git has changed.  Please build first!")
+    sys.exit(0)
+
 numpy_include = os.path.join(os.path.abspath(os.path.dirname(numpy.__file__)), 'core', 'include')
 
 libraries = ['opencv_imgcodecs', 'opencv_imgproc', 'opencv_core', 'libjasper', 'libjpeg', 'libpng', 'libtiff', 'libwebp', 'zlib', 'boost_filesystem', 'boost_system', 'boost_python35', 'glog']

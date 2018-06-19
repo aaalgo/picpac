@@ -861,6 +861,7 @@ namespace picpac {
         struct Shape {
             cv::Point2f center;
             float radius;
+            float weight;
         };
 
         static void init_prior (float *params) {
@@ -872,7 +873,7 @@ namespace picpac {
         }
 
 
-        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
+        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls, bool weighted) {
             float minx = ctrls[0].x;
             float maxx = minx;
             float miny = ctrls[0].y;
@@ -889,6 +890,10 @@ namespace picpac {
             c->center.x /=  2; 
             c->center.y /=  2;
             c->radius =  std::sqrt((maxx-minx)*(maxy-miny)) / 2;
+            c->weight = 1.0;
+            if (weighted) {
+                c->weight = 1.0 / (c->radius * c->radius);
+            }
         }
 
         static float score (cv::Point_<float> const &pt,
@@ -913,6 +918,7 @@ namespace picpac {
         struct Shape {
             cv::Point2f center;
             float width, height;
+            float weight;
         };
 
         static void init_prior (float *params) {
@@ -931,9 +937,10 @@ namespace picpac {
             //    y = sz / sqrt(ratio)
             params[0] = sz * ratio;
             params[1] = sz / ratio;
+            LOG(WARNING)<< "prior w:" << params[0] << " h:" << params[1];
         }
 
-        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
+        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls, bool weighted) {
             float minx = ctrls[0].x;
             float maxx = minx;
             float miny = ctrls[0].y;
@@ -951,6 +958,11 @@ namespace picpac {
             c->center.y /=  2;
             c->width = maxx - minx;
             c->height = maxy - miny;
+            c->weight = 1.0;
+            if (weighted) {
+                c->weight = 1.0 / (c->width * c->height);
+            }
+            CHECK(c->weight > 0);
         }
 
         static cv::Rect_<float> make_rect (cv::Point2f const &pt,
@@ -969,8 +981,6 @@ namespace picpac {
                 return std::min((c.width - dx) / c.width,
                                         (c.height - dy) / c.height);
             }
-            CHECK(0);
-
             // pt, prior[0], prior[1]
             // c
             cv::Rect_<float> p = make_rect(pt, prior[0], prior[1]);
@@ -978,7 +988,7 @@ namespace picpac {
 
             cv::Rect_<float> u = p & r;
             float i = u.area();
-            return i / (p.area() + r.area() - i);
+            return i / (p.area() + r.area() - i + 0.00001);
         }
 
         static void update_params (cv::Point_<float> const &pt, Shape const &c, float *params) {
@@ -986,6 +996,8 @@ namespace picpac {
             params[1] = c.center.y - pt.y;
             params[2] = c.width;
             params[3] = c.height;
+            CHECK(c.width >= 1);
+            CHECK(c.height >= 1);
         }
     };
 
@@ -995,6 +1007,7 @@ namespace picpac {
         static unsigned constexpr PARAMS = 2;
 
         struct Shape: public cv::Point2f {
+            float weight;
         };
 
         static void init_prior (float *params) {
@@ -1006,10 +1019,11 @@ namespace picpac {
             CHECK(false);
         }
 
-        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls) {
+        static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls, bool) {
             CHECK(ctrls.size() == 1);
             c->x = ctrls[0].x;
             c->y = ctrls[0].y;
+            c->weight = 1.0;
         }
 
         static float score (cv::Point2f const &pt,
@@ -1030,9 +1044,11 @@ namespace picpac {
     class DenseAnchors: public Transform {
         int index;		// annotation facet
         int downsize;
+        bool weighted;
         cv::Mat priors;
         float upper_th;
         float lower_th;
+        float params_default;
 
         struct Shape: public ANCHOR::Shape {
             // keep track the best match of the shape
@@ -1056,25 +1072,28 @@ namespace picpac {
         DenseAnchors (json const &spec) { //: priors(1, ANCHOR::PRIOR_PARAMS, CV_32F, cv::Scalar(0)) {
             index = spec.value<int>("index", 1);
             downsize = spec.value<int>("downsize", 1);
-            upper_th = spec.value<float>("upper_th", 0.8);
+            upper_th = spec.value<float>("upper_th", 0.6);
             lower_th = spec.value<float>("lower_th", 0.4);
+            weighted = spec.value<bool>("weighted", false);
+            params_default = spec.value<float>("params_default", 0);
             // priors is an array
             // each entry will construct an anchor object
             //
-            if (spec.find("priors") == spec.end()) {
-                // no prior
+            if (spec.find("priors") != spec.end()) {
+                auto const &pspec = spec.at("priors");
+                if (pspec.size() > 0) {
+                    priors.create(pspec.size(), ANCHOR::PRIOR_PARAMS, CV_32F);
+                    unsigned i = 0;
+                    for (auto const &p: spec.at("priors")) {
+                        ANCHOR::init_prior(priors.ptr<float>(i), p);
+
+                        ++i;
+                    }
+                }
+            }
+            if (priors.empty()) {
                 priors.create(1, ANCHOR::PRIOR_PARAMS, CV_32F);
                 ANCHOR::init_prior(priors.ptr<float>(0));
-            }
-            else {
-                auto const &pspec = spec.at("priors");
-                priors.create(pspec.size(), ANCHOR::PRIOR_PARAMS, CV_32F);
-                unsigned i = 0;
-                for (auto const &p: spec.at("priors")) {
-                    ANCHOR::init_prior(priors.ptr<float>(i), p);
-
-                    ++i;
-                }
             }
         }
 
@@ -1090,7 +1109,7 @@ namespace picpac {
                 CHECK(ctrls.size() >= 1); // must be boxes
                 truths[i].color = anno.shapes[i]->color;
                 truths[i].tag = anno.shapes[i]->tag;
-                ANCHOR::init_shape_with_controls(&truths[i], ctrls);
+                ANCHOR::init_shape_with_controls(&truths[i], ctrls, weighted);
             }
 
             // params: dx dy radius
@@ -1102,10 +1121,24 @@ namespace picpac {
 
             cv::Mat label(sz, CV_32FC(priors.rows), cv::Scalar(0));
             // only effective for near and far points
-            cv::Mat label_mask(cv::Mat::ones(sz, CV_32FC(priors.rows)));
+            cv::Mat label_mask(sz, CV_32FC(priors.rows));
             // only effective for near points
             cv::Mat params(cv::Mat::zeros(sz, CV_32FC(priors.rows * ANCHOR::PARAMS)));
             cv::Mat params_mask(cv::Mat::zeros(sz, CV_32FC(priors.rows)));
+
+            {
+                float *b = label_mask.ptr<float>(0);
+                float *e = b + label_mask.total() * label_mask.channels();
+                std::fill(b, e, 1.0);
+            }
+
+            if (params_default != 0) {
+                float *b = params.ptr<float>(0);
+                float *e = b + params.total() * params.channels();
+                CHECK(params.total() == sz.area());
+                CHECK(params.channels() == priors.rows * ANCHOR::PARAMS);
+                std::fill(b, e, params_default);
+            }
 
             for (int y = 0; y < sz.height; ++y) {
 
@@ -1145,7 +1178,7 @@ namespace picpac {
                         if (!best_c) continue;
                         if (best_d >= lower_th) {
                             ANCHOR::update_params(pt, *best_c, pp);
-                            ppm[0] = 1.0;
+                            ppm[0] = best_c->weight;
                             if (best_d < upper_th) {
                                 plm[0] = 0;
                             }
@@ -1165,13 +1198,13 @@ namespace picpac {
                     c.label[0] = 1;
                     c.label_mask[0] = 1;
                     ANCHOR::update_params(c.pt, c, c.params);
-                    c.params_mask[0] = 1;
+                    c.params_mask[0] = c.weight;
                 }
             }
-            sample->facets.emplace_back(label);
-            sample->facets.emplace_back(label_mask);
-            sample->facets.emplace_back(params);
-            sample->facets.emplace_back(params_mask);
+            sample->facets.emplace_back(label, Facet::LABEL);
+            sample->facets.emplace_back(label_mask, Facet::LABEL);
+            sample->facets.emplace_back(params, Facet::LABEL);
+            sample->facets.emplace_back(params_mask, Facet::LABEL);
             return 0;
         }
     };
@@ -1197,7 +1230,7 @@ namespace picpac {
                 vector<cv::Point2f> const &ctrls = anno.shapes[i]->__controls();
                 CHECK(ctrls.size() >= 1); // must be boxes
                 BoxAnchor::Shape box;
-                BoxAnchor::init_shape_with_controls(&box, ctrls);
+                BoxAnchor::init_shape_with_controls(&box, ctrls, false);
                 float *p = feature.ptr<float>(o);
                 p[0] = anno.shapes[i]->color[0];
                 p[1] = anno.shapes[i]->tag;
@@ -1292,8 +1325,8 @@ namespace picpac {
                     }
                 }
             }
-            sample->facets.emplace_back(mask);
-            sample->facets.emplace_back(offset);
+            sample->facets.emplace_back(mask, Facet::LABEL);
+            sample->facets.emplace_back(offset, Facet::LABEL);
             return 0;
         }
     };

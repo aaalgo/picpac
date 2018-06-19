@@ -570,7 +570,6 @@ and the primary dataset have non-overlapping stratified sampling groups.
 Note that currently labels are loaded unaltered from the mixin db.
 
 
-
 # [Legacy Documentation](http://picpac.readthedocs.org/en/latest/)
 
 This API is obsolete and now in `picpac_legacy` namespace.
