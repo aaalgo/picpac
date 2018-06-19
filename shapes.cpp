@@ -65,8 +65,8 @@ namespace picpac {
 
         virtual void transform (std::function<void(vector<cv::Point2f> *)> f) {
             // some shape might need pre-post processing
-            float area = (controls[1].x - controls[0].x) * (controls[1].y - controls[0].y);
             f(&controls);
+            float area = cv::norm(controls[2] - controls[0]) * cv::norm(controls[3] - controls[0]);
             float min_x = controls[0].x;
             float max_x = controls[0].x;
             float min_y = controls[0].y;
