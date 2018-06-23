@@ -226,7 +226,7 @@ namespace picpac {
                 out_ptr += sz;
             }
         }
-        CHECK(out_ptr - &new_data[0] == new_data.size());
+        CHECK(unsigned(out_ptr - &new_data[0]) == new_data.size());
         data.swap(new_data);
         meta_ptr = new_meta;
         CHECK((meta_ptr == reinterpret_cast<Meta *>(&data[0]))
@@ -410,7 +410,7 @@ namespace picpac {
                 std::shuffle(g.index.begin(), g.index.end(), rng);
             }
         }
-        unsigned K = config.split;
+        int K = config.split;
         vector<unsigned> keys;
         if (config.split_keys.size()) {
             CHECK(config.split_fold < 0) << "Cannot use keys and fold simultaneously.";
@@ -419,14 +419,14 @@ namespace picpac {
         }
         else {
             // setup k-fold cross validation
-            for (unsigned k = 0; k < K; ++k) {
+            for (int k = 0; k < K; ++k) {
                 if (k != config.split_fold) keys.push_back(k);
             }
         }
         if (config.split_negate) {
             std::set<unsigned> excl(keys.begin(), keys.end());
             keys.clear();
-            for (unsigned k = 0; k < K; ++k) {
+            for (int k = 0; k < K; ++k) {
                 if (excl.count(k) == 0) {
                     keys.push_back(k);
                 }

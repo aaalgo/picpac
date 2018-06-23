@@ -225,7 +225,7 @@ public:
         vector<int32_t> ids;
         vector<float> labels;
         vector<list> raw_fields;
-        for (auto const &x: ImageLoader::config.raw) {
+        for (unsigned i = 0; i < ImageLoader::config.raw.size(); ++i) {
             raw_fields.push_back(list());
         }
         vector<unique_ptr<FacetData>> data;
@@ -288,7 +288,7 @@ public:
                 break;
             }
         }
-        npy_intp dims[1] = {labels.size()};
+        npy_intp dims[1] = {int(labels.size())};
         PyObject *pyids = PyArray_SimpleNew(1, dims, NPY_INT32);
         CHECK(pyids);
         PyObject *pylabels = PyArray_SimpleNew(1, dims, NPY_FLOAT32);
@@ -440,7 +440,7 @@ public:
 };
 
 class Reader: public IndexedFileReader {
-    int _next;
+    unsigned _next;
     object ctor;
 public:
     Reader (string const &path): IndexedFileReader(path), _next(0) {
@@ -669,7 +669,7 @@ namespace {
             CHECK(prob.rows == params.rows);
             CHECK(prob.cols == params.cols);
             //CHECK(prob.channels() == 1);
-            CHECK(params.channels() == SHAPE::PARAMS * prob.channels());
+            CHECK(params.channels() == int(SHAPE::PARAMS * prob.channels()));
             vector<Shape> all;
             int priors = prob.channels();
             for (int y = 0; y < prob.rows; ++y) {

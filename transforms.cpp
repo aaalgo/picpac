@@ -47,7 +47,7 @@ namespace picpac {
             index = spec.value<int>("index", -1);
         }
         virtual size_t apply (Sample *sample, void const *) const {
-            auto &ref_image = sample->facets[ref].image;
+            //auto &ref_image = sample->facets[ref].image;
             int idx = index;
             if (idx < 0) {  // add image
                 sample->facets.emplace_back();
@@ -126,7 +126,7 @@ namespace picpac {
             }
             else {
                 if (facet.image.data) {
-                    true;
+                    ;
                 }
                 else {
                     facet.image = cv::Mat(facet.annotation.size, type, cv::Scalar(0,0,0,0));
@@ -355,9 +355,9 @@ namespace picpac {
               size(spec.value<int>("size", 0)),
               min(spec.value<int>("min", size ? size : 0)),
               max(spec.value<int>("max", size ? size : numeric_limits<int>::max())),
+              round(spec.value<int>("round", 0)),
               width(spec.value<int>("width", 0)),
               height(spec.value<int>("height", 0)),
-              round(spec.value<int>("round", 0)),
               min_width(spec.value<int>("min_width", min)),
               max_width(spec.value<int>("max_width", max)),
               min_height(spec.value<int>("min_height", min)),
@@ -928,15 +928,10 @@ namespace picpac {
         static void init_prior(float *params, json const &p) {
             CHECK(p.is_array());
             CHECK(p.size() == 2);
-            float sz = p.at(0);
-            float ratio = p.at(1);
-            ratio = std::sqrt(ratio);
-            //    x / y = ratio
-            //    x * y = sz * sz
-            //    x = sz * sqrt(ratio)
-            //    y = sz / sqrt(ratio)
-            params[0] = sz * ratio;
-            params[1] = sz / ratio;
+            float w = p.at(0);
+            float h = p.at(1);
+            params[0] = w;
+            params[1] = h;
             LOG(WARNING)<< "prior w:" << params[0] << " h:" << params[1];
         }
 
@@ -1135,8 +1130,8 @@ namespace picpac {
             if (params_default != 0) {
                 float *b = params.ptr<float>(0);
                 float *e = b + params.total() * params.channels();
-                CHECK(params.total() == sz.area());
-                CHECK(params.channels() == priors.rows * ANCHOR::PARAMS);
+                CHECK(params.total() == int(sz.area()));
+                CHECK(params.channels() == int(priors.rows * ANCHOR::PARAMS));
                 std::fill(b, e, params_default);
             }
 

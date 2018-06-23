@@ -319,8 +319,8 @@ namespace picpac {
             string transforms;
             Config ()
                 : channels(-1), // unchanged
-                images{0},
                 dtype(CV_32F),
+                images{0},
                 annotate(false),
                 transforms("[]")
 
