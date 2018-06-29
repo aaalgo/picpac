@@ -23,6 +23,7 @@ namespace picpac {
                 cached.copy(*cache);
             }
             if (cached.facets.size() && cached.facets[0].image.data) break;
+            if (cached.raw.size()) break;
             // cache miss, load the data
             Record r;
             rr(&r); // disk access

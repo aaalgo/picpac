@@ -16,6 +16,22 @@ using bachelor::NumpyBatch;
 namespace {
     using std::unique_ptr;
 
+    const_buffer pyobject2buffer (PyObject *buf) {
+#if PY_MAJOR_VERSION >= 3
+        if (PyBytes_Check(buf)) {
+            return const_buffer(PyBytes_AsString(buf), PyBytes_Size(buf));
+        }
+#else
+        if (PyString_Check(buf)) {
+            return const_buffer(PyString_AsString(buf), PyString_Size(buf));
+        }
+#endif
+        CHECK(0) << "can only append string or bytes";
+
+    }
+
+
+
     class FacetData {
     public:
         virtual ~FacetData () {}
@@ -182,13 +198,12 @@ public:
         }
     };
 
-    PyImageStream (dict kwargs) //{std::string const &path, Config const &c)
+    PyImageStream (dict kwargs) 
         : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), dump(0), dump_cnt(0), order("NHWC"), colorspace("BGR") {
             UPDATE_CONFIG(batch, kwargs);
             UPDATE_CONFIG(dump, kwargs);
             UPDATE_CONFIG(order, kwargs);
             UPDATE_CONFIG(colorspace, kwargs);
-#undef UPDATE_CONFIG
             if (order == "NHWC") {
                 bachelor_order = bachelor::NHWC;
             }
@@ -332,6 +347,106 @@ object return_iterator (tuple args, dict kwargs) {
     return self;
 };
 
+class PyImageLoader {
+    PyImageStream::Config config;
+    Transforms transforms;
+    int dump;
+    int dump_cnt;
+    int decode_mode;
+    bachelor::Order bachelor_order;
+    bachelor::ColorSpace bachelor_colorspace;
+    std::mutex mutex;
+    random_engine rng;
+
+    object __load_image (cv::Mat image) {
+        //Py_BEGIN_ALLOW_THREADS
+        int channels = config.channels;
+        if (channels < 0) channels = image.channels();
+        int type = CV_MAKETYPE(config.dtype, channels);
+
+        if (image.type() != type) {
+            cv::Mat tmp;
+            image.convertTo(tmp, type);
+            image = tmp;
+        }
+
+        Sample sample;
+        sample.facets.emplace_back(image);
+
+        // load object into sample
+        // transform
+        string pv;
+        pv.resize(transforms.pv_size());
+        {
+            lock_guard guard(mutex);
+            transforms.pv_sample(rng, &pv[0]);
+        }
+        transforms.apply(&sample, &pv[0]);
+        //Py_END_ALLOW_THREADS
+
+        NumpyBatch::Config conf;
+        CHECK(sample.facets.size() == 1);
+        auto &im = sample.facets[0];
+        CHECK(im.type == Facet::IMAGE);
+        conf.batch = 1;
+        conf.height = im.image.rows;
+        conf.width = im.image.cols;
+        conf.channels = im.image.channels();
+        conf.depth = im.image.depth();
+        conf.order = bachelor_order;
+        conf.colorspace = bachelor_colorspace;
+        BachelorFacetData bb(conf);
+        bb.fill_next(im.image);
+        if (dump > 0 && dump_cnt < dump) {
+            bb.dump("picpac_dump/" + lexical_cast<string>(dump_cnt));
+            dump_cnt += 1;
+        }
+        return object(boost::python::handle<>(bb.detach()));
+    }
+public:
+    PyImageLoader (dict kwargs): config(kwargs), transforms(json::parse(config.transforms)), dump(0), dump_cnt(0), rng(config.seed) {
+        string order("NHWC");
+        string colorspace("BGR");
+        UPDATE_CONFIG(dump, kwargs);
+        UPDATE_CONFIG(order, kwargs);
+        UPDATE_CONFIG(colorspace, kwargs);
+        if (order == "NHWC") {
+            bachelor_order = bachelor::NHWC;
+        }
+        else if (order == "NCHW") {
+            bachelor_order = bachelor::NCHW;
+        }
+        else CHECK(0) << "Unrecognized order: " << order;
+        if (colorspace == "BGR") {
+            bachelor_colorspace = bachelor::BGR;
+        }
+        else if (colorspace == "RGB") {
+            bachelor_colorspace = bachelor::RGB;
+        }
+        else CHECK(0) << "Unrecognized colorspace: " << colorspace;
+
+        decode_mode = cv::IMREAD_UNCHANGED;
+        if (config.channels == 1) {
+            decode_mode = cv::IMREAD_GRAYSCALE;
+        }
+        else if (config.channels == 3) {
+            decode_mode = cv::IMREAD_COLOR;
+        }
+        if (dump) {
+            fs::create_directory("picpac_dump");
+            LOG(WARNING) << "dumping image to picpac_dump/{batch}_{field}_{image}.png";
+        }
+    }
+
+    object load_path (string const &path) {
+        return __load_image(cv::imread(path, decode_mode));
+    }
+
+    object load_binary (PyObject *buf) {
+        return __load_image(decode_buffer(pyobject2buffer(buf), decode_mode));
+    }
+};
+
 class Writer: public FileWriter {
     int nextid;
 public:
@@ -341,20 +456,6 @@ public:
 
     void setNextId (int v) {
         nextid = v;
-    }
-
-    const_buffer pyobject2buffer (PyObject *buf) {
-#if PY_MAJOR_VERSION >= 3
-        if (PyBytes_Check(buf)) {
-            return const_buffer(PyBytes_AsString(buf), PyBytes_Size(buf));
-        }
-#else
-        if (PyString_Check(buf)) {
-            return const_buffer(PyString_AsString(buf), PyString_Size(buf));
-        }
-#endif
-        CHECK(0) << "can only append string or bytes";
-
     }
 
     void append (float label, PyObject *buf) {
@@ -722,6 +823,7 @@ namespace {
             return result;
         }
     };
+
 }
 
 #if (PY_VERSION_HEX >= 0x03000000)
@@ -758,6 +860,10 @@ BOOST_PYTHON_MODULE(picpac)
         .def("size", &PyImageStream::size)
         .def("reset", &PyImageStream::reset)
         //.def("categories", &PyImageStream::categories)
+    ;
+    class_<PyImageLoader, boost::noncopyable>("ImageLoader", init<dict>())
+        .def("load_path", &PyImageLoader::load_path)
+        .def("load_binary", &PyImageLoader::load_binary)
     ;
     class_<Reader>("Reader", init<string>())
         .def("__iter__", raw_function(return_iterator))

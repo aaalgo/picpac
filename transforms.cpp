@@ -504,6 +504,70 @@ namespace picpac {
 
     };
 
+    class ClipSquare: public Transform{
+        int max_shift;
+
+        static int pick_off (int Long, int Short, int shift) {
+            int off = (Long - Short) / 2 + shift;
+            if (off < 0) off = 0;
+            if (off + Short > Long) off = Long - Short;
+            return off;
+        }
+    public:
+        struct PerturbVector {
+            int shift;
+        };
+
+        ClipSquare (json const &spec)
+            : max_shift(spec.value<int>("shift", 0))
+        {
+        }
+
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->shift = rng() % (max_shift * 2 + 1) - max_shift;
+            return sizeof(PerturbVector);
+        }
+
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            cv::Size sz = facet->check_size();
+            if (sz.width == 0) return sizeof(PerturbVector);
+            if (sz.height == 0) return sizeof(PerturbVector);
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            int shift = pv->shift;
+
+            int row_off = 0, col_off = 0, length = 0;
+            if (sz.width < sz.height) {
+                row_off = pick_off(sz.height, sz.width, shift);
+                length = sz.width;
+            }
+            else {
+                col_off = pick_off(sz.width, sz.height, shift);
+                length = sz.height;
+            }
+
+            if (facet->image.data) {
+                cv::Mat to(cv::Size(length, length), facet->image.type(), cv::Scalar(0,0,0,0));
+                facet->image(cv::Rect(col_off, row_off, length, length)).copyTo(to);
+                //facet->image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
+                facet->image = to;
+            }
+            if (!facet->annotation.empty()) {
+                facet->annotation.size = cv::Size(length, length);
+                facet->annotation.transform([col_off, row_off](vector<cv::Point2f> *f) {
+                        for (auto &pt: *f) {
+                            pt.x -= col_off;
+                            pt.y -= row_off;
+                        }
+                });
+            }
+            return sizeof(PerturbVector);
+        }
+
+    };
+
     class ColorSpace: public Transform {
         int code;
         float mul0;
@@ -1124,6 +1188,7 @@ namespace picpac {
             {
                 float *b = label_mask.ptr<float>(0);
                 float *e = b + label_mask.total() * label_mask.channels();
+                CHECK(e - b == label_mask.rows * label_mask.cols * priors.rows);
                 std::fill(b, e, 1.0);
             }
 
@@ -1475,6 +1540,9 @@ namespace picpac {
         }
         else if (type == "clip") {
             return std::unique_ptr<Transform>(new Clip(spec));
+        }
+        else if (type == "clip_square") {
+            return std::unique_ptr<Transform>(new ClipSquare(spec));
         }
         else if (type == "colorspace") {
             return std::unique_ptr<Transform>(new ColorSpace(spec));
