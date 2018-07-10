@@ -285,6 +285,42 @@ namespace picpac {
         }
     };
 
+    class Pyramid: public Transform {
+        int count;
+        float rate;
+    public:
+        Pyramid (json const &spec)
+            : count(spec.value<int>("count", 0)),
+              rate(spec.value<float>("rate", 0.5))
+        {
+            CHECK(count >= 0);
+            CHECK(rate > 0);
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto facet = &sample->facets[0];
+            CHECK(facet->type != Facet::FEATURE);
+            CHECK(facet->type == Facet::IMAGE);
+            if ((!facet->image.data) || facet->image.rows == 0 || facet->image.cols == 0) {
+                for (int i = 0; i < count; ++i) {
+                    sample->facets.emplace_back(cv::Mat());
+                }
+            }
+            else {
+                float fx = rate;
+                for (int i = 0; i < count; ++i) {
+                    auto facet = &sample->facets[0];
+                    CHECK(fx > 0);
+                    cv::Mat tmp;
+                    cv::resize(facet->image, tmp, cv::Size(), fx, fx);
+                    sample->facets.emplace_back(tmp);
+                    fx *= rate;
+                }
+            }
+            return 0;
+        }
+    };
+
     class Clip: public Transform, public BorderConfig {
         int size, min, max, round;
         int width, height;
@@ -792,6 +828,7 @@ namespace picpac {
 
     class AugScale: public Transform {
         float range;
+        float min, max;
         std::uniform_real_distribution<float> linear_scale;
         struct PerturbVector {
             float scale;
@@ -1249,6 +1286,7 @@ namespace picpac {
                     } // prior
                 } // x
             } // y
+#if 0
             for (auto &c: truths) {
                 if (c.label == nullptr) {
                     //LOG(DEBUG)<< "MISS: ";// << c.center.x << ',' << c.center.y << ' ' << c.radius << std::endl;
@@ -1261,6 +1299,7 @@ namespace picpac {
                     c.params_mask[0] = c.weight;
                 }
             }
+#endif
             sample->facets.emplace_back(label, Facet::LABEL);
             sample->facets.emplace_back(label_mask, Facet::LABEL);
             sample->facets.emplace_back(params, Facet::LABEL);
@@ -1537,6 +1576,9 @@ namespace picpac {
         }
         else if (type == "resize") {
             return std::unique_ptr<Transform>(new Resize(spec));
+        }
+        else if (type == "pyramid") {
+            return std::unique_ptr<Transform>(new Pyramid(spec));
         }
         else if (type == "clip") {
             return std::unique_ptr<Transform>(new Clip(spec));
