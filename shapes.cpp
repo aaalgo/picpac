@@ -1,3 +1,4 @@
+#include <cmath>
 #include "picpac-image.h"
 
 namespace picpac {
@@ -43,7 +44,7 @@ namespace picpac {
 
     class Rectangle: public Shape {
     public:
-        Rectangle (json const &geo, cv::Size sz): Shape("box") {
+        Rectangle (json const &geo, cv::Size sz): Shape("rect") {
             float x = geo.at("x").get<float>() * sz.width;
             float y = geo.at("y").get<float>() * sz.height;
             float w = geo.at("width").get<float>() * sz.width;
@@ -268,6 +269,77 @@ namespace picpac {
         }
     };
 
+    class RotatedRectangle: public Shape {
+
+    public:
+        RotatedRectangle (json const &geo, cv::Size sz): Shape("arect") {
+            float x = geo.at("x").get<float>();
+            float y = geo.at("y").get<float>();
+            float w = geo.at("w").get<float>();
+            float h = geo.at("h").get<float>();
+            float a = geo.at("a").get<float>();
+
+            cv::Point2f p0(x, y);
+            cv::Point2f p_x(w/2, 0);
+            cv::Point2f p_y(0, h/2);
+
+			float cosv = std::cos(a);
+			float sinv = std::sin(a);
+			cv::Matx<float, 2, 2> rot(cosv, -sinv, sinv, cosv);
+
+            p_x = rot * p_x;
+            p_y = rot * p_y;
+
+            controls.emplace_back(p0 - p_x);
+            controls.emplace_back(p0 + p_x);
+            controls.emplace_back(p0 - p_y);
+            controls.emplace_back(p0 + p_y);
+        }
+
+        virtual std::unique_ptr<Shape> clone () const {
+            return std::unique_ptr<Shape>(new RotatedRectangle(*this));
+        }
+
+        virtual void render (cv::Mat *m, RenderOptions const &opt) const {
+            /*
+            cv::Point2f top(controls[0]);
+            cv::Point2f bottom(controls[1]);
+            cv::Point2f left(controls[2]);
+            cv::Point2f right(controls[3]);
+            */
+            cv::Point2f cc = controls[0];
+            cc += controls[1];
+            cc += controls[2];
+            cc += controls[3];
+            cc *= 1.0f/4.0f;
+            cv::Point2f d1 = controls[1] - cc;
+            cv::Point2f d2 = controls[3] - cc;
+
+            cv::Point vertices[4] = {
+                round(cc - d1 - d2),
+                round(cc - d1 + d2),
+                round(cc + d1 + d2),
+                round(cc + d1 - d2)
+            };
+            cv::Point const *pps = &vertices[0];
+            int const nps = 4;
+
+            if (opt.thickness == CV_FILLED) {
+                cv::fillPoly(*m, &pps, &nps, 1, render_color(opt), opt.line_type, opt.shift);
+            }
+            else {
+                cv::polylines(*m, &pps, &nps, 1, true, render_color(opt), opt.thickness, opt.line_type, opt.shift);
+            }
+
+
+            CHECK(false);
+        }
+
+        virtual void transform (std::function<void(vector<cv::Point2f> *)> f) {
+            f(&controls);
+        }
+    };
+
     std::unique_ptr<Shape> Shape::create (json const &spec, cv::Size sz) {
         string type = spec.at("type").get<string>();
         auto geo = spec.at("geometry");
@@ -287,6 +359,9 @@ namespace picpac {
         }
         else if (type == "point") {
             shape = std::unique_ptr<Shape>(new Point(geo, sz));
+        }
+        else if (type == "arect") {
+            shape = std::unique_ptr<Shape>(new RotatedRectangle(geo, sz));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
