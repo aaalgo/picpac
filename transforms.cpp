@@ -1,5 +1,6 @@
 #include <iostream>
 #include "picpac-image.h"
+#include "lidar.h"
 
 namespace picpac {
 
@@ -1553,6 +1554,29 @@ namespace picpac {
         }
     };
 
+    class PointCloudMap: public Transform {
+        PointCloudMapper mapper;
+    public:
+        PointCloudMap (json const &spec) { 
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto const &points = sample->facets[0];
+            auto const &boxes = sample->facets[1];
+            cv::Mat map_v, map_xyz, map_mask, box_params, box_mask;
+            mapper.apply(points.image, boxes.image,
+                         &map_v, &map_xyz, &map_mask, &box_params, &box_mask);
+            sample->facets.pop_back();
+            sample->facets.pop_back();
+            sample->facets.emplace_back(map_v, Facet::IMAGE);
+            sample->facets.emplace_back(map_xyz, Facet::LABEL);
+            sample->facets.emplace_back(map_mask, Facet::LABEL);
+            sample->facets.emplace_back(box_params, Facet::LABEL);
+            sample->facets.emplace_back(box_mask, Facet::LABEL);
+            return 0;
+        }
+    };
+
 
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
@@ -1635,6 +1659,9 @@ namespace picpac {
         }
         else if (type == "drop") {
             return std::unique_ptr<Transform>(new Drop(spec));
+        }
+        else if (type == "point_cloud_map") {
+            return std::unique_ptr<Transform>(new PointCloudMap(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
