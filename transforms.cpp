@@ -17,6 +17,20 @@ namespace picpac {
         }
     };
 
+    class Featurize: public Transform {
+        int index;
+    public:
+        Featurize (json const &spec) {
+            index = spec.value<int>("index", 1);
+        }
+
+        virtual size_t apply (Sample *sample, void const *) const {
+            auto &facet = sample->facets[index];
+            facet.type = Facet::FEATURE;
+            return 0;
+        }
+    };
+
 
     class BorderConfig {
     protected:
@@ -826,6 +840,62 @@ namespace picpac {
         }
     };
 
+    class AugFlipColor: public Transform {
+        struct PerturbVector {
+            bool flip;
+        };
+    public:
+        AugFlipColor (json const &spec) {
+        }
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->flip = (rng() % 2);
+            return sizeof(PerturbVector);
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            bool flip = pv->flip;
+            if (facet->type == Facet::IMAGE && facet->image.data) {
+                if (flip) {
+                    //cv::flip(facet->image, facet->image, -1);
+                    facet->image *= -1;
+                    facet->image += 255;
+                }
+            }
+            return sizeof(PerturbVector);
+        }
+    };
+
+    class AugGaussianBlur: public Transform, public BorderConfig {
+        float min, max;
+        std::uniform_real_distribution<float> linear_sigma;
+        struct PerturbVector {
+            float sigma;
+        };
+    public:
+        AugGaussianBlur (json const &spec)
+            : BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)),
+            linear_sigma(spec.value<float>("min", 0), spec.value<float>("max", 3)) {
+        }
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->sigma = const_cast<AugGaussianBlur *>(this)->linear_sigma(rng);
+            return sizeof(PerturbVector);
+        }
+        virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (!(facet->type == Facet::IMAGE && facet->image.data)) return sizeof(PerturbVector);
+
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            float sigma = pv->sigma;
+            int kernel = int(std::round(sigma * 3));
+            if (kernel % 2 == 0) kernel += 1;
+            cv::GaussianBlur(facet->image, facet->image, cv::Size(kernel, kernel), sigma, sigma, border_type);
+            return sizeof(PerturbVector);
+        }
+    };
+
     class AugScale: public Transform {
         float range;
         float min, max;
@@ -1592,6 +1662,12 @@ namespace picpac {
         else if (type == "augment.flip") {
             return std::unique_ptr<Transform>(new AugFlip(spec));
         }
+        else if (type == "augment.flip_color") {
+            return std::unique_ptr<Transform>(new AugFlipColor(spec));
+        }
+        else if (type == "augment.blur") {
+            return std::unique_ptr<Transform>(new AugGaussianBlur(spec));
+        }
         else if (type == "augment.scale") {
             return std::unique_ptr<Transform>(new AugScale(spec));
         }
@@ -1635,6 +1711,9 @@ namespace picpac {
         }
         else if (type == "drop") {
             return std::unique_ptr<Transform>(new Drop(spec));
+        }
+        else if (type == "featurize") {
+            return std::unique_ptr<Transform>(new Featurize(spec));
         }
         else {
             CHECK(0) << "unknown shape: " << type;
