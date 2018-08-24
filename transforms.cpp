@@ -245,7 +245,8 @@ namespace picpac {
 
         virtual size_t apply_one (Facet *facet, void const *buf) const {
             while (true) {
-                CHECK(facet->type != Facet::FEATURE);
+                //CHECK(facet->type != Facet::FEATURE);
+                if (facet->type == Facet::FEATURE) break;
                 if ((!facet->image.data) && (facet->annotation.empty())) break;
                 cv::Size sz0;
                 if (facet->image.data) {
@@ -491,6 +492,7 @@ namespace picpac {
         }
 
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             cv::Size sz0 = facet->check_size();
             if (sz0.width == 0) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
@@ -586,6 +588,7 @@ namespace picpac {
             cv::Size sz = facet->check_size();
             if (sz.width == 0) return sizeof(PerturbVector);
             if (sz.height == 0) return sizeof(PerturbVector);
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             int shift = pv->shift;
 
@@ -695,6 +698,7 @@ namespace picpac {
             return pv_size();
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             if (pv->apply) {
                 transforms.apply_one(facet, static_cast<char const*>(buf) + sizeof(PerturbVector));
@@ -778,6 +782,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             bool hflip = pv->horizontal;
             bool vflip = pv->vertical;
@@ -855,6 +860,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             bool flip = pv->flip;
             if (facet->type == Facet::IMAGE && facet->image.data) {
@@ -886,6 +892,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             if (!(facet->type == Facet::IMAGE && facet->image.data)) return sizeof(PerturbVector);
 
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
@@ -916,6 +923,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             cv::Size sz0 = facet->check_size();
             if (sz0.width == 0) return sizeof(PerturbVector);
@@ -970,6 +978,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             if (facet->type == Facet::IMAGE && facet->image.data) {
                 //std::cerr << pv->delta[0] << ' ' << pv->delta[1] << ' ' << pv->delta[2] << std::endl;
@@ -998,6 +1007,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             cv::Size sz = facet->check_size();
             if (sz.width == 0) return sizeof(PerturbVector);
@@ -1561,6 +1571,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             if (facet->type == Facet::IMAGE && facet->image.data) {
                 //std::cerr << pv->delta[0] << ' ' << pv->delta[1] << ' ' << pv->delta[2] << std::endl;
@@ -1589,6 +1600,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             if (facet->type == Facet::IMAGE && facet->image.data) {
                 //std::cerr << pv->delta[0] << ' ' << pv->delta[1] << ' ' << pv->delta[2] << std::endl;
@@ -1608,6 +1620,7 @@ namespace picpac {
         AugWidthScale (json const &spec): AugScale(spec) {
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             cv::Size sz0 = facet->check_size();
             CHECK(sz0.height == 1);
@@ -1647,9 +1660,15 @@ namespace picpac {
         }
     };
 
+    typedef Transform *(*transform_factory_t) (json const &spec);
+    vector<transform_factory_t> transform_factories;
 
     std::unique_ptr<Transform> Transform::create (json const &spec) {
         string type = spec.at("type").get<string>();
+        for (auto fun: transform_factories) {
+            Transform *p = fun(spec);
+            if (p) return std::unique_ptr<Transform>(p);
+        }
         if (type == "sometimes") {
             return std::unique_ptr<Transform>(new Sometimes(spec));
         }
@@ -1743,8 +1762,20 @@ namespace picpac {
             return std::unique_ptr<Transform>(new PointCloudMap(spec));
         }
         else {
-            CHECK(0) << "unknown shape: " << type;
+            CHECK(0) << "unknown transformation: " << type;
         }
         return nullptr;
+    }
+
+
+
+    void load_transform_library (string const &path) {
+        void *h = dlopen(path.c_str(), RTLD_LAZY);
+        CHECK(h);   // intentionally left unclosed
+        transform_factory_t fun;
+        void *sym = dlsym(h, "transform_factory");
+        CHECK(sym) << "Failed to load " << path;
+        *(void**)(&fun) = sym;
+        transform_factories.push_back(fun);
     }
 }

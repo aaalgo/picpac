@@ -1,4 +1,5 @@
 #pragma once
+#include <dlfcn.h>
 #include <random>
 #include <boost/core/noncopyable.hpp>
 #include <opencv2/opencv.hpp>
@@ -271,6 +272,8 @@ namespace picpac {
             return 0;
         }
     };
+
+    void load_transform_library (string const &path);
 
     class Transforms: public Transform {
         int total_pv_size;

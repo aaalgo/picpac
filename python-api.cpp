@@ -888,6 +888,7 @@ BOOST_PYTHON_MODULE(picpac)
     ;
     def("encode_raw", ::encode_raw_ndarray);
     def("write_raw", ::write_raw_ndarray);
+    def("load_transform_library", picpac::load_transform_library);
 
     class_<AnchorProposal<Circle>>("CircleProposal", init<int, float, float>())
         .def("apply", &AnchorProposal<Circle>::apply)
