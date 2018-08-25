@@ -1,6 +1,5 @@
 #include <iostream>
 #include "picpac-image.h"
-#include "lidar.h"
 
 namespace picpac {
 
