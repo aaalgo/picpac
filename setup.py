@@ -19,7 +19,7 @@ else:
     boost_python = 'boost_python3' 
     pass
 
-libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core', 'boost_filesystem', 'boost_system', boost_python, 'glog'])
+libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core', boost_python, 'boost_filesystem', 'boost_system', 'glog'])
 
 picpac = Extension('picpac',
         language = 'c++',
