@@ -48,6 +48,9 @@ namespace picpac {
             else if (b == "constant") {
                 border_type = cv::BORDER_CONSTANT;
             }
+            else if (b == "reflect") {
+                border_type = cv::BORDER_REFLECT_101;
+            }
             else CHECK(0) << "Border type " << b << " not recognized";
             // TODO: config border value
         }
