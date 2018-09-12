@@ -1,6 +1,5 @@
 #include <iostream>
 #include "picpac-image.h"
-#include "lidar.h"
 
 namespace picpac {
 
@@ -1640,29 +1639,6 @@ namespace picpac {
         }
     };
 
-    class PointCloudMap: public Transform {
-        PointCloudMapper mapper;
-    public:
-        PointCloudMap (json const &spec) { 
-        }
-
-        virtual size_t apply (Sample *sample, void const *) const {
-            auto const &points = sample->facets[0];
-            auto const &boxes = sample->facets[1];
-            cv::Mat map_v, map_xyz, map_mask, box_params, box_mask;
-            mapper.apply(points.image, boxes.image,
-                         &map_v, &map_xyz, &map_mask, &box_params, &box_mask);
-            sample->facets.pop_back();
-            sample->facets.pop_back();
-            sample->facets.emplace_back(map_v, Facet::IMAGE);
-            sample->facets.emplace_back(map_xyz, Facet::LABEL);
-            sample->facets.emplace_back(map_mask, Facet::LABEL);
-            sample->facets.emplace_back(box_params, Facet::LABEL);
-            sample->facets.emplace_back(box_mask, Facet::LABEL);
-            return 0;
-        }
-    };
-
     typedef Transform *(*transform_factory_t) (json const &spec);
     vector<transform_factory_t> transform_factories;
 
@@ -1761,9 +1737,6 @@ namespace picpac {
         else if (type == "featurize") {
             return std::unique_ptr<Transform>(new Featurize(spec));
         }
-        else if (type == "point_cloud_map") {
-            return std::unique_ptr<Transform>(new PointCloudMap(spec));
-        }
         else {
             CHECK(0) << "unknown transformation: " << type;
         }
@@ -1777,7 +1750,7 @@ namespace picpac {
         CHECK(h);   // intentionally left unclosed
         transform_factory_t fun;
         void *sym = dlsym(h, "transform_factory");
-        CHECK(sym) << "Failed to load " << path;
+        CHECK(sym) << "Failed to load " << path << ": " << dlerror();
         *(void**)(&fun) = sym;
         transform_factories.push_back(fun);
     }
