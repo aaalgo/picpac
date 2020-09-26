@@ -10,6 +10,10 @@
 
 using namespace picpac;
 
+namespace picpac {
+    void load_transform_library (string const &path);
+}
+
 namespace {
     using std::unique_ptr;
     namespace py=pybind11;
@@ -408,6 +412,7 @@ PYBIND11_MODULE(picpac_ts, module)
     module.attr("OVERWRITE") = Writer::FLAG_OVERWRITE;
 
     module.def("interp", interp);
+    module.def("load_transform_library", picpac::load_transform_library);
 
     py::class_<PyTimeSeriesStream>(module, "TimeSeriesStream")
         .def(py::init<py::dict>())

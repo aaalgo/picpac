@@ -46,7 +46,7 @@ setup (name = 'picpac_ts',
        url = 'https://github.com/aaalgo/picpac',
        author = 'Wei Dong',
        author_email = 'wdong@wdong.org',
-       license = 'BSD',
+       license = 'MIT',
        description = 'This is a demo package',
        ext_modules = [picpac],
        )
