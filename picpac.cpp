@@ -42,7 +42,7 @@ namespace picpac {
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
         alloc(label, sz);
         //meta->fields[0].type = FIELD_FILE;
-        fs::ifstream is(image, std::ios::binary);
+        ifstream is(image, std::ios::binary);
         is.read(field_ptrs[0], meta_ptr->fields[0].size);
         if (!is) throw BadFile(image);
     }
@@ -63,7 +63,7 @@ namespace picpac {
         uintmax_t sz = fs::file_size(image);
         if (sz == static_cast<uintmax_t>(-1)) throw BadFile(image);
         alloc(label, sz, extra.size());
-        fs::ifstream is(image, std::ios::binary);
+        ifstream is(image, std::ios::binary);
         //meta->fields[0].type = FIELD_FILE;
         is.read(field_ptrs[0], meta_ptr->fields[0].size);
         if (!is) throw BadFile(image);
@@ -77,12 +77,12 @@ namespace picpac {
         uintmax_t sz2 = fs::file_size(image2);
         if (sz2 == static_cast<uintmax_t>(-1)) throw BadFile(image2);
         alloc(label, sz, sz2);
-        fs::ifstream is(image, std::ios::binary);
+        ifstream is(image, std::ios::binary);
         //meta->fields[0].type = FIELD_FILE;
         is.read(field_ptrs[0], meta_ptr->fields[0].size);
         if (!is) throw BadFile(image);
         //meta->fields[1].type = FIELD_TEXT;
-        fs::ifstream is2(image2, std::ios::binary);
+        ifstream is2(image2, std::ios::binary);
         //meta->fields[0].type = FIELD_FILE;
         is2.read(field_ptrs[1], meta_ptr->fields[1].size);
         if (!is2) throw BadFile(image);
@@ -230,8 +230,8 @@ namespace picpac {
         data.swap(new_data);
         meta_ptr = new_meta;
         CHECK((meta_ptr == reinterpret_cast<Meta *>(&data[0]))
-              && (field_ptrs[0] == &data[sizeof(Meta)]))
-                << "C++ string::swap is not preserving memory";
+              && (field_ptrs[0] == &data[sizeof(Meta)]));
+                //<< "C++ string::swap is not preserving memory";
     }
 
     FileWriter::FileWriter (fs::path const &path, int flags_): flags(flags_) {
@@ -243,7 +243,7 @@ namespace picpac {
             f |= O_EXCL;
         }
         fd = open(path.native().c_str(), f, 0666);
-        CHECK(fd >= 0) << "fail to open " << path;
+        CHECK(fd >= 0); // << "fail to open " << path;
         open_segment();
     }
 
@@ -261,7 +261,7 @@ namespace picpac {
         CHECK(compact() || (seg_off % RECORD_ALIGN == 0));
         seg.init();
         ssize_t r = write(fd, reinterpret_cast<char const *>(&seg), sizeof(seg));
-        CHECK_EQ(r, sizeof(seg));
+        CHECK(r == sizeof(seg));
         next = 0;
     }
 
@@ -271,7 +271,7 @@ namespace picpac {
         CHECK(compact() || (off % RECORD_ALIGN == 0));
         seg.link = off;
         ssize_t r = pwrite(fd, reinterpret_cast<char const *>(&seg), sizeof(seg), seg_off);
-        CHECK_EQ(r, sizeof(seg));
+        CHECK(r == sizeof(seg));
     }
 
     void FileWriter::append (Record const &r) {
@@ -375,7 +375,7 @@ namespace picpac {
         }
         ++ncat;
         if (config.stratify && (ncat > MAX_CATEGORIES)) {
-            LOG(ERROR) << "Too many categories (2000 max): " << ncat;
+            spdlog::error("Too many categories (2000 max): {}", ncat);
             ncat = 0;
         }
 
@@ -385,8 +385,8 @@ namespace picpac {
             for (auto const &e: all) {
                 int c;
                 c = int(e.group);
-                CHECK(c == e.group) << "We cannot stratify float labels.";
-                CHECK(c >= 0) << "We cannot stratify label -1.";
+                CHECK(c == e.group); // << "We cannot stratify float labels.";
+                CHECK(c >= 0); // << "We cannot stratify label -1.";
                 C[c].push_back(e);
                 if (c > nc) nc = c;
             }
@@ -413,7 +413,7 @@ namespace picpac {
         int K = config.split;
         vector<unsigned> keys;
         if (config.split_keys.size()) {
-            CHECK(config.split_fold < 0) << "Cannot use keys and fold simultaneously.";
+            CHECK(config.split_fold < 0); // << "Cannot use keys and fold simultaneously.";
             keys = config.split_keys;
             check_sort_dedupe_keys(config.split, &keys);
         }
@@ -442,14 +442,14 @@ namespace picpac {
             }
             g.index.swap(picked);
             if (picked.empty()) {
-                LOG(WARNING) << "empty group " << g.id;
+                spdlog::warn("empty group {}", g.id);
             }
         }
         sz_used = 0;
         for (auto const &g: groups) {
             sz_used += g.index.size();
         }
-        //LOG(INFO) << "using " << sz_used << " out of " << sz_total << " items in " << groups.size() << " groups.";
+        //spdlog::info("using " << sz_used << " out of " << sz_total << " items in " << groups.size() << " groups.";
         reset();
     }
 

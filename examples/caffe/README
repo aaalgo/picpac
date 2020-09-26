@@ -1,9 +1,0 @@
-This model is modified from the public Caffenet model.
-
-It is supposed to work with a dataset named with "db" in the current directory,
-with images of 2 classes.  For different number of classes, edit train_val.prototxt.
-
-Run ./train.sh to train.
-
-A fork of Caffe with PicPac support is needed:
-https://github.com/aaalgo/caffe

@@ -1,3 +1,0 @@
-train.py:	./train.py --db db --classes 2 --epoch-size 10
-		see more from comment in code.
-

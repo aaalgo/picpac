@@ -3,51 +3,51 @@ import sys
 import os
 import subprocess as sp
 import numpy
+
+def parallelCCompile(self, sources, output_dir=None, macros=None, include_dirs=None, debug=0, extra_preargs=None, extra_postargs=None, depends=None):
+    # those lines are copied from distutils.ccompiler.CCompiler directly
+    macros, objects, extra_postargs, pp_opts, build = self._setup_compile(output_dir, macros, include_dirs, sources, depends, extra_postargs)
+    cc_args = self._get_cc_args(pp_opts, debug, extra_preargs)
+    # parallel code
+    N=8 # number of parallel compilations
+    import multiprocessing.pool
+    def _single_compile(obj):
+        try: src, ext = build[obj]
+        except KeyError: return
+        self._compile(obj, src, ext, cc_args, extra_postargs, pp_opts)
+    # convert to list, imap is evaluated on-demand
+    list(multiprocessing.pool.ThreadPool(N).map(_single_compile,objects))
+    return objects
+import distutils.ccompiler
+distutils.ccompiler.CCompiler.compile=parallelCCompile
 from distutils.core import setup, Extension
 
-libraries = []
-cv2libs = sp.check_output('pkg-config --libs opencv', shell=True).decode('ascii')
-if 'opencv_imgcodecs' in cv2libs:
-    libraries.append('opencv_imgcodecs')
-    pass
 
-numpy_include = os.path.join(os.path.abspath(os.path.dirname(numpy.__file__)), 'core', 'include')
-
-if sys.version_info[0] < 3:
-    boost_python = 'boost_python'
-else:
-    boost_python = 'boost_python3' 
-    pass
-
-libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core', boost_python, 'boost_filesystem', 'boost_system', 'glog'])
-
-picpac = Extension('picpac',
+picpac = Extension('picpac_ts',
         language = 'c++',
-        extra_compile_args = ['-O3', '-std=c++1y'], 
-        include_dirs = ['/usr/local/include', 'pyboostcvconverter/include', 'json11', numpy_include],
-        libraries = libraries,
-        library_dirs = ['/usr/local/lib'],
-        sources = ['python-api.cpp', 'picpac.cpp', 'picpac-image.cpp', 'shapes.cpp', 'transforms.cpp', 'picpac-cv.cpp', 'json11/json11.cpp'],
-        depends = ['json11/json11.hpp', 'picpac.h', 'picpac-image.h', 'bachelor/bachelor.h'])
+        extra_compile_args = ['-O3', '-std=c++17'], 
+        include_dirs = ['/usr/local/include',
+            '3rd/pybind11/include',
+            '3rd/xtl/include',
+            '3rd/xtensor/include',
+            '3rd/xtensor-python/include',
+            '3rd/xtensor-blas/include',
+            '3rd/fmt/include',
+            '3rd/spdlog/include'
+            ],
+        libraries = ['openblas'],
+        library_dirs = ['/usr/local/lib', '.'],
+        #sources = ['python-api.cpp', 'picpac.cpp', 'picpac-ts.cpp', 'transforms.cpp', 'json11/json11.cpp'],
+        sources = ['python-api.cpp', 'picpac.cpp', "picpac-ts.cpp", 'transforms.cpp'],
+        depends = ['picpac.h', 'picpac-ts.h'])
 
-picpac_legacy = Extension('_picpac',
-        language = 'c++',
-        extra_compile_args = ['-O3', '-std=c++1y'], 
-        include_dirs = ['/usr/local/include', 'json11', numpy_include],
-        libraries = libraries,
-        library_dirs = ['/usr/local/lib'],
-        sources = ['legacy-python-api.cpp', 'picpac.cpp', 'picpac-cv.cpp', 'json11/json11.cpp'],
-        depends = ['json11/json11.hpp', 'picpac.h', 'picpac-cv.h'])
-
-setup (name = 'picpac',
+setup (name = 'picpac_ts',
        version = '0.2.2',
        url = 'https://github.com/aaalgo/picpac',
        author = 'Wei Dong',
        author_email = 'wdong@wdong.org',
        license = 'BSD',
        description = 'This is a demo package',
-       ext_modules = [picpac], #, picpac_legacy],
-       py_modules = ['picpac_legacy.mxnet', 'picpac_legacy.neon'],
-       requires = ["cv2"],
+       ext_modules = [picpac],
        )
 

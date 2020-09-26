@@ -10,16 +10,22 @@
 #include <stdexcept>
 #include <random>
 #include <functional>
-#include <boost/filesystem.hpp>
+#include <filesystem>
+//#include <experimental/filesystem>
 #include <boost/lexical_cast.hpp>
 #include <boost/asio/buffer.hpp>
-#include <glog/logging.h>
+#define FMT_HEADER_ONLY
+#include <fmt/format.h>
+#define SPDLOG_FMT_EXTERNAL
+#include <spdlog/spdlog.h>
+#define CHECK(x) do { if (!(x)) { spdlog::critical("{}:{} {} assertion failed: {}", __FILE__, __LINE__, __FUNCTION__,  #x); abort(); } } while(0)
 
 namespace picpac {
 
     using std::array;
     using std::vector;
     using std::string;
+    using std::ifstream;
     using std::numeric_limits;
     using std::runtime_error;
     using boost::lexical_cast;
@@ -27,7 +33,8 @@ namespace picpac {
     typedef std::lock_guard<std::mutex> lock_guard;
     typedef std::unique_lock<std::mutex> unique_lock;
 
-    namespace fs = boost::filesystem;
+    namespace fs = std::filesystem;
+    //namespace fs = std::experimental::filesystem;
 
     typedef std::default_random_engine random_engine;
 
@@ -605,13 +612,13 @@ namespace picpac {
                     Loader::load(reader(task.locator), task.perturb, &task.value, pc, pm);
                 }
                 catch (runtime_error const &e) {
-                    LOG(ERROR) << "runtime_error: " << e.what();
-                    LOG(ERROR) << Stack().format();
+                    spdlog::error("runtime_error: {}", e.what());
+                    spdlog::error(Stack().format());
                     throw;
                 }
                 catch (...) {
-                    LOG(ERROR) << "unknown_error";
-                    LOG(ERROR) << Stack().format();
+                    spdlog::error("unknown_error");
+                    spdlog::error(Stack().format());
                     throw;
                 }
                 task.status = Task::LOADED;
