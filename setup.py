@@ -35,7 +35,7 @@ picpac = Extension('picpac_ts',
             '3rd/fmt/include',
             '3rd/spdlog/include'
             ],
-        libraries = ['openblas'],
+        libraries = [],
         library_dirs = ['/usr/local/lib', '.'],
         #sources = ['python-api.cpp', 'picpac.cpp', 'picpac-ts.cpp', 'transforms.cpp', 'json11/json11.cpp'],
         sources = ['python-api.cpp', 'picpac.cpp', "picpac-ts.cpp", 'transforms.cpp'],
