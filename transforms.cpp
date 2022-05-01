@@ -100,6 +100,7 @@ namespace picpac {
         }
     };
 
+#if 0
     class Rotation: public Transform {
         // random sample from SO(3)
         // and apply that globally to the seriest
@@ -146,7 +147,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
     };
-
+#endif
     class Noise: public Transform {
         // random sample from SO(3)
         // and apply that globally to the seriest
@@ -368,9 +369,11 @@ namespace picpac {
         if (type == "mask") {
             return std::unique_ptr<Transform>(new Mask(spec));
         }
+#if 0
         if (type == "rotation") {
             return std::unique_ptr<Transform>(new Rotation(spec));
         }
+#endif
         if (type == "noise") {
             return std::unique_ptr<Transform>(new Noise(spec));
         }
