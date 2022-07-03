@@ -46,7 +46,7 @@ int main(int argc, char const* argv[]) {
     picpac::IndexedFileReader db(db_path);
     db.loop([&c, dir_path](Record const &rec){
         fs::path o = dir_path / (lexical_cast<string>(c) + ".jpg");
-        fs::ofstream os(o, ios::binary);
+        ofstream os(o, ios::binary);
         auto f = rec.field(0);
         os.write(boost::asio::buffer_cast<char const *>(f),
                  boost::asio::buffer_size(f));

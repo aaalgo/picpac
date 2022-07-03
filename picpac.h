@@ -2,6 +2,7 @@
 #include <array>
 #include <vector>
 #include <string>
+#include <string_view>
 #include <mutex>
 #include <condition_variable>
 #include <thread>
@@ -10,29 +11,34 @@
 #include <stdexcept>
 #include <random>
 #include <functional>
-#include <boost/filesystem.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/asio/buffer.hpp>
-#include <glog/logging.h>
+#include <filesystem>
+#define FMT_HEADER_ONLY
+#include <fmt/format.h>
+#define SPDLOG_FMT_EXTERNAL
+#include <spdlog/spdlog.h>
+#define CHECK(x) do { if (!(x)) { logging::critical("{}:{} {} assertion failed: {}", __FILE__, __LINE__, __FUNCTION__,  #x); abort(); } } while(0)
+
 
 namespace picpac {
+
 
     using std::array;
     using std::vector;
     using std::string;
+    using std::string_view;
+    using std::ifstream;
     using std::numeric_limits;
     using std::runtime_error;
-    using boost::lexical_cast;
-    using boost::asio::const_buffer;
     typedef std::lock_guard<std::mutex> lock_guard;
     typedef std::unique_lock<std::mutex> unique_lock;
-
-    namespace fs = boost::filesystem;
-
     typedef std::default_random_engine random_engine;
 
+    namespace fs = std::filesystem;
+    namespace logging = spdlog;
+
+
     /// Static coded maximal number of fields per record
-    static constexpr unsigned MAX_FIELDS = 6;
+    static constexpr unsigned MAX_FIELDS = 6;   // this can be increased
     /// Static coded segment header size
     static constexpr unsigned SEGMENT_HEADER_SIZE = 8192;
     /// Static coded maximal number of records per segment
@@ -63,10 +69,10 @@ namespace picpac {
         static const unsigned MAX_BACKTRACE = 100;
         char **symbols;
     public:
-        Stack (); 
-        ~Stack (); 
+        Stack ();
+        ~Stack ();
         string format (std::string const &prefix = "") const;
-    };    
+    };
 
     enum FieldType {  // Record field type
         FIELD_NONE = 0,
@@ -79,12 +85,13 @@ namespace picpac {
 
     class BadLabel: public runtime_error {
     public:
-        BadLabel (int l): runtime_error(lexical_cast<string>(l)) {}
+        BadLabel (int l): runtime_error(fmt::format("Bad label: {}", l)) {
+        }
     };
 
     class BadFile: public runtime_error {
     public:
-        BadFile (fs::path const &p): runtime_error(p.native()) {}
+        BadFile (fs::path const &p): runtime_error(fmt::format("Bad path: {}", p.native())) {}
     };
 
     class DataCorruption: public runtime_error {
@@ -94,7 +101,7 @@ namespace picpac {
 
     class BadRecordSize: public runtime_error {
     public:
-        BadRecordSize (uintmax_t sz): runtime_error(lexical_cast<string>(sz)) {}
+        BadRecordSize (uintmax_t sz): runtime_error(fmt::format("Bad record size: {}", sz)) {}
     };
 
     /// Meta data of a record
@@ -196,13 +203,13 @@ namespace picpac {
         ssize_t read (int fd, off_t off, size_t size);
         /// Construct an empty record, for future read from disk.
         Record () {}
-        Record (float label, const_buffer);
+        Record (float label, string_view);
         /// Construct a record with file content.
         Record (float label, fs::path const &file);
 
-        Record (float label, const_buffer, const_buffer);
-        Record (float label, const_buffer, const_buffer, const_buffer);
-        Record (float label, const_buffer, const_buffer, const_buffer, const_buffer);
+        Record (float label, string_view, string_view);
+        Record (float label, string_view, string_view, string_view);
+        Record (float label, string_view, string_view, string_view, string_view);
         /// Construct a record with file content and extra string.
         Record (float label, fs::path const &file, string const &extra);
         /// Construct a record with file content and extra string.
@@ -227,11 +234,11 @@ namespace picpac {
         // needs to reallocate the storage and copy the existing data over
         void replace (unsigned f, string const &buf, int type = -1);
         /// Get field buffer.
-        const_buffer field (unsigned f) const {
+        string_view field (unsigned f) const {
             if (f < meta_ptr->width) {
-                return const_buffer(field_ptrs[f], meta_ptr->fields[f].size);
+                return string_view(field_ptrs[f], meta_ptr->fields[f].size);
             }
-            return const_buffer(EMPTY_BUFFER, 0);
+            return string_view(EMPTY_BUFFER, 0);
         }
 
         string field_string (unsigned f) const {
@@ -377,6 +384,7 @@ namespace picpac {
             bool shuffle;
             bool reshuffle;
             int stratify;
+            bool oversample;
 
             unsigned split;
             vector<unsigned> split_keys; 
@@ -384,15 +392,26 @@ namespace picpac {
             bool split_negate;
             string mixin;
             float mixin_group_reset;
+                                // set label to this no matter what original label is
             float mixin_group_delta;
-            unsigned mixin_max;
+                                // add this to label
+            unsigned mixin_max; // maximal number to read from mixin
+                                // no shuffling, just use the initial
+                                // mixin_max items
+                                //
+            bool mixin_randomize = false;
+                                // set to true to shuffle items
+                                // before truncating mixin
 
             Config()
                 : seed(DEFAULT_SEED),
                 loop(true),
                 shuffle(true),
                 reshuffle(true),
-                stratify(true),
+                stratify(false),
+                oversample(false),    // stratified sampling for cross validation
+                                // but pool back into one group for streaming
+                                // so smaller categories are not oversampled
                 split(1),
                 split_fold(0),
                 split_negate(false),
@@ -409,7 +428,7 @@ namespace picpac {
              * if not train:
              *      use 1 split specified by fold
              */
-            void kfold ();
+            //void kfold ();
         };
 
     protected:
@@ -605,13 +624,13 @@ namespace picpac {
                     Loader::load(reader(task.locator), task.perturb, &task.value, pc, pm);
                 }
                 catch (runtime_error const &e) {
-                    LOG(ERROR) << "runtime_error: " << e.what();
-                    LOG(ERROR) << Stack().format();
+                    logging::error("runtime_error: {}", e.what());
+                    logging::error(Stack().format());
                     throw;
                 }
                 catch (...) {
-                    LOG(ERROR) << "unknown_error";
-                    LOG(ERROR) << Stack().format();
+                    logging::error("unknown_error");
+                    logging::error(Stack().format());
                     throw;
                 }
                 task.status = Task::LOADED;

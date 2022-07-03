@@ -2,6 +2,36 @@
 
 namespace picpac {
 
+    cv::Mat decode_raw (char const *buf, size_t sz) {
+        if (sz < sizeof(int) * 4) return cv::Mat();
+        int type = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        int rows = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        int cols = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        int elemSize = *reinterpret_cast<int const *>(buf); buf += sizeof(int); sz -= sizeof(int);
+        if (sz != size_t(rows * cols * elemSize)) return cv::Mat();
+        cv::Mat m(rows, cols, type);
+        if (int(m.elemSize()) != elemSize) return cv::Mat();
+        size_t line = cols * elemSize;
+        for (int i = 0; i < rows; ++i) {
+            std::copy(buf, buf + line, m.ptr<char>(i));
+            buf += line;
+        }
+        return m;
+    }
+
+    cv::Mat decode_buffer (string_view imbuf, int mode) {
+        cv::Mat image = cv::imdecode(cv::Mat(1, imbuf.size(), CV_8U,
+                        const_cast<char *>(imbuf.data())), mode);
+        if (!image.data) {
+            image = decode_raw(imbuf.data(), imbuf.size());
+        }
+        return image;
+    }
+
+
+
+
+
     Annotation::Annotation (char const *begin, char const *end, cv::Size sz): size(sz) {
         //std::cerr << string(begin, end) << std::endl;
         if (begin) {
@@ -60,9 +90,9 @@ namespace picpac {
                 int tt = r.fieldType(field);
                 if (tt == 0) {
                     // guess field
-                    const_buffer buf = r.field(field);
-                    const unsigned char* p = boost::asio::buffer_cast<const unsigned char*>(buf);
-                    int sz = boost::asio::buffer_size(buf);
+                    string_view buf = r.field(field);
+                    const char* p = buf.data();
+                    int sz = buf.size();
                     if (sz > 0) {
                         for (int i = 0; i < sz; ++i) {
                             if (p[i] == ' ') continue;
@@ -75,13 +105,13 @@ namespace picpac {
                     }
                 }
                 if (tt == FIELD_ANNOTATION_JSON) {
-                    const_buffer buf = r.field(field);
-                    const char* p = boost::asio::buffer_cast<const char*>(buf);
-                    int sz = boost::asio::buffer_size(buf);
+                    string_view buf = r.field(field);
+                    const char* p = buf.data();
+                    int sz = buf.size();
                     cached.facets.emplace_back(p, p + sz, cached.facets.front().image.size());
                 }
                 else if (tt == FIELD_ANNOTATION_IMAGE) {
-                    const_buffer buf = r.field(field);
+                    string_view buf = r.field(field);
                     cached.facets.emplace_back(decode_buffer(buf, -1));
                 }
                 else {

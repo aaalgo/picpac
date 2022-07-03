@@ -3,9 +3,8 @@
 #include <random>
 #include <boost/core/noncopyable.hpp>
 #include <opencv2/opencv.hpp>
-#include <glog/logging.h>
 #include "picpac.h"
-#include "3rdparty/json.hpp"
+#include "json.hpp"
 
 #define PICPAC_CONFIG picpac::ImageStream::Config
 
@@ -15,6 +14,7 @@
     PICPAC_CONFIG_UPDATE(C,shuffle);\
     PICPAC_CONFIG_UPDATE(C,reshuffle);\
     PICPAC_CONFIG_UPDATE(C,stratify);\
+    PICPAC_CONFIG_UPDATE(C,oversample);\
     PICPAC_CONFIG_UPDATE(C,split);\
     PICPAC_CONFIG_UPDATE(C,split_fold);\
     PICPAC_CONFIG_UPDATE(C,split_negate);\
@@ -40,7 +40,10 @@ namespace picpac {
         else if (dt == "int32") {
             return CV_32S;
         }
-        else CHECK(false) << "dtype not supported.";
+        else {
+            logging::error("dtype not supported.");
+            CHECK(false);
+        }
         return 0;
     }
 
@@ -58,7 +61,7 @@ namespace picpac {
         bool use_serial;
 
         RenderOptions ()
-            : thickness(CV_FILLED),
+            : thickness(cv::FILLED),
             line_type(8),
             shift(0),
             point_radius(5),
@@ -85,7 +88,7 @@ namespace picpac {
 
         cv::Scalar render_color (RenderOptions const &) const;
 
-        Shape (char const *t): type(t), color(1.0, 1.0, 1.0, 1.0), tag(0) {}
+        Shape (char const *t): type(t), color(1.0, 1.0, 1.0, 1.0), tag(0), serial(-1) {}
         virtual ~Shape () {}
         virtual std::unique_ptr<Shape> clone () const = 0;
         virtual void transform (std::function<void(vector<cv::Point2f> *)> f) {
@@ -168,11 +171,11 @@ namespace picpac {
         void check_pythonize () {
             if (type == LABEL) {
                 if (!annotation.empty() || annotation.shapes.size()) {
-                    CHECK(0) << "Your data contains a facet that cannot be converted to numpy array."
+                    logging::error("Your data contains a facet that cannot be converted to numpy array."
                         "This is because the label facet contains annotations that has not been"
                         " rasterized.  This can be avoided by adding a 'drop' transformation to discard the annotation or "
-                        " a 'rasterize' transformation.";
-
+                        " a 'rasterize' transformation.");
+                    CHECK(0);
                 }
             }
         }
@@ -318,13 +321,11 @@ namespace picpac {
             vector<int> images;
             vector<int> annotate;
             vector<int> raw;
-            //bool annotate;
             string transforms;
             Config ()
                 : channels(-1), // unchanged
                 dtype(CV_32F),
                 images{0},
-                annotate(false),
                 transforms("[]")
 
             {
@@ -703,7 +704,7 @@ namespace picpac {
     };
 #endif
 
-    cv::Mat decode_buffer (const_buffer, int mode = -1);
+    cv::Mat decode_buffer (string_view, int mode = -1);
     void encode_raw (cv::Mat, string *);
     cv::Mat decode_raw (char const *, size_t);
 

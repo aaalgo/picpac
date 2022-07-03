@@ -12,7 +12,7 @@ class IdFilter {
     bool keep;
 public:
     IdFilter (fs::path const &file, bool kp): keep(kp) {
-        fs::ifstream is(file);
+        ifstream is(file);
         int x;
         while (is >> x) {
             ids.insert(x);

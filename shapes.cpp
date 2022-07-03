@@ -144,7 +144,7 @@ namespace picpac {
             return std::unique_ptr<Shape>(new Ellipse(*this));
         }
         virtual void render (cv::Mat *m, RenderOptions const &opt) const {
-            CHECK(false) << "TODO";
+            CHECK(false); // << "TODO";
             /*
             cv::Point2f center(m->cols * (rect.x + rect.width/2),
                                m->rows * (rect.y + rect.height/2));
@@ -174,7 +174,7 @@ namespace picpac {
             }
             cv::Point const *pps = &ps[0];
             int const nps = ps.size();
-            if (opt.thickness == CV_FILLED) {
+            if (opt.thickness == cv::FILLED) {
                 cv::fillPoly(*m, &pps, &nps, 1, render_color(opt), opt.line_type, opt.shift);
             }
             else {
@@ -259,7 +259,7 @@ namespace picpac {
                 }
                 cv::Point const *pps = &ps[0];
                 int const nps = ps.size();
-                if (opt.thickness == CV_FILLED) {
+                if (opt.thickness == cv::FILLED) {
                     cv::fillPoly(*m, &pps, &nps, 1, render_color(opt), opt.line_type, opt.shift);
                 }
                 else {
@@ -324,7 +324,7 @@ namespace picpac {
             cv::Point const *pps = &vertices[0];
             int const nps = 4;
 
-            if (opt.thickness == CV_FILLED) {
+            if (opt.thickness == cv::FILLED) {
                 cv::fillPoly(*m, &pps, &nps, 1, render_color(opt), opt.line_type, opt.shift);
             }
             else {
@@ -364,7 +364,8 @@ namespace picpac {
             shape = std::unique_ptr<Shape>(new RotatedRectangle(geo, sz));
         }
         else {
-            CHECK(0) << "unknown shape: " << type;
+            logging::error("Unknown shape {}.", type);
+            CHECK(0); // << "unknown shape: " << type;
         }
         auto plabel = spec.find("label");
         if (plabel != spec.end()) { // has label

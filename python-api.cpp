@@ -1,36 +1,35 @@
-#define PY_ARRAY_UNIQUE_SYMBOL pbcvt_ARRAY_API
 #include <fstream>
-#include <boost/ref.hpp>
-#include <boost/python.hpp>
-#include <boost/python/make_constructor.hpp>
-#include <boost/python/raw_function.hpp>
-//#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+#undef NDEBUG
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/ndarrayobject.h>
-//#include <pyboostcvconverter/pyboostcvconverter.hpp>
+#include <pybind11/pybind11.h>
+#include "ndarray_converter.h"
+#define FORCE_IMPORT_ARRAY
 #include "picpac.h"
 #include "picpac-image.h"
+#define NPY_NDARRAYOBJECT_H
 #include "bachelor/bachelor.h"
-using namespace boost::python;
 using namespace picpac;
+namespace py=pybind11;
+
 using bachelor::NumpyBatch;
+
 namespace {
     using std::unique_ptr;
 
-    const_buffer pyobject2buffer (PyObject *buf) {
-#if PY_MAJOR_VERSION >= 3
+    string_view pyobject2buffer (PyObject *buf) {
         if (PyBytes_Check(buf)) {
-            return const_buffer(PyBytes_AsString(buf), PyBytes_Size(buf));
+            return string_view(PyBytes_AsString(buf), PyBytes_Size(buf));
         }
-#else
+        /*
         if (PyString_Check(buf)) {
             return const_buffer(PyString_AsString(buf), PyString_Size(buf));
         }
-#endif
-        CHECK(0) << "can only append string or bytes";
+        */
+        logging::error("can only append string or bytes");
+        CHECK(0);
 
     }
-
-
 
     class FacetData {
     public:
@@ -58,7 +57,7 @@ namespace {
             if (conf.channels ==1 || conf.channels == 3) {
                 for (int i = 0; i < cnt; ++i) {
                     cv::Mat image(conf.height, conf.width, CV_MAKETYPE(conf.depth, conf.channels), p);
-                    cv::imwrite(prefix + "_" + lexical_cast<string>(i) + ".png", image);
+                    cv::imwrite(prefix + "_" + std::to_string(i) + ".png", image);
                     p += image_size;
                 }
             }
@@ -77,7 +76,7 @@ namespace {
             for (auto const &v: features) {
                 if (v.rows) {
                     total += v.rows;
-                    if (cols) CHECK(cols == v.cols) << "feature dimension do not match";
+                    if (cols) CHECK(cols == v.cols); //, "feature dimension do not match");
                     else cols = v.cols;
                 }
             }
@@ -86,7 +85,7 @@ namespace {
             PyObject *pydata = PyArray_SimpleNew(2, dims, NPY_FLOAT32);
             CHECK(pydata);
             // copy
-            float *p = (float *)PyArray_DATA(pydata);
+            float *p = (float *)PyArray_DATA((PyArrayObject *)pydata);
             for (unsigned i = 0; i < features.size(); ++i) {
                 cv::Mat const &v = features[i];
                 if (v.rows == 0) continue;
@@ -100,19 +99,6 @@ namespace {
         }
     };
 
-#if PY_MAJOR_VERSION >= 3
-    object string_to_python (string &s) {
-        if (s.size()) {
-            return object(handle<>(PyBytes_FromStringAndSize(&s[0], s.size())));
-        }
-        else {
-            return object(handle<>(PyBytes_FromStringAndSize(NULL, 0)));
-        }
-    }
-#else
-#define string_to_python(s) s
-#endif
-
 class PyImageStream: public ImageStream {
     int batch;
     int dump;
@@ -121,85 +107,71 @@ class PyImageStream: public ImageStream {
     string colorspace;
     bachelor::Order bachelor_order;
     bachelor::ColorSpace bachelor_colorspace;
-    object ctor;
+    py::object ctor;
 public:
     struct Config: public ImageStream::Config {
 
-        Config (dict const &kwargs) {
-            boost::python::object simplejson = boost::python::import("simplejson");
+        Config (py::dict const &kwargs) {
+            py::module_ simplejson = py::module_::import("json");
 
-            //dict sampler = kwargs.get("sampler");
+            //py::dict sampler = kwargs.get("sampler");
 #define UPDATE_CONFIG(V, D) \
-            V = extract<decltype(V)>(D.get(#V, V)) 
+            if (D.contains(#V)) V = D[#V].cast<decltype(V)>()
             //UPDATE_CONFIG(seed, sampler);
+            UPDATE_CONFIG(seed, kwargs);
             UPDATE_CONFIG(loop, kwargs);
             UPDATE_CONFIG(shuffle, kwargs);
             UPDATE_CONFIG(reshuffle, kwargs);
             UPDATE_CONFIG(stratify, kwargs);
+            UPDATE_CONFIG(oversample, kwargs);
 #if 0
             split, split_fold, split_negate
-            mixin, mixin_group_reset, mixin_group_delta, mixin_max
 #endif
-
-
             UPDATE_CONFIG(mixin, kwargs);
             UPDATE_CONFIG(mixin_group_reset, kwargs);
             UPDATE_CONFIG(mixin_group_delta, kwargs);
             UPDATE_CONFIG(mixin_max, kwargs);
 
-            //dict loader = kwargs.get("loader");
             UPDATE_CONFIG(cache, kwargs);
             UPDATE_CONFIG(preload, kwargs);
             UPDATE_CONFIG(threads, kwargs);
             UPDATE_CONFIG(channels, kwargs);
 
-            if (kwargs.has_key("images")) {
-                list rf = extract<list>(kwargs.get("images"));
+            if (kwargs.contains("images")) {
+                py::list rf = py::cast<py::list>(kwargs["images"]);
                 images.clear();
-                for (int i = 0; i < len(rf); ++i) {
-                    images.push_back(extract<int>(rf[i]));
+                for (int i = 0; i < py::len(rf); ++i) {
+                    images.push_back(py::cast<int>(rf[i]));
                 }
             }
 
-            if (kwargs.has_key("raw")) {
-                list rf = extract<list>(kwargs.get("raw"));
-                for (int i = 0; i < len(rf); ++i) {
-                    raw.push_back(extract<int>(rf[i]));
+            if (kwargs.contains("raw")) {
+                py::list rf = py::cast<py::list>(kwargs["raw"]);
+                for (int i = 0; i < py::len(rf); ++i) {
+                    raw.push_back(py::cast<int>(rf[i]));
                 }
             }
 
-            if (kwargs.has_key("annotate")) {
+            if (kwargs.contains("annotate")) {
                 // handle annotation
-                auto anno = kwargs.get("annotate");
-                extract<list> e(anno);
-                if (e.check()) {
-                    list fields = e();
-                    for (int i = 0; i < len(fields); ++i) {
-                        annotate.push_back(extract<int>(fields[i]));
-                    }
+                py::list fields = kwargs["annotate"].cast<py::list>();
+                for (int i = 0; i < py::len(fields); ++i) {
+                    annotate.push_back(py::cast<int>(fields[i]));
                 }
-                else {
-                    extract<bool> e(anno);
-                    CHECK(e.check());
-                    LOG(WARNING) << "setting annotate to True is obsolete.  Use [1] or a list of annotate fields.";
-                    LOG(WARNING) << "pushing 1 to annotate field list.";
-                    if (e()) {
-                        annotate.push_back(1);
-                    }
-                }
-                // anno 
             }
 
             // check dtype
-            string dt = extract<string>(kwargs.get("dtype", "uint8"));
+            string dt = "uint8";
+            if (kwargs.contains("dtypes")) dt = kwargs["dtype"].cast<string>();
             dtype = dtype_np2cv(dt);
-            object trans = kwargs.get("transforms", list());
-            transforms = extract<string>(simplejson.attr("dumps")(trans));
+            py::object trans = py::list();
+            if (kwargs.contains("transforms")) trans = kwargs["transforms"];
+            transforms = py::cast<string>(simplejson.attr("dumps")(trans));
         }
     };
 
-    PyImageStream (dict kwargs) 
-        : ImageStream(fs::path(extract<string>(kwargs.get("db"))), Config(kwargs)), batch(1), dump(0), dump_cnt(0), order("NHWC"), colorspace("BGR") {
+    PyImageStream (py::dict kwargs) 
+        : ImageStream(fs::path(py::cast<string>(kwargs["db"])), Config(kwargs)), batch(1), dump(0), dump_cnt(0), order("NHWC"), colorspace("BGR") {
             UPDATE_CONFIG(batch, kwargs);
             UPDATE_CONFIG(dump, kwargs);
             UPDATE_CONFIG(order, kwargs);
@@ -210,19 +182,19 @@ public:
             else if (order == "NCHW") {
                 bachelor_order = bachelor::NCHW;
             }
-            else CHECK(0) << "Unrecognized order: " << order;
+            else CHECK(0); // << "Unrecognized order: " << order;
             if (colorspace == "BGR") {
                 bachelor_colorspace = bachelor::BGR;
             }
             else if (colorspace == "RGB") {
                 bachelor_colorspace = bachelor::RGB;
             }
-            else CHECK(0) << "Unrecognized colorspace: " << colorspace;
+            else CHECK(0); // << "Unrecognized colorspace: " << colorspace;
 
 
-            auto collections = import("collections");
+            auto collections = py::module_::import("collections");
             auto namedtuple = collections.attr("namedtuple");
-            list fields;
+            py::list fields;
             fields.append("ids");       // np array
             fields.append("labels");    // labels
             fields.append("raw");    // list of field.  each field is a list of batch size, containing the field data
@@ -230,18 +202,18 @@ public:
 
             if (dump) {
                 fs::create_directory("picpac_dump");
-                LOG(WARNING) << "dumping image to picpac_dump/{batch}_{field}_{image}.png";
+                logging::warn("dumping image to picpac_dump/{batch}_{field}_{image}.png");
             }
     }
 
-    list next () {
+    py::list next () {
         // return a batch
         // if EOS, this will 
         vector<int32_t> ids;
         vector<float> labels;
-        vector<list> raw_fields;
+        vector<py::list> raw_fields;
         for (unsigned i = 0; i < ImageLoader::config.raw.size(); ++i) {
-            raw_fields.push_back(list());
+            raw_fields.push_back(py::list());
         }
         vector<unique_ptr<FacetData>> data;
         // create batch, emplace first object
@@ -250,7 +222,7 @@ public:
         labels.push_back(v.label);
         CHECK(v.raw.size() == raw_fields.size());
         for (unsigned i = 0; i < v.raw.size(); ++i) {
-            raw_fields[i].append(string_to_python(v.raw[i]));
+            raw_fields[i].append(py::bytes(v.raw[i]));
         }
         for (auto &im: v.facets) {
             im.check_pythonize();
@@ -288,7 +260,7 @@ public:
                 labels.push_back(v.label);
                 CHECK(v.raw.size() == raw_fields.size());
                 for (unsigned i = 0; i < v.raw.size(); ++i) {
-                    raw_fields[i].append(string_to_python(v.raw[i]));
+                    raw_fields[i].append(py::bytes(v.raw[i]));
                 }
                 CHECK(data.size() == v.facets.size());
                 for (unsigned j = 0; j < data.size(); ++j) {
@@ -308,22 +280,22 @@ public:
         CHECK(pyids);
         PyObject *pylabels = PyArray_SimpleNew(1, dims, NPY_FLOAT32);
         CHECK(pylabels);
-        std::copy(ids.begin(), ids.end(), (int32_t *)PyArray_DATA(pyids));
-        std::copy(labels.begin(), labels.end(), (float *)PyArray_DATA(pylabels));
+        std::copy(ids.begin(), ids.end(), (int32_t *)PyArray_DATA((PyArrayObject *)pyids));
+        std::copy(labels.begin(), labels.end(), (float *)PyArray_DATA((PyArrayObject *)pylabels));
 
-        list raw_field_list;
+        py::list raw_field_list;
         for (auto &l: raw_fields) {
             raw_field_list.append(l);
         }
-        list r;
-        r.append(ctor(boost::python::handle<>(pyids), boost::python::handle<>(pylabels), raw_field_list));
+        py::list r;
+        r.append(ctor(pyids, pylabels, raw_field_list));
 
         if (dump > 0 && dump_cnt < dump) {
-            string prefix = "picpac_dump/" + lexical_cast<string>(dump_cnt);
+            string prefix = "picpac_dump/" + std::to_string(dump_cnt);
             int fc = 0;
             for (auto &p: data) {
                 if (p) {
-                    p->dump(prefix + "_" + lexical_cast<string>(fc));
+                    p->dump(prefix + "_" + std::to_string(fc));
                 }
                 fc += 1;
             }
@@ -331,18 +303,18 @@ public:
         }
         for (auto &p: data) {
             if (p) {
-                r.append(object(boost::python::handle<>(p->detach())));
+                r.append(p->detach());
             }
             else {
-                r.append(object(boost::python::handle<>(Py_None)));
+                r.append(py::none());
             }
         }
         return r;
     }
 };
 
-object return_iterator (tuple args, dict kwargs) {
-    object self = args[0];
+py::object return_iterator (py::tuple args, py::dict kwargs) {
+    py::object self = args[0];
     self.attr("reset")();
     return self;
 };
@@ -358,7 +330,7 @@ class PyImageLoader {
     std::mutex mutex;
     random_engine rng;
 
-    object __load_image (cv::Mat image) {
+    py::handle __load_image (cv::Mat image) {
         //Py_BEGIN_ALLOW_THREADS
         int channels = config.channels;
         if (channels < 0) channels = image.channels();
@@ -398,13 +370,13 @@ class PyImageLoader {
         BachelorFacetData bb(conf);
         bb.fill_next(im.image);
         if (dump > 0 && dump_cnt < dump) {
-            bb.dump("picpac_dump/" + lexical_cast<string>(dump_cnt));
+            bb.dump("picpac_dump/" + std::to_string(dump_cnt));
             dump_cnt += 1;
         }
-        return object(boost::python::handle<>(bb.detach()));
+        return py::handle(bb.detach());
     }
 public:
-    PyImageLoader (dict kwargs): config(kwargs), transforms(json::parse(config.transforms)), dump(0), dump_cnt(0), rng(config.seed) {
+    PyImageLoader (py::dict kwargs): config(kwargs), transforms(json::parse(config.transforms)), dump(0), dump_cnt(0), rng(config.seed) {
         string order("NHWC");
         string colorspace("BGR");
         UPDATE_CONFIG(dump, kwargs);
@@ -416,14 +388,14 @@ public:
         else if (order == "NCHW") {
             bachelor_order = bachelor::NCHW;
         }
-        else CHECK(0) << "Unrecognized order: " << order;
+        else CHECK(0); // << "Unrecognized order: " << order;
         if (colorspace == "BGR") {
             bachelor_colorspace = bachelor::BGR;
         }
         else if (colorspace == "RGB") {
             bachelor_colorspace = bachelor::RGB;
         }
-        else CHECK(0) << "Unrecognized colorspace: " << colorspace;
+        else CHECK(0); // << "Unrecognized colorspace: " << colorspace;
 
         decode_mode = cv::IMREAD_UNCHANGED;
         if (config.channels == 1) {
@@ -434,15 +406,15 @@ public:
         }
         if (dump) {
             fs::create_directory("picpac_dump");
-            LOG(WARNING) << "dumping image to picpac_dump/{batch}_{field}_{image}.png";
+            logging::warn("dumping image to picpac_dump/{batch}_{field}_{image}.png");
         }
     }
 
-    object load_path (string const &path) {
+    py::handle load_path (string const &path) {
         return __load_image(cv::imread(path, decode_mode));
     }
 
-    object load_binary (PyObject *buf) {
+    py::handle load_binary (PyObject *buf) {
         return __load_image(decode_buffer(pyobject2buffer(buf), decode_mode));
     }
 };
@@ -542,35 +514,35 @@ public:
 
 class Reader: public IndexedFileReader {
     unsigned _next;
-    object ctor;
+    py::object ctor;
 public:
     Reader (string const &path): IndexedFileReader(path), _next(0) {
-        auto collections = import("collections");
+        auto collections = py::module_::import("collections");
         auto namedtuple = collections.attr("namedtuple");
-        list fields;
+        py::list fields;
         fields.append("id"); 
         fields.append("label"); 
         fields.append("label2");
         fields.append("fields");
         ctor = namedtuple("Record", fields);
     }
-    object next () {
+    py::object next () {
         if (_next >= size()) {
-            throw EoS();
+            throw pybind11::stop_iteration();
         }
         return read(_next++);
     }
     void reset () {
         _next = 0;
     }
-    object read (int i) {
+    py::object read (int i) {
         Record rec;
         IndexedFileReader::read(i, &rec);
-        list fields;
+        py::list fields;
         for (unsigned i = 0; i < rec.size(); ++i) {
 #if PY_MAJOR_VERSION >= 3
-            const_buffer buf = rec.field(i);
-            fields.append(object(handle<>(PyBytes_FromStringAndSize(boost::asio::buffer_cast<char const *>(buf), boost::asio::buffer_size(buf)))));
+            string_view buf = rec.field(i);
+            fields.append(py::handle(PyBytes_FromStringAndSize(buf.data(), buf.size())));
 #else
             fields.append(rec.field_string(i));
 #endif
@@ -580,16 +552,16 @@ public:
     }
 };
 
-void serialize_raw_ndarray (object &obj, std::ostream &os) {
+void serialize_raw_ndarray (py::object &obj, std::ostream &os) {
     PyArrayObject *image = reinterpret_cast<PyArrayObject *>(obj.ptr());
     int nd = PyArray_NDIM(image);
     CHECK(nd == 2 || nd == 3);
     auto desc = PyArray_DESCR(image);
     CHECK(desc);
     CHECK(PyArray_EquivByteorders(desc->byteorder, NPY_NATIVE)
-            || desc->byteorder == '|') << "Only support native/little endian";
+            || desc->byteorder == '|'); // << "Only support native/little endian";
     int elemSize = desc->elsize;
-    CHECK(elemSize > 0) << "Flex type not supported.";
+    CHECK(elemSize > 0); // << "Flex type not supported.";
     int ch = (nd == 2) ? 1 : PyArray_DIM(image, 2); 
     elemSize *= ch; // opencv elements includes all channels
     //CHECK(image->strides[1] == elemSize) << "Image cols must be consecutive";
@@ -605,10 +577,10 @@ void serialize_raw_ndarray (object &obj, std::ostream &os) {
         case NPY_INT32: type = CV_MAKETYPE(CV_32S, ch); break;
         case NPY_FLOAT32: type = CV_MAKETYPE(CV_32F, ch); break;
         case NPY_FLOAT64: type = CV_MAKETYPE(CV_64F, ch); break;
-        default: CHECK(0) << "type not supported: " << t;
+        default: CHECK(0); // << "type not supported: " << t;
     }
     int stride = PyArray_STRIDE(image, 0);
-    CHECK(stride == cols * elemSize) << "bad stride";
+    CHECK(stride == cols * elemSize); // << "bad stride";
     os.write(reinterpret_cast<char const *>(&type), sizeof(type));
     os.write(reinterpret_cast<char const *>(&rows), sizeof(rows));
     os.write(reinterpret_cast<char const *>(&cols), sizeof(cols));
@@ -620,23 +592,13 @@ void serialize_raw_ndarray (object &obj, std::ostream &os) {
     }
 }
 
-#if PY_MAJOR_VERSION >= 3
-object
-#else
-string
-#endif
-encode_raw_ndarray (object &obj) {
+py::bytes encode_raw_ndarray (py::object &obj) {
     std::ostringstream ss;
     serialize_raw_ndarray(obj, ss);
-#if PY_MAJOR_VERSION >= 3
-    string str = ss.str();
-    return object(handle<>(PyBytes_FromStringAndSize(&str[0], str.size())));
-#else
-    return ss.str();
-#endif
+    return py::bytes(ss.str());
 }
 
-void write_raw_ndarray (string const &path, object &obj) {
+void write_raw_ndarray (string const &path, py::object &obj) {
     std::ofstream os(path.c_str(), std::ios::binary);
     serialize_raw_ndarray(obj, os);
 }
@@ -654,22 +616,14 @@ void (Writer::*append5) (float, string const &, string const &, string const &, 
 void (Writer::*append6) (float, string const &, string const &, string const &, string const &, string const &) = &Writer::append;
 */
 
-void translate_eos (EoS const &)
-{
-    // Use the Python 'C' API to set up an exception object
-    PyErr_SetNone(PyExc_StopIteration);
-}
-
-
-
 }
 
 namespace {
 	cv::Mat Py3DArray2CvMat (PyObject *array_) {
-        PyArrayObject *array((PyArrayObject *)array_);
+        PyArrayObject_fields *array((PyArrayObject_fields *)array_);
         if (array->nd != 2 and array->nd != 3) throw runtime_error("not 3d array");
         if (array->descr->type_num != NPY_FLOAT32) throw runtime_error("not float32 array");
-        if (!PyArray_ISCONTIGUOUS(array)) throw runtime_error("not contiguous");
+        if (!PyArray_ISCONTIGUOUS((PyArrayObject*)array)) throw runtime_error("not contiguous");
         int dims = 1;
         if (array->nd == 3) {
             dims = array->dimensions[2];
@@ -806,7 +760,7 @@ namespace {
 		
         	npy_intp dims[2] = {cnt, SHAPE::PARAMS};
             PyObject *result = PyArray_SimpleNew(2, dims, NPY_FLOAT32);
-            float *out_params = (float *)((PyArrayObject *)result)->data;
+            float *out_params = (float *)((PyArrayObject_fields *)result)->data;
             for (auto const &c: all) {
                 if (!c.keep) continue;
                 SHAPE::update_params(c, out_params);
@@ -826,33 +780,15 @@ namespace {
 
 }
 
-#if (PY_VERSION_HEX >= 0x03000000)
-
-static void *init_numpy() {
-#else
-	static void init_numpy(){
-#endif
-
-	import_array();
-	return NUMPY_IMPORT_ARRAY_RETVAL;
-}   
-
-
-
-BOOST_PYTHON_MODULE(picpac)
+PYBIND11_MODULE(picpac, scope)
 {
-	init_numpy();
-    scope().attr("__doc__") = "PicPoc Python API";
-    scope().attr("OVERWRITE") = Writer::FLAG_OVERWRITE;
-#ifdef CVBOOSTCONVERTER_HPP_
-    to_python_converter<cv::Mat,
-                     pbcvt::matToNDArrayBoostConverter>();
-
-    pbcvt::matFromNDArrayBoostConverter();
-#endif
-    register_exception_translator<EoS>(&translate_eos);
-    class_<PyImageStream, boost::noncopyable>("ImageStream", init<dict>())
-        .def("__iter__", raw_function(return_iterator))
+    NDArrayConverter::init_numpy();
+    scope.attr("__doc__") = "PicPoc Python API";
+    scope.attr("OVERWRITE") = Writer::FLAG_OVERWRITE;
+    //register_exception_translator<EoS>(&translate_eos);
+    py::class_<PyImageStream>(scope, "ImageStream")
+        .def(py::init<py::dict>())
+        .def("__iter__", &return_iterator)
 #if (PY_VERSION_HEX >= 0x03000000)
         .def("__next__", &PyImageStream::next)
 #endif
@@ -861,21 +797,22 @@ BOOST_PYTHON_MODULE(picpac)
         .def("reset", &PyImageStream::reset)
         //.def("categories", &PyImageStream::categories)
     ;
-    class_<PyImageLoader, boost::noncopyable>("ImageLoader", init<dict>())
+    py::class_<PyImageLoader>(scope, "ImageLoader")
+        .def(py::init<py::dict>())
         .def("load_path", &PyImageLoader::load_path)
         .def("load_binary", &PyImageLoader::load_binary)
     ;
-    class_<Reader>("Reader", init<string>())
-        .def("__iter__", raw_function(return_iterator))
-#if (PY_VERSION_HEX >= 0x03000000)
+    py::class_<Reader>(scope, "Reader")
+        .def(py::init<string>())
+        .def("__iter__", &return_iterator)
         .def("__next__", &Reader::next)
-#endif
         .def("next", &Reader::next)
         .def("size", &Reader::size)
         .def("read", &Reader::read)
         .def("reset", &Reader::reset)
     ;
-    class_<Writer>("Writer", init<string, int>())
+    py::class_<Writer>(scope, "Writer") 
+        .def(py::init<string,int>())
         .def("append", append1)
         .def("append", append2)
         .def("append", append3)
@@ -886,17 +823,17 @@ BOOST_PYTHON_MODULE(picpac)
         */
         .def("setNextId", &Writer::setNextId);
     ;
-    def("encode_raw", ::encode_raw_ndarray);
-    def("write_raw", ::write_raw_ndarray);
-    def("load_transform_library", picpac::load_transform_library);
+    scope.def("encode_raw", ::encode_raw_ndarray);
+    scope.def("write_raw", ::write_raw_ndarray);
+    scope.def("load_transform_library", picpac::load_transform_library);
 
-    class_<AnchorProposal<Circle>>("CircleProposal", init<int, float, float>())
+    py::class_<AnchorProposal<Circle>>(scope, "CircleProposal")
+        .def(py::init<int, float, float>())
         .def("apply", &AnchorProposal<Circle>::apply)
     ;
-    class_<AnchorProposal<Box>>("BoxProposal", init<int, float, float>())
+    py::class_<AnchorProposal<Box>>(scope, "BoxProposal")
+        .def(py::init<int, float, float>())
         .def("apply", &AnchorProposal<Box>::apply)
     ;
-//#undef NUMPY_IMPORT_ARRAY_RETVAL
-//#define NUMPY_IMPORT_ARRAY_RETVAL
 }
 

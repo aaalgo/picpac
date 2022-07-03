@@ -2,7 +2,6 @@
 #include <sstream>
 #include <json11.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/filesystem/fstream.hpp>
 #include "picpac-cv.h"
 
 namespace picpac {
@@ -208,7 +207,7 @@ namespace picpac {
             }
             cv::Point const *pps = &ps[0];
             int const nps = ps.size();
-            if (thickness == CV_FILLED) {
+            if (thickness == cv::FILLED) {
                 cv::fillPoly(*m, &pps, &nps, 1, v);
             }
             else {
@@ -415,7 +414,7 @@ namespace picpac {
                 out += 3;
             }
         }
-        cv::cvtColor(o, *bgr, CV_HSV2BGR);
+        cv::cvtColor(o, *bgr, cv::COLOR_HSV2BGR);
     }
 
     cv::Mat ImageLoader::preload_image (const_buffer buffer, LoadState *state) const {
@@ -423,16 +422,16 @@ namespace picpac {
         if ((config.channels > 0) && config.channels != image.channels()) {
             cv::Mat tmp;
             if (image.channels() == 3 && config.channels == 1) {
-                cv::cvtColor(image, tmp, CV_BGR2GRAY);
+                cv::cvtColor(image, tmp, cv::COLOR_BGR2GRAY);
             }
             else if (image.channels() == 4 && config.channels == 1) {
-                cv::cvtColor(image, tmp, CV_BGRA2GRAY);
+                cv::cvtColor(image, tmp, cv::COLOR_BGRA2GRAY);
             }
             else if (image.channels() == 4 && config.channels == 3) {
-                cv::cvtColor(image, tmp, CV_BGRA2BGR);
+                cv::cvtColor(image, tmp, cv::COLOR_BGRA2BGR);
             }
             else if (image.channels() == 1 && config.channels == 3) {
-                cv::cvtColor(image, tmp, CV_GRAY2BGR);
+                cv::cvtColor(image, tmp, cv::COLOR_GRAY2BGR);
             }
 #ifdef SUPPORT_AUDIO_SPECTROGRAM
             else if (image.type() == CV_32FC2 && config.channels == 1) {
@@ -624,10 +623,10 @@ namespace picpac {
                         image.convertTo(image, CV_32FC3);
                     }
                     if (colorspace == COLOR_Lab) {
-                        cv::cvtColor(image, image, CV_BGR2Lab);
+                        cv::cvtColor(image, image, cv::COLOR_BGR2Lab);
                     }
                     else if (colorspace  == COLOR_HSV) {
-                        cv::cvtColor(image, image, CV_BGR2HSV);
+                        cv::cvtColor(image, image, cv::COLOR_BGR2HSV);
                     }
                     else if (colorspace == COLOR_SAME) {
                         pert_color[1] = pert_color[2] = pert_color[0];
@@ -636,10 +635,10 @@ namespace picpac {
                 image += pert_color;
                 if (image.channels() == 3) {
                     if (colorspace == COLOR_Lab) {
-                        cv::cvtColor(image, image, CV_Lab2BGR);
+                        cv::cvtColor(image, image, cv::COLOR_Lab2BGR);
                     }
                     else if (colorspace  == COLOR_HSV) {
-                        cv::cvtColor(image, image, CV_HSV2BGR);
+                        cv::cvtColor(image, image, cv::COLOR_HSV2BGR);
                     }
                 }
             }
@@ -769,16 +768,16 @@ namespace picpac {
             if ((config.channels > 0) && config.channels != cached.image.channels()) {
                 cv::Mat tmp;
                 if (cached.image.channels() == 3 && config.channels == 1) {
-                    cv::cvtColor(cached.image, tmp, CV_BGR2GRAY);
+                    cv::cvtColor(cached.image, tmp, cv::COLOR_BGR2GRAY);
                 }
                 else if (cached.image.channels() == 4 && config.channels == 1) {
-                    cv::cvtColor(cached.image, tmp, CV_BGRA2GRAY);
+                    cv::cvtColor(cached.image, tmp, cv::COLOR_BGRA2GRAY);
                 }
                 else if (cached.image.channels() == 4 && config.channels == 3) {
-                    cv::cvtColor(cached.image, tmp, CV_BGRA2BGR);
+                    cv::cvtColor(cached.image, tmp, cv::COLOR_BGRA2BGR);
                 }
                 else if (cached.image.channels() == 1 && config.channels == 3) {
-                    cv::cvtColor(cached.image, tmp, CV_GRAY2BGR);
+                    cv::cvtColor(cached.image, tmp, cv::COLOR_GRAY2BGR);
                 }
 #ifdef SUPPORT_AUDIO_SPECTROGRAM
                 else if (cached.image.type() == CV_32FC2 && config.channels == 1) {
@@ -1033,10 +1032,10 @@ namespace picpac {
                 image.convertTo(image, CV_32FC3);
             }
             if (colorspace == COLOR_Lab) {
-                cv::cvtColor(image, image, CV_BGR2Lab);
+                cv::cvtColor(image, image, cv::COLOR_BGR2Lab);
             }
             else if (colorspace  == COLOR_HSV) {
-                cv::cvtColor(image, image, CV_BGR2HSV);
+                cv::cvtColor(image, image, cv::COLOR_BGR2HSV);
             }
             else if (colorspace == COLOR_SAME) {
                 pert_color[1] = pert_color[2] = pert_color[0];
@@ -1045,10 +1044,10 @@ namespace picpac {
         image += pert_color;
         if (image.channels() == 3) {
             if (colorspace == COLOR_Lab) {
-                cv::cvtColor(image, image, CV_Lab2BGR);
+                cv::cvtColor(image, image, cv::COLOR_Lab2BGR);
             }
             else if (colorspace  == COLOR_HSV) {
-                cv::cvtColor(image, image, CV_HSV2BGR);
+                cv::cvtColor(image, image, cv::COLOR_HSV2BGR);
             }
         }
 
@@ -1163,7 +1162,7 @@ namespace picpac {
         cv::Mat image = cv::imread(path.native(), mode);
         if (!image.data) { // try raw
             string buf;
-            fs::ifstream is(path, std::ios::binary);
+            std::ifstream is(path, std::ios::binary);
             if (!is) throw BadFile(path);
             is.seekg(0, std::ios::end);
             if (!is) throw BadFile(path);
@@ -1193,7 +1192,7 @@ namespace picpac {
             // read original file
             uintmax_t sz = fs::file_size(path);
             data->resize(sz);
-            fs::ifstream is(path, std::ios::binary);
+            std::ifstream is(path, std::ios::binary);
             is.read(&data->at(0), data->size());
             if (!is) throw BadFile(path);
         }

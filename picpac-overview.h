@@ -38,7 +38,7 @@ class ImageStat {
         }
         if (thumb.channels() == 1) {
             cv::Mat tmp;
-            cv::cvtColor(thumb, tmp, CV_GRAY2BGR);
+            cv::cvtColor(thumb, tmp, cv::COLOR_GRAY2BGR);
             thumb = tmp;
         }
         if (thumb.type() != CV_8UC3) {

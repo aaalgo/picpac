@@ -40,7 +40,7 @@ namespace picpac {
         BorderConfig (json const &spec, int type, cv::Scalar value)
             : border_type(type), border_value(value)
         {
-            string b = spec.value<string>("border_type", "constant");
+            string b = spec.value<string>("border_type", string("constant"));
             if (b == "replicate") {
                 border_type = cv::BORDER_REPLICATE;
             }
@@ -50,7 +50,7 @@ namespace picpac {
             else if (b == "reflect") {
                 border_type = cv::BORDER_REFLECT_101;
             }
-            else CHECK(0) << "Border type " << b << " not recognized";
+            else CHECK(0); // << "Border type " << b << " not recognized";
             // TODO: config border value
         }
     };
@@ -128,13 +128,13 @@ namespace picpac {
             copy = spec.value<int>("copy", -1);
             index = spec.value<int>("index", 1);
             int channels = spec.value<int>("channels", 1);
-            int dtype = dtype_np2cv(spec.value<string>("dtype", "uint8"));
+            int dtype = dtype_np2cv(spec.value<string>("dtype", string("uint8")));
             type = CV_MAKETYPE(dtype, channels);
-            opt.use_palette = spec.value<bool>("use_palette", opt.use_palette);
-            opt.use_tag = spec.value<bool>("use_tag", opt.use_tag);
-            opt.use_serial = spec.value<bool>("use_serial", opt.use_serial);
-            opt.thickness = spec.value<int>("thickness", opt.thickness);
-            CHECK(((!opt.use_palette) || (!opt.use_tag))) << "Cannot use both tag and palette";
+            opt.use_palette = spec.value<bool>("use_palette", bool(opt.use_palette));
+            opt.use_tag = spec.value<bool>("use_tag", bool(opt.use_tag));
+            opt.use_serial = spec.value<bool>("use_serial", bool(opt.use_serial));
+            opt.thickness = spec.value<int>("thickness", int(opt.thickness));
+            CHECK(((!opt.use_palette) || (!opt.use_tag))); // << "Cannot use both tag and palette";
         }
         virtual size_t apply (Sample *sample, void const *) const {
             auto &facet = sample->facets[index];
@@ -236,8 +236,8 @@ namespace picpac {
     public:
         Resize (json const &spec)
             : size(spec.value<int>("size", 0)),
-              width(spec.value<int>("width", size)),
-              height(spec.value<int>("height", size)),
+              width(spec.value<int>("width", int(size))),
+              height(spec.value<int>("height", int(size))),
               min_size(spec.value<int>("min_size", 0)),
               max_size(spec.value<int>("max_size", numeric_limits<int>::max()))
         {
@@ -282,7 +282,7 @@ namespace picpac {
                 if (facet->image.size() == sz) break;
                 if (facet->image.data) {
                     cv::Mat tmp;
-                    cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR);
+                    cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? cv::INTER_NEAREST: cv::INTER_LINEAR);
                     facet->image = tmp;
                 }
                 if (!facet->annotation.empty()) {
@@ -412,18 +412,18 @@ namespace picpac {
               round(spec.value<int>("round", 0)),
               width(spec.value<int>("width", 0)),
               height(spec.value<int>("height", 0)),
-              min_width(spec.value<int>("min_width", min)),
-              max_width(spec.value<int>("max_width", max)),
-              min_height(spec.value<int>("min_height", min)),
-              max_height(spec.value<int>("max_height", max)),
-              round_width(spec.value<int>("round_width", round)),
-              round_height(spec.value<int>("round_height", round)),
+              min_width(spec.value<int>("min_width", int(min))),
+              max_width(spec.value<int>("max_width", int(max))),
+              min_height(spec.value<int>("min_height", int(min))),
+              max_height(spec.value<int>("max_height", int(max))),
+              round_width(spec.value<int>("round_width", int(round))),
+              round_height(spec.value<int>("round_height", int(round))),
               max_crop(spec.value<int>("max_crop", 0)),
-              max_crop_width(spec.value<int>("max_crop_width", max_crop)),
-              max_crop_height(spec.value<int>("max_crop_height", max_crop)),
+              max_crop_width(spec.value<int>("max_crop_width", int(max_crop))),
+              max_crop_height(spec.value<int>("max_crop_height", int(max_crop))),
               max_shift(spec.value<int>("shift", 0)),
-              max_shift_x(spec.value<int>("shift_x", max_shift)),
-              max_shift_y(spec.value<int>("shift_y", max_shift))
+              max_shift_x(spec.value<int>("shift_x", int(max_shift))),
+              max_shift_y(spec.value<int>("shift_y", int(max_shift)))
 
         {
             if ((width > 0) || (height > 0)) {
@@ -634,29 +634,29 @@ namespace picpac {
             mul0 = spec.value<float>("mul0", 1.0);
             mul1 = spec.value<float>("mul1", 1.0);
             
-            string v = spec.value<string>("code", "");
+            string v = spec.value<string>("code", string(""));
             if (v == "BGR2GRAY") {
-                code = CV_BGR2GRAY;
+                code = cv::COLOR_BGR2GRAY;
             }
             else if (v == "GRAY2BGR") {
-                code = CV_GRAY2BGR;
+                code = cv::COLOR_GRAY2BGR;
             }
             else if (v == "BGR2HSV") {
-                code = CV_BGR2HSV;
+                code = cv::COLOR_BGR2HSV;
             }
             else if (v == "HSV2BGR") {
-                code = CV_HSV2BGR;
+                code = cv::COLOR_HSV2BGR;
             }
             else if (v == "BGR2Lab") {
-                code = CV_BGR2Lab;
+                code = cv::COLOR_BGR2Lab;
             }
             else if (v == "Lab2BGR") {
-                code = CV_Lab2BGR;
+                code = cv::COLOR_Lab2BGR;
             }
             else if (v == "BGR2RGB") {
-                code = CV_BGR2RGB;
+                code = cv::COLOR_BGR2RGB;
             }
-            else CHECK(false) << code << " not supported.";
+            else CHECK(false); // << code << " not supported.";
         }
         virtual size_t apply_one (Facet *facet, void const *buf) const {
             if (facet->type == Facet::IMAGE && facet->image.data) {
@@ -963,12 +963,12 @@ namespace picpac {
         };
         AugAdd (json const &spec) :
             range(spec.value<float>("range", 0)),
-            range1(spec.value<float>("range1", range)),
-            range2(spec.value<float>("range2", range)),
-            range3(spec.value<float>("range3", range)),
-            linear_delta1(spec.value<float>("min1", -range1), spec.value<float>("max1", range1)),
-            linear_delta2(spec.value<float>("min2", -range2), spec.value<float>("max2", range2)),
-            linear_delta3(spec.value<float>("min3", -range3), spec.value<float>("max3", range3))
+            range1(spec.value<float>("range1", float(range))),
+            range2(spec.value<float>("range2", float(range))),
+            range3(spec.value<float>("range3", float(range))),
+            linear_delta1(spec.value<float>("min1", -range1), spec.value<float>("max1", float(range1))),
+            linear_delta2(spec.value<float>("min2", -range2), spec.value<float>("max2", float(range2))),
+            linear_delta3(spec.value<float>("min3", -range3), spec.value<float>("max3", float(range3)))
         {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -1000,7 +1000,7 @@ namespace picpac {
         AugRotate (json const &spec)
             : BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)),
             range(spec.value<float>("range", 0)),
-            linear_angle(spec.value<float>("min", -range), spec.value<float>("max", range)) {
+            linear_angle(spec.value<float>("min", -range), spec.value<float>("max", 0+range)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
         virtual size_t pv_sample (random_engine &rng, void *buf) const {
@@ -1016,7 +1016,7 @@ namespace picpac {
             cv::Mat rot = cv::getRotationMatrix2D(cv::Point(sz.width/2, sz.height/2), pv->angle, 1.0);
             if (facet->image.data) {
                 cv::Mat tmp;
-                cv::warpAffine(facet->image, tmp, rot, sz, facet->type == Facet::LABEL ? CV_INTER_NN: CV_INTER_LINEAR, border_type, border_value);//, CV_INTER);
+                cv::warpAffine(facet->image, tmp, rot, sz, facet->type == Facet::LABEL ? cv::INTER_NEAREST: cv::INTER_LINEAR, border_type, border_value);//, cv::INTER);
                 //cv::resize(tmp, tmp, cv::Size(), p.scale, p.scale);
                 facet->image = tmp;
             }
@@ -1053,7 +1053,7 @@ namespace picpac {
         }
 
         static void init_prior(float *params, json const &p) {
-            CHECK(0) << "Not supported.";
+            CHECK(0);// << "Not supported.";
         }
 
 
@@ -1116,7 +1116,7 @@ namespace picpac {
             float h = p.at(1);
             params[0] = w;
             params[1] = h;
-            LOG(WARNING)<< "prior w:" << params[0] << " h:" << params[1];
+            logging::warn("prior w: {} h: {}", params[0], params[1]);
         }
 
         static void init_shape_with_controls (Shape *c, vector<cv::Point2f> const &ctrls, bool weighted) {
@@ -1563,7 +1563,7 @@ namespace picpac {
         };
         WaveAugAdd (json const &spec) :
             range(spec.value<float>("range", 0)),
-            linear_delta(spec.value<float>("min", -range), spec.value<float>("max", range))
+            linear_delta(spec.value<float>("min", -range), spec.value<float>("max", 0+range))
         {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
@@ -1738,7 +1738,7 @@ namespace picpac {
             return std::unique_ptr<Transform>(new Featurize(spec));
         }
         else {
-            CHECK(0) << "unknown transformation: " << type;
+            CHECK(0);// << "unknown transformation: " << type;
         }
         return nullptr;
     }
@@ -1750,7 +1750,7 @@ namespace picpac {
         CHECK(h);   // intentionally left unclosed
         transform_factory_t fun;
         void *sym = dlsym(h, "transform_factory");
-        CHECK(sym) << "Failed to load " << path << ": " << dlerror();
+        CHECK(sym); // << "Failed to load " << path << ": " << dlerror();
         *(void**)(&fun) = sym;
         transform_factories.push_back(fun);
     }

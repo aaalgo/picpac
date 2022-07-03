@@ -50,7 +50,7 @@ int main(int argc, char const* argv[]) {
         try {
             ImageStream::Value v(db.next());
             cv::Mat image = v.annotation;
-            fs::path o = dir_path / (lexical_cast<string>(c++) + ".jpg");
+            fs::path o = dir_path / (std::to_string(c++) + ".jpg");
             cv::imwrite(o.native(), image);
         }
         catch (EoS const &) {

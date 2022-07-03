@@ -153,7 +153,7 @@ namespace picpac {
                 anno_color1(1),
                 anno_color2(0),
                 anno_color3(0),
-                anno_thickness(CV_FILLED),
+                anno_thickness(cv::FILLED),
                 anno_min_ratio(0),
                 perturb(false),
                 pert_color1(0),
@@ -714,7 +714,7 @@ namespace picpac {
     public:
         Shape (char const *t): _type(t), _have_label(false), _label(0,0,0) {}
         virtual ~Shape () {}
-        virtual void draw (cv::Mat *, cv::Scalar v, int thickness = CV_FILLED) const = 0;
+        virtual void draw (cv::Mat *, cv::Scalar v, int thickness = cv::FILLED) const = 0;
         virtual void bbox (cv::Rect_<float> *) const = 0;
         virtual void zoom (cv::Rect_<float> const &) = 0;
         virtual void dump (json11::Json *) const = 0;
