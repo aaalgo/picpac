@@ -30,6 +30,21 @@ namespace {
 
     }
 
+    string_view pyobject2buffer (py::bytes bytes) {
+        PyObject *buf = bytes.ptr();
+        if (PyBytes_Check(buf)) {
+            return string_view(PyBytes_AsString(buf), PyBytes_Size(buf));
+        }
+        /*
+        if (PyString_Check(buf)) {
+            return const_buffer(PyString_AsString(buf), PyString_Size(buf));
+        }
+        */
+        logging::error("can only append string or bytes");
+        CHECK(0);
+
+    }
+
     class FacetData {
     public:
         virtual ~FacetData () {}
@@ -51,13 +66,36 @@ namespace {
             return NumpyBatch::detach();
         }
         virtual void dump (string const &prefix) {
-            CHECK(conf.order == bachelor::NHWC);
-            char *p = reinterpret_cast<char *>(buffer);
-            if (conf.channels ==1 || conf.channels == 3) {
+            if (conf.order == bachelor::NHWC) {
+                char *p = reinterpret_cast<char *>(buffer);
+                if (conf.channels ==1 || conf.channels == 3) {
+                    for (int i = 0; i < cnt; ++i) {
+                        cv::Mat image(conf.height, conf.width, CV_MAKETYPE(conf.depth, conf.channels), p);
+                        cv::imwrite(prefix + "_" + std::to_string(i) + ".png", image);
+                        p += image_size;
+                    }
+                }
+            }
+            else if (conf.order == bachelor::NCHW) {
+                char *p = reinterpret_cast<char *>(buffer);
+                size_t channel_size = conf.height * conf.width;
                 for (int i = 0; i < cnt; ++i) {
-                    cv::Mat image(conf.height, conf.width, CV_MAKETYPE(conf.depth, conf.channels), p);
+                    vector<cv::Mat> channels;
+                    for (int j = 0; j < conf.channels; ++j) {
+
+                        cv::Mat image(conf.height, conf.width, CV_MAKETYPE(conf.depth, 1), p);
+                        channels.push_back(image);
+                        p += channel_size;
+                    }
+                    cv::Mat image;
+                    if (conf.channels == 1) {
+                        image = channels[0];
+                    }
+                    else {
+                        CHECK(channels.size() == 3);
+                        cv::merge(channels, image);
+                    }
                     cv::imwrite(prefix + "_" + std::to_string(i) + ".png", image);
-                    p += image_size;
                 }
             }
         }
@@ -432,28 +470,28 @@ public:
         nextid = v;
     }
 
-    void append (float label, PyObject *buf) {
+    void append (float label, py::bytes buf) {
         Record record(label, pyobject2buffer(buf));
         record.meta().id = nextid;
         ++nextid;
         FileWriter::append(record);
     }
 
-    void append (float label, PyObject *buf, PyObject *buf2) {
+    void append (float label, py::bytes buf, py::bytes buf2) {
         Record record(label, pyobject2buffer(buf), pyobject2buffer(buf2));
         record.meta().id = nextid;
         ++nextid;
         FileWriter::append(record);
     }
 
-    void append (float label, PyObject *buf, PyObject *buf2, PyObject *buf3) {
+    void append (float label, py::bytes buf, py::bytes buf2, py::bytes buf3) {
         Record record(label, pyobject2buffer(buf), pyobject2buffer(buf2), pyobject2buffer(buf3));
         record.meta().id = nextid;
         ++nextid;
         FileWriter::append(record);
     }
 
-    void append (float label, PyObject *buf, PyObject *buf2, PyObject *buf3, PyObject *buf4) {
+    void append (float label, py::bytes buf, py::bytes buf2, py::bytes buf3, py::bytes buf4) {
         Record record(label, pyobject2buffer(buf), pyobject2buffer(buf2), pyobject2buffer(buf3), pyobject2buffer(buf4));
         record.meta().id = nextid;
         ++nextid;
@@ -605,10 +643,10 @@ void write_raw_ndarray (string const &path, py::object &obj) {
     serialize_raw_ndarray(obj, os);
 }
 
-void (Writer::*append1) (float, PyObject *) = &Writer::append;
-void (Writer::*append2) (float, PyObject *, PyObject *) = &Writer::append;
-void (Writer::*append3) (float, PyObject *, PyObject *, PyObject *) = &Writer::append;
-void (Writer::*append4) (float, PyObject *, PyObject *, PyObject *, PyObject *) = &Writer::append;
+void (Writer::*append1) (float, py::bytes) = &Writer::append;
+void (Writer::*append2) (float, py::bytes, py::bytes) = &Writer::append;
+void (Writer::*append3) (float, py::bytes, py::bytes, py::bytes) = &Writer::append;
+void (Writer::*append4) (float, py::bytes, py::bytes, py::bytes, py::bytes) = &Writer::append;
 /*
 
 void (Writer::*append4) (float, string const &, string const &, string const &) = &Writer::append;
@@ -796,8 +834,8 @@ PYBIND11_MODULE(picpac, scope)
     //register_exception_translator<EoS>(&translate_eos);
     py::class_<PyImageStream>(scope, "ImageStream")
         .def(py::init<py::dict>())
-        //.def("__iter__", &return_self)
-        //.def("__next__", &PyImageStream::next)
+        .def("__iter__", &return_self)
+        .def("__next__", &PyImageStream::next)
         .def("next", &PyImageStream::next)
         .def("size", &PyImageStream::size)
         .def("reset", &PyImageStream::reset)
