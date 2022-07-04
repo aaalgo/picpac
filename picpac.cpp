@@ -476,7 +476,7 @@ namespace picpac {
         for (auto const &g: groups) {
             sz_used += g.index.size();
         }
-        //logging::info("using " << sz_used << " out of " << sz_total << " items in " << groups.size() << " groups.";
+        logging::info("using {} out of {} items in {} groups.", sz_used, sz_total, groups.size());
         reset();
     }
 

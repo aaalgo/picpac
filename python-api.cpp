@@ -1,6 +1,5 @@
 #include <fstream>
 #undef NDEBUG
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/ndarrayobject.h>
 #include <pybind11/pybind11.h>
 #include "ndarray_converter.h"
@@ -8,7 +7,7 @@
 #include "picpac.h"
 #include "picpac-image.h"
 #define NPY_NDARRAYOBJECT_H
-#include "bachelor/bachelor.h"
+#include "bachelor.h"
 using namespace picpac;
 namespace py=pybind11;
 
@@ -124,9 +123,9 @@ public:
             UPDATE_CONFIG(reshuffle, kwargs);
             UPDATE_CONFIG(stratify, kwargs);
             UPDATE_CONFIG(oversample, kwargs);
-#if 0
-            split, split_fold, split_negate
-#endif
+            UPDATE_CONFIG(split, kwargs);
+            UPDATE_CONFIG(split_fold, kwargs);
+            UPDATE_CONFIG(split_negate, kwargs);
             UPDATE_CONFIG(mixin, kwargs);
             UPDATE_CONFIG(mixin_group_reset, kwargs);
             UPDATE_CONFIG(mixin_group_delta, kwargs);
@@ -217,40 +216,44 @@ public:
         }
         vector<unique_ptr<FacetData>> data;
         // create batch, emplace first object
-        Value v(ImageStream::next());
-        ids.push_back(v.id);
-        labels.push_back(v.label);
-        CHECK(v.raw.size() == raw_fields.size());
-        for (unsigned i = 0; i < v.raw.size(); ++i) {
-            raw_fields[i].append(py::bytes(v.raw[i]));
-        }
-        for (auto &im: v.facets) {
-            im.check_pythonize();
-            if ((im.type == Facet::IMAGE) || (im.type == Facet::LABEL)) {
-                //if (im.image.data) {
-                NumpyBatch::Config conf;
-                conf.batch = batch;
-                conf.height = im.image.rows;
-                conf.width = im.image.cols;
-                conf.channels = im.image.channels();
-                conf.depth = im.image.depth();
-                conf.order = bachelor_order;
-                if (im.type == Facet::IMAGE) {
-                    conf.colorspace = bachelor_colorspace;
+        try {
+            Value v(ImageStream::next());
+            ids.push_back(v.id);
+            labels.push_back(v.label);
+            CHECK(v.raw.size() == raw_fields.size());
+            for (unsigned i = 0; i < v.raw.size(); ++i) {
+                raw_fields[i].append(py::bytes(v.raw[i]));
+            }
+            for (auto &im: v.facets) {
+                im.check_pythonize();
+                if ((im.type == Facet::IMAGE) || (im.type == Facet::LABEL)) {
+                    NumpyBatch::Config conf;
+                    conf.batch = batch;
+                    conf.height = im.image.rows;
+                    conf.width = im.image.cols;
+                    conf.channels = im.image.channels();
+                    conf.depth = im.image.depth();
+                    conf.order = bachelor_order;
+                    if (im.type == Facet::IMAGE) {
+                        conf.colorspace = bachelor_colorspace;
+                    }
+                    data.emplace_back(new BachelorFacetData(conf));
+                    data.back()->fill_next(im.image);
                 }
-                data.emplace_back(new BachelorFacetData(conf));
-                data.back()->fill_next(im.image);
+                else if (im.type == Facet::FEATURE) {
+                    data.emplace_back(new FacetFeatureData());
+                    data.back()->fill_next(im.image);
+                }
+                else if (im.type == Facet::NONE) {
+                    data.emplace_back(nullptr);
+                }
+                else {
+                    CHECK(0);
+                }
             }
-            else if (im.type == Facet::FEATURE) {
-                data.emplace_back(new FacetFeatureData());
-                data.back()->fill_next(im.image);
-            }
-            else if (im.type == Facet::NONE) {
-                data.emplace_back(nullptr);
-            }
-            else {
-                CHECK(0);
-            }
+        }
+        catch (EoS const &) {
+            throw py::stop_iteration();
         }
         for (int i = 1; i < batch; ++i) {
             // reset of the batch
@@ -288,7 +291,7 @@ public:
             raw_field_list.append(l);
         }
         py::list r;
-        r.append(ctor(pyids, pylabels, raw_field_list));
+        r.append(ctor(py::handle(pyids), py::handle(pylabels), raw_field_list));
 
         if (dump > 0 && dump_cnt < dump) {
             string prefix = "picpac_dump/" + std::to_string(dump_cnt);
@@ -313,8 +316,7 @@ public:
     }
 };
 
-py::object return_iterator (py::tuple args, py::dict kwargs) {
-    py::object self = args[0];
+py::object return_self (py::object self) {
     self.attr("reset")();
     return self;
 };
@@ -528,7 +530,7 @@ public:
     }
     py::object next () {
         if (_next >= size()) {
-            throw pybind11::stop_iteration();
+            throw py::stop_iteration();
         }
         return read(_next++);
     }
@@ -780,18 +782,22 @@ namespace {
 
 }
 
+static void *init_numpy() {
+	import_array();
+	return NULL;
+}   
+
 PYBIND11_MODULE(picpac, scope)
 {
-    NDArrayConverter::init_numpy();
+    //NDArrayConverter::init_numpy();
+    init_numpy();
     scope.attr("__doc__") = "PicPoc Python API";
     scope.attr("OVERWRITE") = Writer::FLAG_OVERWRITE;
     //register_exception_translator<EoS>(&translate_eos);
     py::class_<PyImageStream>(scope, "ImageStream")
         .def(py::init<py::dict>())
-        .def("__iter__", &return_iterator)
-#if (PY_VERSION_HEX >= 0x03000000)
-        .def("__next__", &PyImageStream::next)
-#endif
+        //.def("__iter__", &return_self)
+        //.def("__next__", &PyImageStream::next)
         .def("next", &PyImageStream::next)
         .def("size", &PyImageStream::size)
         .def("reset", &PyImageStream::reset)
@@ -804,7 +810,7 @@ PYBIND11_MODULE(picpac, scope)
     ;
     py::class_<Reader>(scope, "Reader")
         .def(py::init<string>())
-        .def("__iter__", &return_iterator)
+        .def("__iter__", &return_self)
         .def("__next__", &Reader::next)
         .def("next", &Reader::next)
         .def("size", &Reader::size)
