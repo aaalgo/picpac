@@ -15,6 +15,7 @@
     PICPAC_CONFIG_UPDATE(C,reshuffle);\
     PICPAC_CONFIG_UPDATE(C,stratify);\
     PICPAC_CONFIG_UPDATE(C,oversample);\
+    PICPAC_CONFIG_UPDATE(C,perturb);\
     PICPAC_CONFIG_UPDATE(C,split);\
     PICPAC_CONFIG_UPDATE(C,split_fold);\
     PICPAC_CONFIG_UPDATE(C,split_negate);\
@@ -259,19 +260,19 @@ namespace picpac {
         virtual size_t pv_size () const {
             return 0;
         }
-        virtual size_t pv_sample (random_engine &rng, void *pv) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *pv) const {
             return 0;
         }
-        virtual size_t apply (Sample *s, void const *pv) const {
+        virtual size_t apply (Sample *s, bool perturb, void const *pv) const {
             size_t sz = pv_size();
             for (auto &v: s->facets) {
-                size_t s = apply_one(&v, pv);
+                size_t s = apply_one(&v, perturb, pv);
                 CHECK(s == sz);
             }
             return sz;
         }
 
-        virtual size_t apply_one (Facet *, void const *) const {
+        virtual size_t apply_one (Facet *, bool perturb, void const *) const {
             return 0;
         }
     };
@@ -292,20 +293,20 @@ namespace picpac {
         virtual size_t pv_size () const {
             return total_pv_size;
         }
-        virtual size_t pv_sample (random_engine &rng, void *pv) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *pv) const {
             char *p = reinterpret_cast<char *>(pv);
             char *o = p;
             for (unsigned i = 0; i < sub.size(); ++i) {
-                o += sub[i]->pv_sample(rng, o);
+                o += sub[i]->pv_sample(rng, perturb, o);
             }
             CHECK(total_pv_size == o-p);
             return total_pv_size;
         }
-        virtual size_t apply (Sample *s, void const *pv) const {
+        virtual size_t apply (Sample *s, bool perturb, void const *pv) const {
             char const *p = reinterpret_cast<char const *>(pv);
             char const *o = p;
             for (unsigned i = 0; i < sub.size(); ++i) {
-                o += sub[i]->apply(s, o);
+                o += sub[i]->apply(s, perturb, o);
             }
             CHECK(total_pv_size == o-p);
             return total_pv_size;
@@ -347,12 +348,12 @@ namespace picpac {
         {
         }
 
-        void sample (random_engine &e, PerturbVector *p) const {
+        void sample (random_engine &e, bool perturb, PerturbVector *p) const {
             p->buffer.resize(pv_size);
-            transforms.pv_sample(e, &p->buffer[0]);
+            transforms.pv_sample(e, perturb, &p->buffer[0]);
         }
 
-        void load (RecordReader, PerturbVector const &, Value *,
+        void load (RecordReader, bool perturb, PerturbVector const &, Value *,
                 CacheValue *c = nullptr, std::mutex *m = nullptr) const;
 
     protected:

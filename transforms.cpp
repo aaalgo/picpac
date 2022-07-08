@@ -10,7 +10,7 @@ namespace picpac {
             index = spec.value<int>("index", 1);
         }
 
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             auto &facet = sample->facets[index];
             facet.type = Facet::NONE;
             return 0;
@@ -24,7 +24,7 @@ namespace picpac {
             index = spec.value<int>("index", 1);
         }
 
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             auto &facet = sample->facets[index];
             facet.type = Facet::FEATURE;
             return 0;
@@ -58,12 +58,14 @@ namespace picpac {
     class Mask: public Transform {
         int ref;
         int index;
+        int value;
     public:
         Mask (json const &spec) {
             ref = spec.value<int>("ref", 0);
             index = spec.value<int>("index", -1);
+            value = spec.value<int>("value", 1);
         }
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             //auto &ref_image = sample->facets[ref].image;
             int idx = index;
             if (idx < 0) {  // add image
@@ -78,7 +80,7 @@ namespace picpac {
                 return 0;
             }
             */
-            facet.image = cv::Mat(sz, CV_8U, cv::Scalar(1));
+            facet.image = cv::Mat(sz, CV_8U, cv::Scalar(value));
             return 0;
         }
     };
@@ -97,7 +99,7 @@ namespace picpac {
                             cv::Size(2*r+1,2*r+1),
                             cv::Point(r,r));
         }
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             int idx = index;
             if (idx < 0) {  // add image
                 idx = sample->facets.size()-1;
@@ -136,7 +138,7 @@ namespace picpac {
             opt.thickness = spec.value<int>("thickness", int(opt.thickness));
             CHECK(((!opt.use_palette) || (!opt.use_tag))); // << "Cannot use both tag and palette";
         }
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             auto &facet = sample->facets[index];
             if (copy >= 0) {
                 facet.image = sample->facets[copy].image.clone();
@@ -198,7 +200,7 @@ namespace picpac {
             std::cerr << std::endl;
             */
         }
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             do {
                 if (sample->facets.size() == 1) {
                     break;
@@ -228,6 +230,8 @@ namespace picpac {
     };
 
     class Resize: public Transform {
+        // if size/width/height is provided, use the provided value
+        // otherwise, limit size using min_size & max_size
         int size;
         int width, height;
 
@@ -245,7 +249,7 @@ namespace picpac {
             if (height > 0) { CHECK(width > 0); CHECK(height >= min_size && height <= max_size); }
         }
 
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
+        virtual size_t apply_one (Facet *facet, bool, void const *buf) const {
             while (true) {
                 //CHECK(facet->type != Facet::FEATURE);
                 if (facet->type == Facet::FEATURE) break;
@@ -260,6 +264,7 @@ namespace picpac {
 
                 int w = 0, h = 0;
                 if (width > 0) {
+                    CHECK(height > 0);
                     w = width;
                     h = height;
                 }
@@ -315,7 +320,7 @@ namespace picpac {
             CHECK(rate > 0);
         }
 
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             auto facet = &sample->facets[0];
             CHECK(facet->type != Facet::FEATURE);
             CHECK(facet->type == Facet::IMAGE);
@@ -336,6 +341,39 @@ namespace picpac {
                 }
             }
             return 0;
+        }
+    };
+
+    class Pad: public Transform {
+        // does not randomize
+        int size, width, height;
+        struct PerturbVector {
+        };
+    public:
+        Pad (json const &spec) {
+            size = spec.value<int>("size", 400);
+            width = spec.value<int>("width", int(size));
+            height = spec.value<int>("height", int(size));
+        }
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+        virtual size_t pv_sample (random_engine &rng, bool, void *buf) const {
+            return sizeof(PerturbVector);
+        }
+        virtual size_t apply_one (Facet *facet, bool, void const *buf) const {
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+            if (facet->image.data) {
+                cv::Mat to(cv::Size(width, height), facet->image.type(), cv::Scalar(0,0,0,0));
+                int w = facet->image.cols;
+                int h = facet->image.rows;
+                CHECK(w <= width && h <= height);
+                facet->image.copyTo(to(cv::Rect(0, 0, w, h)));
+                facet->image = to;
+            }
+            else if (!facet->annotation.empty()) {
+                facet->annotation.size = cv::Size(width, height);
+            }
+            else CHECK(0);
+            return sizeof(PerturbVector);
         }
     };
 
@@ -426,6 +464,7 @@ namespace picpac {
               max_shift_y(spec.value<int>("shift_y", int(max_shift)))
 
         {
+            CHECK(false);   // implement perturb
             if ((width > 0) || (height > 0)) {
                 CHECK((width > 0) && (height > 0));
                 min_width = max_width = width;
@@ -443,7 +482,8 @@ namespace picpac {
 
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
 
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
+            // TODO! perturb
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
             pv->xrand = rng();
             pv->yrand = rng();
@@ -493,7 +533,8 @@ namespace picpac {
 
         }
 
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            // TODO perturb
             if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             cv::Size sz0 = facet->check_size();
             if (sz0.width == 0) return sizeof(PerturbVector);
@@ -576,17 +617,20 @@ namespace picpac {
         ClipSquare (json const &spec)
             : max_shift(spec.value<int>("shift", 0))
         {
+            CHECK(false);   // implement perturb
         }
 
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
 
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
+            // TODO
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
             pv->shift = rng() % (max_shift * 2 + 1) - max_shift;
             return sizeof(PerturbVector);
         }
 
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            // TODO
             cv::Size sz = facet->check_size();
             if (sz.width == 0) return sizeof(PerturbVector);
             if (sz.height == 0) return sizeof(PerturbVector);
@@ -658,7 +702,7 @@ namespace picpac {
             }
             else CHECK(false); // << code << " not supported.";
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
+        virtual size_t apply_one (Facet *facet, bool, void const *buf) const {
             if (facet->type == Facet::IMAGE && facet->image.data) {
                 if (mul0 != 1) {
                     facet->image *= mul0;
@@ -675,6 +719,7 @@ namespace picpac {
     };
 
     class Sometimes: public Transform {
+        // if not perturb means never
         float chance;
         Transforms transforms;
         std::uniform_real_distribution<float> linear01;
@@ -690,26 +735,27 @@ namespace picpac {
         virtual size_t pv_size () const {
             return sizeof(PerturbVector) + transforms.pv_size(); 
         }
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
             float p = const_cast<Sometimes *>(this)->linear01(rng);
-            pv->apply = p <= chance;
+            pv->apply = (p <= chance) && perturb;
             if (pv->apply) {
-                transforms.pv_sample(rng, static_cast<char*>(buf) + sizeof(PerturbVector));
+                transforms.pv_sample(rng, perturb, static_cast<char*>(buf) + sizeof(PerturbVector));
             }
             return pv_size();
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
             if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             if (pv->apply) {
-                transforms.apply_one(facet, static_cast<char const*>(buf) + sizeof(PerturbVector));
+                transforms.apply_one(facet, perturb, static_cast<char const*>(buf) + sizeof(PerturbVector));
             }
             return pv_size();
         }
     };
 
     class SomeOf: public Transform {
+        // if not perturb means none
         static const unsigned MAX = 32;
         struct PerturbVector {
             std::array<bool, MAX> apply;
@@ -727,33 +773,34 @@ namespace picpac {
             return sizeof(PerturbVector) + transforms.pv_size(); 
         }
 
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-
-            std::vector<unsigned> index(transforms.sub.size());
-            for (unsigned i = 0; i < index.size(); ++i) {
-                index[i] = i;
-            }
-            std::shuffle(index.begin(), index.end(), rng);
             std::fill(pv->apply.begin(), pv->apply.end(), false);
-            for (unsigned i = 0; i < count; ++i) {
-                pv->apply[index[i]] = true;
-            }
-            char *p = static_cast<char*>(buf) + sizeof(PerturbVector);
-            for (unsigned i = 0; index.size(); ++i) {
-                if (pv->apply[i]) {
-                    p += transforms.sub[i]->pv_sample(rng, p);
+            if (perturb) {
+                std::vector<unsigned> index(transforms.sub.size());
+                for (unsigned i = 0; i < index.size(); ++i) {
+                    index[i] = i;
+                }
+                std::shuffle(index.begin(), index.end(), rng);
+                for (unsigned i = 0; i < count; ++i) {
+                    pv->apply[index[i]] = true;
+                }
+                char *p = static_cast<char*>(buf) + sizeof(PerturbVector);
+                for (unsigned i = 0; index.size(); ++i) {
+                    if (pv->apply[i]) {
+                        p += transforms.sub[i]->pv_sample(rng, perturb, p);
+                    }
                 }
             }
             return pv_size();
         }
 
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             char const *p = static_cast<char const *>(buf) + sizeof(PerturbVector);
             for (unsigned i = 0; i < transforms.sub.size(); ++i) {
                 if (pv->apply[i]) {
-                    p += transforms.sub[i]->apply_one(facet, p);
+                    p += transforms.sub[i]->apply_one(facet, perturb, p);
                 }
             }
             return pv_size();
@@ -776,15 +823,15 @@ namespace picpac {
             transpose = spec.value<bool>("transpose", false);
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->horizontal = horizontal && (rng() % 2);
-            pv->vertical = vertical && (rng() % 2);
-            pv->transpose = transpose && (rng() % 2);
+            pv->horizontal = horizontal && (rng() % 2) && perturb;
+            pv->vertical = vertical && (rng() % 2) && perturb;
+            pv->transpose = transpose && (rng() % 2) && perturb;
             return sizeof(PerturbVector);
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
-            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            if (facet->type == Facet::FEATURE || !perturb) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             bool hflip = pv->horizontal;
             bool vflip = pv->vertical;
@@ -856,13 +903,13 @@ namespace picpac {
         AugFlipColor (json const &spec) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->flip = (rng() % 2);
+            pv->flip = bool(rng() % 2) && perturb;
             return sizeof(PerturbVector);
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
-            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            if (facet->type == Facet::FEATURE || !perturb) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             bool flip = pv->flip;
             if (facet->type == Facet::IMAGE && facet->image.data) {
@@ -888,20 +935,27 @@ namespace picpac {
             linear_sigma(spec.value<float>("min", 0), spec.value<float>("max", 3)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->sigma = const_cast<AugGaussianBlur *>(this)->linear_sigma(rng);
+            if (perturb) {
+                pv->sigma = const_cast<AugGaussianBlur *>(this)->linear_sigma(rng);
+            }
+            else {
+                pv->sigma = 0;
+            }
             return sizeof(PerturbVector);
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
-            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            if (facet->type == Facet::FEATURE || !perturb) return sizeof(PerturbVector);
             if (!(facet->type == Facet::IMAGE && facet->image.data)) return sizeof(PerturbVector);
 
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
-            float sigma = pv->sigma;
-            int kernel = int(std::round(sigma * 3));
-            if (kernel % 2 == 0) kernel += 1;
-            cv::GaussianBlur(facet->image, facet->image, cv::Size(kernel, kernel), sigma, sigma, border_type);
+            if (perturb) {
+                float sigma = pv->sigma;
+                int kernel = int(std::round(sigma * 3));
+                if (kernel % 2 == 0) kernel += 1;
+                cv::GaussianBlur(facet->image, facet->image, cv::Size(kernel, kernel), sigma, sigma, border_type);
+            }
             return sizeof(PerturbVector);
         }
     };
@@ -919,13 +973,18 @@ namespace picpac {
             linear_scale(spec.value<float>("min", 1.0-range), spec.value<float>("max", 1.0+range)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->scale = const_cast<AugScale *>(this)->linear_scale(rng);
+            if (perturb) {
+                pv->scale = const_cast<AugScale *>(this)->linear_scale(rng);
+            }
+            else {
+                pv->scale = 1.0;
+            }
             return sizeof(PerturbVector);
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
-            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            if (facet->type == Facet::FEATURE || !perturb) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             cv::Size sz0 = facet->check_size();
             if (sz0.width == 0) return sizeof(PerturbVector);
@@ -972,15 +1031,20 @@ namespace picpac {
         {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->delta = cv::Scalar(const_cast<AugAdd *>(this)->linear_delta1(rng),
+            if (perturb) {
+                pv->delta = cv::Scalar(const_cast<AugAdd *>(this)->linear_delta1(rng),
                                    const_cast<AugAdd *>(this)->linear_delta2(rng),
                                    const_cast<AugAdd *>(this)->linear_delta3(rng));
+            }
+            else {
+                pv->delta = cv::Scalar(0,0,0);
+            }
             return sizeof(PerturbVector);
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
-            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            if (facet->type == Facet::FEATURE || !perturb) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             if (facet->type == Facet::IMAGE && facet->image.data) {
                 //std::cerr << pv->delta[0] << ' ' << pv->delta[1] << ' ' << pv->delta[2] << std::endl;
@@ -1003,13 +1067,18 @@ namespace picpac {
             linear_angle(spec.value<float>("min", -range), spec.value<float>("max", 0+range)) {
         }
         virtual size_t pv_size () const { return sizeof(PerturbVector); }
-        virtual size_t pv_sample (random_engine &rng, void *buf) const {
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->angle = const_cast<AugRotate *>(this)->linear_angle(rng);
+            if (perturb) {
+                pv->angle = const_cast<AugRotate *>(this)->linear_angle(rng);
+            }
+            else {
+                pv->angle = 0;
+            }
             return sizeof(PerturbVector);
         }
-        virtual size_t apply_one (Facet *facet, void const *buf) const {
-            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            if (facet->type == Facet::FEATURE || !perturb) return sizeof(PerturbVector);
             PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
             cv::Size sz = facet->check_size();
             if (sz.width == 0) return sizeof(PerturbVector);
@@ -1276,7 +1345,7 @@ namespace picpac {
             }
         }
 
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             auto const &facet = sample->facets[index];
             auto const &anno = facet.annotation;
 
@@ -1400,7 +1469,7 @@ namespace picpac {
             min_area = spec.value<float>("min_area", 1);
         }
 
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             auto const &facet = sample->facets[index];
             auto const &anno = facet.annotation;
 
@@ -1460,7 +1529,7 @@ namespace picpac {
             CHECK(classes * 2 <= CV_CN_MAX); // 512
         }
 
-        virtual size_t apply (Sample *sample, void const *) const {
+        virtual size_t apply (Sample *sample, bool, void const *) const {
             auto const &facet = sample->facets[index];
             auto const &anno = facet.annotation;
 
@@ -1554,6 +1623,7 @@ namespace picpac {
 #endif
 
     // apply to all channels
+#if 0
     class WaveAugAdd: public Transform {
         float range;
         std::uniform_real_distribution<float> linear_delta;
@@ -1638,6 +1708,7 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
     };
+#endif
 
     typedef Transform *(*transform_factory_t) (json const &spec);
     vector<transform_factory_t> transform_factories;
@@ -1671,6 +1742,9 @@ namespace picpac {
         }
         else if (type == "pyramid") {
             return std::unique_ptr<Transform>(new Pyramid(spec));
+        }
+        else if (type == "pad") {
+            return std::unique_ptr<Transform>(new Pad(spec));
         }
         else if (type == "clip") {
             return std::unique_ptr<Transform>(new Clip(spec));
@@ -1722,6 +1796,7 @@ namespace picpac {
             return std::unique_ptr<Transform>(new DrawDenseCircleAnchors(spec));
         }
         */
+#if 0
         else if (type == "wave.augment.add") {
             return std::unique_ptr<Transform>(new WaveAugAdd(spec));
         }
@@ -1731,6 +1806,7 @@ namespace picpac {
         else if (type == "wave.augment.scale") {
             return std::unique_ptr<Transform>(new AugWidthScale(spec));
         }
+#endif
         else if (type == "drop") {
             return std::unique_ptr<Transform>(new Drop(spec));
         }

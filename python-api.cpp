@@ -161,6 +161,7 @@ public:
             UPDATE_CONFIG(reshuffle, kwargs);
             UPDATE_CONFIG(stratify, kwargs);
             UPDATE_CONFIG(oversample, kwargs);
+            UPDATE_CONFIG(perturb, kwargs);
             UPDATE_CONFIG(split, kwargs);
             UPDATE_CONFIG(split_fold, kwargs);
             UPDATE_CONFIG(split_negate, kwargs);
@@ -391,9 +392,9 @@ class PyImageLoader {
         pv.resize(transforms.pv_size());
         {
             lock_guard guard(mutex);
-            transforms.pv_sample(rng, &pv[0]);
+            transforms.pv_sample(rng, config.perturb, &pv[0]);
         }
-        transforms.apply(&sample, &pv[0]);
+        transforms.apply(&sample, config.perturb, &pv[0]);
         //Py_END_ALLOW_THREADS
 
         NumpyBatch::Config conf;

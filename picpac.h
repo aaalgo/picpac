@@ -385,6 +385,7 @@ namespace picpac {
             bool reshuffle;
             int stratify;
             bool oversample;
+            bool perturb;
 
             unsigned split;
             vector<unsigned> split_keys; 
@@ -412,6 +413,7 @@ namespace picpac {
                 oversample(false),    // stratified sampling for cross validation
                                 // but pool back into one group for streaming
                                 // so smaller categories are not oversampled
+                perturb(false),
                 split(1),
                 split_fold(0),
                 split_negate(false),
@@ -501,12 +503,12 @@ namespace picpac {
         /// Sample a perturb vector.
         /** This is guaranteed to be run in serial. */
         template <typename RNG>
-        void sample (RNG &, PerturbVector *) {
+        void sample (RNG &, bool, PerturbVector *) {
         }
         /// Convert a record into value.
         /** This might be invoked in parallel and should be deterministic.
          * All randomization should be done in sample. */
-        void load (RecordReader rr, PerturbVector const &, Value *out,
+        void load (RecordReader rr, bool, PerturbVector const &, Value *out,
                    CacheValue *, std::mutex *) const {
             Record r;
             rr(&r);
@@ -584,7 +586,7 @@ namespace picpac {
                 Task &task = queue[next_empty];
                 CHECK(task.status == Task::EMPTY);
                 task.locator = Stream::next();
-                Loader::sample(rng, &task.perturb);
+                Loader::sample(rng, config.perturb, &task.perturb);
                 task.status = Task::PENDING;
                 next_empty = (next_empty + 1) % queue.size();
                 ++inqueue;
@@ -621,7 +623,7 @@ namespace picpac {
                     pm = &cache_mutex;
                 }
                 try {
-                    Loader::load(reader(task.locator), task.perturb, &task.value, pc, pm);
+                    Loader::load(reader(task.locator), config.perturb, task.perturb, &task.value, pc, pm);
                 }
                 catch (runtime_error const &e) {
                     logging::error("runtime_error: {}", e.what());

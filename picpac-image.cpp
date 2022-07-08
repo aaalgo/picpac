@@ -44,7 +44,7 @@ namespace picpac {
         }
     }
 
-    void ImageLoader::load (RecordReader rr, PerturbVector const &pv, Value *out,
+    void ImageLoader::load (RecordReader rr, bool perturb, PerturbVector const &pv, Value *out,
            CacheValue *cache, std::mutex *mutex) const {
         Value cached;
         do {
@@ -126,7 +126,7 @@ namespace picpac {
             }
         } while (false);
         // apply transformation
-        transforms.apply(&cached, &pv.buffer[0]);
+        transforms.apply(&cached, perturb, &pv.buffer[0]);
 
 
         out->swap(cached);
