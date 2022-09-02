@@ -590,7 +590,9 @@ public:
         for (unsigned i = 0; i < rec.size(); ++i) {
 #if PY_MAJOR_VERSION >= 3
             string_view buf = rec.field(i);
-            fields.append(py::handle(PyBytes_FromStringAndSize(buf.data(), buf.size())));
+            PyObject *obj = PyBytes_FromStringAndSize(buf.data(), buf.size());
+            fields.append(py::handle(obj));
+            Py_DECREF(obj);
 #else
             fields.append(rec.field_string(i));
 #endif
@@ -858,6 +860,7 @@ PYBIND11_MODULE(picpac, scope)
         .def(py::init<string>())
         .def("__iter__", &return_self)
         .def("__next__", &Reader::next)
+        .def("__len__", &Reader::size)
         .def("next", &Reader::next)
         .def("size", &Reader::size)
         .def("read", &Reader::read)
