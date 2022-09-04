@@ -308,6 +308,55 @@ namespace picpac {
         }
     };
 
+    class Scale: public Transform {
+        // if size/width/height is provided, use the provided value
+        // otherwise, limit size using min_size & max_size
+        float scale;
+    public:
+        Scale (json const &spec)
+            : scale(spec.value<float>("scale", 1.0))
+        {
+        }
+
+        virtual size_t apply_one (Facet *facet, bool, void const *buf) const {
+            if (scale == 1.0) return 0;
+            while (true) {
+                //CHECK(facet->type != Facet::FEATURE);
+                if (facet->type == Facet::FEATURE) break;
+                if ((!facet->image.data) && (facet->annotation.empty())) break;
+                cv::Size sz0;
+                if (facet->image.data) {
+                    sz0 = facet->image.size();
+                }
+                else {
+                    sz0 = facet->annotation.size;
+                }
+
+                cv::Size sz(sz0.width * scale, sz0.height * scale);
+
+                if (facet->image.data) {
+                    cv::Mat tmp;
+                    cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? cv::INTER_NEAREST: cv::INTER_LINEAR);
+                    facet->image = tmp;
+                }
+                if (!facet->annotation.empty()) {
+                    CHECK(facet->annotation.size == sz0);
+                    facet->annotation.size = sz;
+                    float sc = scale;
+                    facet->annotation.transform([sc](vector<cv::Point2f> *f) {
+                            for (auto &pt: *f) {
+                                pt.x *= sc;
+                                pt.y *= sc;
+                            }
+                    });
+                }
+                break;
+            }
+            return 0;
+        }
+    };
+
+
     class Pyramid: public Transform {
         int count;
         float rate;
@@ -1839,6 +1888,9 @@ namespace picpac {
         }
         else if (type == "resize") {
             return std::unique_ptr<Transform>(new Resize(spec));
+        }
+        else if (type == "scale") {
+            return std::unique_ptr<Transform>(new Scale(spec));
         }
         else if (type == "pyramid") {
             return std::unique_ptr<Transform>(new Pyramid(spec));
