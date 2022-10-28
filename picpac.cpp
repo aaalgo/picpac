@@ -420,6 +420,7 @@ namespace picpac {
             }
         }
         int K = config.split;
+        if (K < 1) K = 1;
         vector<unsigned> keys;
         if (config.split_keys.size()) {
             if (config.split_fold >= 0) {
@@ -428,6 +429,9 @@ namespace picpac {
             }
             keys = config.split_keys;
             check_sort_dedupe_keys(config.split, &keys);
+            for (unsigned k: keys) {
+                CHECK(k < K);
+            }
         }
         else {
             // setup k-fold cross validation
@@ -444,7 +448,12 @@ namespace picpac {
                 }
             }
         }
-
+        if (K <= 1) {
+            CHECK(config.split_fold == 0);
+            CHECK(!config.split_negate);
+            CHECK(keys.empty());
+            keys.push_back(0);
+        }
         if (K > 1) for (auto &g: groups) {
             vector<Locator> picked;
             for (unsigned k: keys) {

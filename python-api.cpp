@@ -200,7 +200,7 @@ public:
 
             // check dtype
             string dt = "uint8";
-            if (kwargs.contains("dtypes")) dt = kwargs["dtype"].cast<string>();
+            if (kwargs.contains("dtype")) dt = kwargs["dtype"].cast<string>();
             dtype = dtype_np2cv(dt);
             py::object trans = py::list();
             if (kwargs.contains("transforms")) trans = kwargs["transforms"];

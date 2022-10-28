@@ -445,11 +445,11 @@ namespace picpac {
         Clip (json const &spec)
             : BorderConfig(spec, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)),
               size(spec.value<int>("size", 0)),
-              min(spec.value<int>("min", size ? size : 0)),
-              max(spec.value<int>("max", size ? size : numeric_limits<int>::max())),
+              min(spec.value<int>("min", 0)),
+              max(spec.value<int>("max", 0)),
               round(spec.value<int>("round", 0)),
-              width(spec.value<int>("width", 0)),
-              height(spec.value<int>("height", 0)),
+              width(spec.value<int>("width", int(size))),
+              height(spec.value<int>("height", int(size))),
               min_width(spec.value<int>("min_width", int(min))),
               max_width(spec.value<int>("max_width", int(max))),
               min_height(spec.value<int>("min_height", int(min))),
@@ -464,7 +464,6 @@ namespace picpac {
               max_shift_y(spec.value<int>("shift_y", int(max_shift)))
 
         {
-            CHECK(false);   // implement perturb
             if ((width > 0) || (height > 0)) {
                 CHECK((width > 0) && (height > 0));
                 min_width = max_width = width;
@@ -485,25 +484,33 @@ namespace picpac {
         virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
             // TODO! perturb
             PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
-            pv->xrand = rng();
-            pv->yrand = rng();
-            if (max_crop_width > 0) {
-                pv->xcrop1 = rng() % max_crop_width;
-                pv->xcrop2 = rng() % max_crop_width;
+            if (perturb) {
+                pv->xrand = rng();
+                pv->yrand = rng();
+                if (max_crop_width > 0) {
+                    pv->xcrop1 = rng() % max_crop_width;
+                    pv->xcrop2 = rng() % max_crop_width;
+                }
+                else {
+                    pv->xcrop1 = pv->xcrop2 = 0;
+                }
+                if (max_crop_height > 0) {
+                    pv->ycrop1 = rng() % max_crop_height;
+                    pv->ycrop2 = rng() % max_crop_height;
+                }
+                else {
+                    pv->ycrop1 = pv->ycrop2 = 0;
+                }
+                // -max_shift_x 0 max_shift_x
+                pv->xshift = (rng() % (2 * max_shift_x + 1)) - max_shift_x;
+                pv->yshift = (rng() % (2 * max_shift_y + 1)) - max_shift_y;
             }
             else {
+                pv->xrand = pv->yrand = 0;
                 pv->xcrop1 = pv->xcrop2 = 0;
-            }
-            if (max_crop_height > 0) {
-                pv->ycrop1 = rng() % max_crop_height;
-                pv->ycrop2 = rng() % max_crop_height;
-            }
-            else {
                 pv->ycrop1 = pv->ycrop2 = 0;
+                pv->xshift = pv->yshift = 0;
             }
-            // -max_shift_x 0 max_shift_x
-            pv->xshift = (rng() % (2 * max_shift_x + 1)) - max_shift_x;
-            pv->yshift = (rng() % (2 * max_shift_y + 1)) - max_shift_y;
             return sizeof(PerturbVector);
         }
 
