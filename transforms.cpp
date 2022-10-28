@@ -308,6 +308,55 @@ namespace picpac {
         }
     };
 
+    class Scale: public Transform {
+        // if size/width/height is provided, use the provided value
+        // otherwise, limit size using min_size & max_size
+        float scale;
+    public:
+        Scale (json const &spec)
+            : scale(spec.value<float>("scale", 1.0))
+        {
+        }
+
+        virtual size_t apply_one (Facet *facet, bool, void const *buf) const {
+            if (scale == 1.0) return 0;
+            while (true) {
+                //CHECK(facet->type != Facet::FEATURE);
+                if (facet->type == Facet::FEATURE) break;
+                if ((!facet->image.data) && (facet->annotation.empty())) break;
+                cv::Size sz0;
+                if (facet->image.data) {
+                    sz0 = facet->image.size();
+                }
+                else {
+                    sz0 = facet->annotation.size;
+                }
+
+                cv::Size sz(sz0.width * scale, sz0.height * scale);
+
+                if (facet->image.data) {
+                    cv::Mat tmp;
+                    cv::resize(facet->image, tmp, sz, 0, 0, facet->type == Facet::LABEL ? cv::INTER_NEAREST: cv::INTER_LINEAR);
+                    facet->image = tmp;
+                }
+                if (!facet->annotation.empty()) {
+                    CHECK(facet->annotation.size == sz0);
+                    facet->annotation.size = sz;
+                    float sc = scale;
+                    facet->annotation.transform([sc](vector<cv::Point2f> *f) {
+                            for (auto &pt: *f) {
+                                pt.x *= sc;
+                                pt.y *= sc;
+                            }
+                    });
+                }
+                break;
+            }
+            return 0;
+        }
+    };
+
+
     class Pyramid: public Transform {
         int count;
         float rate;
@@ -673,6 +722,106 @@ namespace picpac {
             return sizeof(PerturbVector);
         }
 
+    };
+
+    class RandomSquareClip: public Transform {
+        // for clipping from very large images
+        // for autoencoder training
+        int size;
+        float pad;
+        int center; // disable perturb
+    public:
+        struct PerturbVector {
+            int shift_x;
+            int shift_y;
+        };
+
+        RandomSquareClip (json const &spec)
+            : size(spec.value<int>("size", 512)),
+            pad(spec.value<float>("pad", 0.0)),
+            center(spec.value<int>("center", 0))
+        {
+        }
+
+        virtual size_t pv_size () const { return sizeof(PerturbVector); }
+
+        virtual size_t pv_sample (random_engine &rng, bool perturb, void *buf) const {
+            // TODO
+            PerturbVector *pv = reinterpret_cast<PerturbVector *>(buf);
+            pv->shift_x = rng();
+            pv->shift_y = rng();
+            return sizeof(PerturbVector);
+        }
+
+        virtual size_t apply_one (Facet *facet, bool perturb, void const *buf) const {
+            // TODO
+            cv::Size sz = facet->check_size();
+            if (sz.width == 0) return sizeof(PerturbVector);
+            if (sz.height == 0) return sizeof(PerturbVector);
+            if (facet->type == Facet::FEATURE) return sizeof(PerturbVector);
+            PerturbVector const *pv = reinterpret_cast<PerturbVector const *>(buf);
+            if (center != 0) {
+                perturb = false;
+            }
+
+            int off_x = 0, off_y = 0;
+            int pad_x = 0, pad_y = 0;
+            if (perturb) {
+                // off_x: 0 - (sz.width - size)
+                CHECK(pv->shift_x >= 0);
+                CHECK(pv->shift_y >= 0);
+                // sz.width - max_off_x = size
+                // max_off_x = sz.width - size
+                // off_x <= max_off_x
+                if (sz.width >= size) {
+                    off_x = pv->shift_x % (sz.width - size + 1);
+                }
+                else {
+                    // pad_x + sz.width <= size
+                    // pad_x <= size - sz.width
+                    pad_x = pv->shift_x % (size - sz.width + 1);
+                }
+                if (sz.height >= size) {
+                    off_y = pv->shift_y % (sz.height - size + 1);
+                }
+                else {
+                    pad_y = pv->shift_y % (size - sz.height + 1);
+                }
+            }
+            else {
+                if (sz.width >= size) {
+                    off_x = (sz.width - size) / 2;
+                }
+                else {
+                    pad_x = (size - sz.width) / 2;
+                }
+                if (sz.height >= size) {
+                    off_y = (sz.height - size) / 2;
+                }
+                else {
+                    pad_y = (size - sz.height) / 2;
+                }
+            }
+
+            if (facet->image.data) {
+                cv::Mat to(cv::Size(size, size), facet->image.type(), cv::Scalar(pad,pad,pad,0));
+                int copy_width = std::min<int>(size, sz.width);
+                int copy_height = std::min<int>(size, sz.height);
+                facet->image(cv::Rect(off_x, off_y, copy_width, copy_height)).copyTo(to(cv::Rect(pad_x, pad_y, copy_width, copy_height)));
+                //facet->image(cv::Rect(from_x, from_y, from_width, from_height)).copyTo(to(cv::Rect(to_x, to_y, to_width, to_height)));
+                facet->image = to;
+            }
+            if (!facet->annotation.empty()) {
+                facet->annotation.size = cv::Size(size, size);
+                facet->annotation.transform([off_x, off_y, pad_x, pad_y](vector<cv::Point2f> *f) {
+                        for (auto &pt: *f) {
+                            pt.x += pad_x - off_x;
+                            pt.y += pad_y - off_y;
+                        }
+                });
+            }
+            return sizeof(PerturbVector);
+        }
     };
 
     class ColorSpace: public Transform {
@@ -1747,6 +1896,9 @@ namespace picpac {
         else if (type == "resize") {
             return std::unique_ptr<Transform>(new Resize(spec));
         }
+        else if (type == "scale") {
+            return std::unique_ptr<Transform>(new Scale(spec));
+        }
         else if (type == "pyramid") {
             return std::unique_ptr<Transform>(new Pyramid(spec));
         }
@@ -1758,6 +1910,9 @@ namespace picpac {
         }
         else if (type == "clip_square") {
             return std::unique_ptr<Transform>(new ClipSquare(spec));
+        }
+        else if (type == "random_square_clip") {
+            return std::unique_ptr<Transform>(new RandomSquareClip(spec));
         }
         else if (type == "colorspace") {
             return std::unique_ptr<Transform>(new ColorSpace(spec));

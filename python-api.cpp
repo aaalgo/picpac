@@ -332,6 +332,11 @@ public:
         py::list r;
         r.append(ctor(py::handle(pyids), py::handle(pylabels), raw_field_list));
 
+        Py_DECREF(pyids);
+        Py_DECREF(pylabels);
+
+
+
         if (dump > 0 && dump_cnt < dump) {
             string prefix = "picpac_dump/" + std::to_string(dump_cnt);
             int fc = 0;
@@ -345,7 +350,9 @@ public:
         }
         for (auto &p: data) {
             if (p) {
-                r.append(p->detach());
+                PyObject *obj = p->detach();
+                r.append(obj);
+                Py_DECREF(obj);
             }
             else {
                 r.append(py::none());
@@ -583,7 +590,9 @@ public:
         for (unsigned i = 0; i < rec.size(); ++i) {
 #if PY_MAJOR_VERSION >= 3
             string_view buf = rec.field(i);
-            fields.append(py::handle(PyBytes_FromStringAndSize(buf.data(), buf.size())));
+            PyObject *obj = PyBytes_FromStringAndSize(buf.data(), buf.size());
+            fields.append(py::handle(obj));
+            Py_DECREF(obj);
 #else
             fields.append(rec.field_string(i));
 #endif
@@ -851,6 +860,7 @@ PYBIND11_MODULE(picpac, scope)
         .def(py::init<string>())
         .def("__iter__", &return_self)
         .def("__next__", &Reader::next)
+        .def("__len__", &Reader::size)
         .def("next", &Reader::next)
         .def("size", &Reader::size)
         .def("read", &Reader::read)
