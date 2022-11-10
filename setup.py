@@ -23,27 +23,37 @@ if os.name != 'nt':
     distutils.ccompiler.CCompiler.compile=parallelCCompile
 
 libraries = []
+extra_libdir = []
 extra_include = []
-for x in sp.check_output('pkg-config --cflags opencv4', shell=True).decode('ascii').strip().split(' '):
-    assert x[:2] == '-I'
-    extra_include.append(x[2:])
+for x in sp.check_output('pkg-config --cflags --libs opencv4', shell=True).decode('ascii').strip().split(' '):
+    prefix = x[:2]
+    arg = x[2:]
+    if prefix == '-L':
+        extra_libdir.append(arg)
+    elif prefix == '-I':
+        extra_include.append(arg)
+    elif prefix == '-l':
+        libraries.append(arg)
+
 print(extra_include)
 
+'''
 cv2libs = sp.check_output('pkg-config --libs opencv4', shell=True).decode('ascii')
 if 'opencv_imgcodecs' in cv2libs:
     libraries.append('opencv_imgcodecs')
     pass
+'''
 
 numpy_include = os.path.join(os.path.abspath(os.path.dirname(numpy.__file__)), 'core', 'include')
 
-libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core'])
+#libraries.extend(['opencv_highgui', 'opencv_imgproc', 'opencv_core'])
 
 picpac = Extension('picpac',
         language = 'c++',
         extra_compile_args = ['-O3', '-std=c++17', '-Wno-terminate', '-Wno-sign-compare'],
         include_dirs = ['/usr/local/include', '3rd/pybind11_opencv_numpy', numpy_include, '3rd/spdlog/include', '3rd/fmt/include', '3rd/json/single_include/nlohmann', '3rd/pybind11/include'] + extra_include,
         libraries = libraries,
-        library_dirs = ['/usr/local/lib'],
+        library_dirs = ['/usr/local/lib'] + extra_libdir,
         sources = ['python-api.cpp', 'picpac.cpp', 'picpac-image.cpp', 'shapes.cpp', 'transforms.cpp', '3rd/pybind11_opencv_numpy/ndarray_converter.cpp'],
         depends = ['picpac.h', 'picpac-image.h', 'bachelor.h'])
 
